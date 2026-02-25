@@ -48,17 +48,15 @@ sim_bio <- function(data,
                     coefs,
                     intercepts,
                     pred_vars,
-                    response_var, 
+                    response_var = 'totalBio', 
                     inter = list(),
                     sigma = 0,
-                    cover_suffix = 'Cover_rel',
-                    normalize = TRUE) {
+                    normalize = FALSE) {
   
   pfts <- names(intercepts)
   nms <- names(data)
   stopifnot(length(pfts) == length(intercepts),
-            pred_vars %in% nms,
-            response_var %in% nms)
+            pred_vars %in% nms)
   # optionally standardize predictors (and any interaction components will reflect standardized inputs)
   dat <- data
   if (normalize) {
@@ -81,25 +79,18 @@ sim_bio <- function(data,
                         nrow = nrow(eta), ncol = ncol(eta))
   }
   
+  eta2 <- exp(eta)
+  cols_cov <- paste0(pfts, 'Cov')
+  eta3 <- dat[cols_cov]*eta2
+ 
+  
   # return as tibble, with one column per PFT
-  tibble::as_tibble(eta, .name_repair = "minimal")
+  out <- tibble::as_tibble(eta3, .name_repair = "minimal")
+  names(out) <- str_replace(names(out), 'Cov', 'Bio')
+  out[[response_var]] = rowSums(eta3)
   
-  eta
-  
-  pft_cov_names <- paste0(pfts, cover_suffix)
-  stopifnot(all(pft_cov_names %in% names(dat)))
-  
-  # proportional cover * exp(linear prediction) # gives the 'weight'
-  # is 0 if cover of the pft is 0
-  
-  # 'raw' biomass prediction, or the weight 
-  weight <- exp(eta) *dat[pft_cov_names] 
-  
-  total_weight <- rowSums(weight)
-  
-  # proportion biomass for given group
-  prop_bio <- weight/total_weight
-  out <- tibble(prop_bio*dat[[response_var]])
-  names(out) <- str_replace(names(out), cover_suffix, 'Bio')
   out
 }
+
+
+

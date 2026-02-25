@@ -1,8 +1,10 @@
 # Purpose: 
 # simulate biomass of individual functional types
 # to create a fake dataset to test models against
-# The predicted cover, total biomass, and predictor models are 
-# real. Then we have 'true' functional group biomass that we can test against
+# The predicted cover, predictor variables are 
+# real. we're simulating total biomass and
+# we have 'true' (simulated) functional group biomass that we can test against
+# (normally this isn't 'seen')
 
 # Author Martin Holdrege
 # Script Started January 26, 2026
@@ -35,10 +37,43 @@ dat2 <- dat1 %>%
   # for consistent downstream naming
   rename_with(.fn = \(x) str_replace(x, cover_suffix, 'Cov'),
               .cols = ends_with(cover_suffix)) %>% 
-  filter(!is.na(biomass_MgPerHect))
+  filter(!is.na(biomass_MgPerHect)) %>% 
+  rename(totalBio = biomass_MgPerHect)
 
 set.seed(12)
 dat2 <- sample_n(dat2, size = n_sample)
+
+
+# normalize ---------------------------------------------------------------
+
+# variables to normalize
+# doing it this way so can also output mean and sd 
+# in a seperate file to convert back later as needed
+vars_norm <- dat2 %>% 
+  select(tmin:AWHC) %>% 
+  names()
+
+
+norm_params <- dat2 %>% 
+  summarise(across(all_of(vars_norm),
+                   list(mean = ~ mean(.x, na.rm = TRUE),
+                        sd   = ~ sd(.x, na.rm = TRUE)),
+                   .names = "{.col}__{.fn}"))
+
+dat3 <- dat2 %>% 
+  mutate(across(all_of(vars_norm), ~ as.numeric(scale(.x))))
+
+
+
+# make cover sum to 1 -----------------------------------------------------
+
+cov_cols <- c(paste0(pfts, "Cov"), "bareGroundCov")
+
+dat4 <- dat3 %>%
+  mutate(.cov_total = rowSums(across(all_of(cov_cols)), na.rm = TRUE)) %>%
+  mutate(across(all_of(cov_cols), ~ .x / .cov_total)) %>%
+  select(-.cov_total)
+
 
 # define coefficients -----------------------------------------------------
 
@@ -57,7 +92,7 @@ pred_vars2 <- c(as.list(pred_vars1), inter)
 n <- length(pfts)
 
 rcoef <- function() {
-  rnorm(n = n, mean = 0,  sd = 0.7)
+  rnorm(n = n, mean = 0,  sd = 0.4)
 }
 
 set.seed(123)
@@ -68,27 +103,31 @@ coefs1 <- map(pred_vars2, function(var) {
        coef = coef)
 })
 
-intercepts <- c(4, 6, 6, 2, 2, 2)
+intercepts <- c(3, 5, 5, 2.5, 2, 1.5)
 names(intercepts) <- const$pfts
 
 # simulated data -----------------------------------------------------------
 # right now biomass of each group perfectly sums to the total model biomass
 # in real data that need not 
 
-sim <- sim_bio(data = dat2,
+sim <- sim_bio(data = dat4,
                coefs = coefs1,
                intercepts = intercepts,
                pred_vars = pred_vars1,
-               response_var = "biomass_MgPerHect",
                inter = inter,
-               sigma = 0.1,
-               cover_suffix = 'Cov') 
+               sigma = 0.1) 
 
-dat3 <- bind_cols(sim, dat2)
+data = dat4
+coefs = coefs1
+intercepts = intercepts
+pred_vars = pred_vars1
+inter = inter
+sigma = 0.1
+dat5 <- bind_cols(sim, select(dat4, -totalBio))
 
 # write files -------------------------------------------------------------
 
 p2 <- file.path(paths$large, 'Data_processed/BiomassQuantityData/simulated', 
                 paste0('simBiomass_', vs, '.csv'))
 
-write_csv(dat3, p2)
+write_csv(dat5, p2)

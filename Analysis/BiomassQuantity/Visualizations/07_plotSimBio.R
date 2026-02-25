@@ -8,6 +8,7 @@
 source('Functions/init.R')
 source('Functions/figFuns.R')
 library(patchwork)
+
 # params ------------------------------------------------------------------
 
 vs <- opt$vs # version of simulated data
@@ -47,7 +48,7 @@ g1 <- ggplot(sim_long1, aes(cover, biomass)) +
    facet_wrap(~pft) +
   labs(y = 'simulated biomass')
  
-g2 <- ggplot(sim_long1, aes(cover, biomass/biomass_MgPerHect)) +
+g2 <- ggplot(sim_long1, aes(cover, biomass/totalBio)) +
   geom_point(alpha = 0.2) +
   geom_smooth(se = FALSE) +
   facet_wrap(~pft) +
