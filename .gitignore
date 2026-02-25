@@ -1,0 +1,155 @@
+# ==============================
+# Binary / non-code data files
+# ==============================
+
+# Images / rasters
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.tif
+*.tiff
+*.bmp
+*.svg
+*.webp
+
+# GIS / spatial
+*.shp
+*.dbf
+*.shx
+*.prj
+*.cpg
+*.gpkg
+*.geojson
+*.vrt
+
+# Tabular data
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.ods
+*.parquet
+*.feather
+*.fst
+
+# Serialized / model objects
+*.rds
+*.RDS
+*.qs
+*.fst
+*.sav
+*.pkl
+
+# Documents / slides
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+
+# Web / rendered artifacts
+*.html
+*.css
+*.js
+*.map
+*.woff*
+*.eot
+*.ttf
+
+# Archives / compressed
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# ==============================
+# Large outputs / scratch dirs
+# ==============================
+data/
+Data_raw/
+Data_processed/
+outputs/
+output/
+results/
+figures/
+Figures/
+cache/
+tmp/
+temp/
+
+# ==============================
+# Safety: allow code + docs back in
+# ==============================
+!*.R
+!*.Rmd
+!*.qmd
+!*.md
+!*.yml
+!*.yaml
+!*.toml
+!*.json
+!*.txt
+!*.gitignore
+!*.gitattributes
+!DESCRIPTION
+!NAMESPACE
+!LICENSE*
+!README*
+
+# boilerplate r gitignore: 
+
+
+
+# History files
+.Rhistory
+.Rapp.history
+
+# Session Data files
+.RData
+.RDataTmp
+/*.DS_Store
+
+# User-specific files
+.Ruserdata
+
+# Example code in package build process
+*-Ex.R
+
+# Output files from R CMD build
+/*.tar.gz
+
+# Output files from R CMD check
+/*.Rcheck/
+
+# RStudio files
+.Rproj.user/
+
+# produced vignettes
+vignettes/*.html
+vignettes/*.pdf
+
+# OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
+.httr-oauth
+
+# knitr and R markdown default cache directories
+*_cache/
+/cache/
+
+# Temporary files created by R markdown
+*.utf8.md
+*.knit.md
+
+# R Environment Variables
+.Renviron
+
+# pkgdown site
+docs/
+
+# translation temp files
+po/*~
+
+# RStudio Connect folder
+rsconnect/
