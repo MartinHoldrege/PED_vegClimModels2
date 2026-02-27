@@ -43,27 +43,7 @@ dat2 <- dat1 %>%
 set.seed(12)
 dat2 <- sample_n(dat2, size = n_sample)
 
-
-# normalize ---------------------------------------------------------------
-
-# variables to normalize
-# doing it this way so can also output mean and sd 
-# in a seperate file to convert back later as needed
-vars_norm <- dat2 %>% 
-  select(tmin:AWHC) %>% 
-  names()
-
-
-norm_params <- dat2 %>% 
-  summarise(across(all_of(vars_norm),
-                   list(mean = ~ mean(.x, na.rm = TRUE),
-                        sd   = ~ sd(.x, na.rm = TRUE)),
-                   .names = "{.col}__{.fn}"))
-
-dat3 <- dat2 %>% 
-  mutate(across(all_of(vars_norm), ~ as.numeric(scale(.x))))
-
-
+dat3 <- dat2
 
 # make cover sum to 1 -----------------------------------------------------
 
@@ -115,7 +95,8 @@ sim <- sim_bio(data = dat4,
                intercepts = intercepts,
                pred_vars = pred_vars1,
                inter = inter,
-               sigma = 0.1) 
+               sigma = 0.1,
+               normalize = TRUE) 
 
 data = dat4
 coefs = coefs1

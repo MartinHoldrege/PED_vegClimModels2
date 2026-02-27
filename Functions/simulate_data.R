@@ -51,7 +51,7 @@ sim_bio <- function(data,
                     response_var = 'totalBio', 
                     inter = list(),
                     sigma = 0,
-                    normalize = FALSE) {
+                    normalize = TRUE) {
   
   pfts <- names(intercepts)
   nms <- names(data)
