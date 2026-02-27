@@ -9,7 +9,13 @@
 option_list <- list(
   # simulated data version ('vs' = version simulation)
   optparse::make_option("--vs", type = "character", 
-                        default = "s02")
+                        default = "s02"),
+  # version of the real data ('vd' = version Data)
+  optparse::make_option("--vd", type = "character", 
+                        default = "d01"),
+  optparse::make_option("--use_simulated", type = "logical", 
+                        default = TRUE)
+  
 )
 
 opt_parser <-optparse::OptionParser(option_list = option_list)

@@ -6,9 +6,9 @@
 # take up local storage
 paths <- list()
 if(dir.exists("E:/USGS")) {
-  paths$large <- "E:/USGS/large_files/PED_vegClimModels"
+  paths$large <- "E:/USGS/large_files/PED_vegClimModels2"
 } else  if(dir.exists("D:/USGS")) {
-  paths$large <- "D:/USGS/large_files/PED_vegClimModels"
+  paths$large <- "D:/USGS/large_files/PED_vegClimModels2"
 } else {
   warning('directory not found')
 }

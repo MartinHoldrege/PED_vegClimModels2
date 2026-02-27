@@ -12,7 +12,8 @@
 # dependencies ------------------------------------------------------------
 
 source('Functions/init.R')
-source('Functions/simDataFuns.R')
+source('Functions/data/simulate_data.R')
+source('Functions/grouping/make_regions.R')
 
 # params ------------------------------------------------------------------
 
@@ -54,6 +55,25 @@ dat4 <- dat3 %>%
   mutate(across(all_of(cov_cols), ~ .x / .cov_total)) %>%
   select(-.cov_total)
 
+
+# add artificial regions --------------------------------------------------
+# based on climate clustering
+
+region_vars <- c("tmean_CLIM", 
+                "precip_CLIM", 
+                "PrecipTempCorr_CLIM",
+                "x",
+                "y")
+
+reg <- make_region_kmeans(
+  dat = dat4,
+  vars = region_vars,
+  nstart = 1,
+  k = 10,
+  seed = 42
+)
+
+dat4$region <- reg$data
 
 # define coefficients -----------------------------------------------------
 
@@ -98,12 +118,12 @@ sim <- sim_bio(data = dat4,
                sigma = 0.1,
                normalize = TRUE) 
 
-data = dat4
-coefs = coefs1
-intercepts = intercepts
-pred_vars = pred_vars1
-inter = inter
-sigma = 0.1
+# data = dat4
+# coefs = coefs1
+# intercepts = intercepts
+# pred_vars = pred_vars1
+# inter = inter
+# sigma = 0.1
 dat5 <- bind_cols(sim, select(dat4, -totalBio))
 
 # write files -------------------------------------------------------------
