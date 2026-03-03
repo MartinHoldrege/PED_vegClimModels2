@@ -3,7 +3,7 @@
 
 
 
-#' Select "near-pure" pixels by region and cover deciles (allowing duplicates)
+#' Select "near-pure" pixels by region and cover deciles
 #'
 #' Rescales `cover_vars` within each row to sum to 1 (ignoring bare ground and
 #' other cover types). Within each region and for each cover variable, selects
@@ -23,22 +23,26 @@
 #' @param scaled_suffix Character; suffix for scaled cover columns.
 #' @param min_sum Numeric; rows with sum(cover_vars) < min_sum get NA scaled covers
 #'   and are not eligible for selection.
+#' @param duplicates logical, whether the returned dataframe includes duplicates
+#' (if yes, then if a pixel is 'purer' for multiple variables then
+#' it will show up multiple times)
 #'
 #' @return A list with:
 #' \describe{
-#'   \item{data}{Selected rows, duplicated across variables when applicable, with
-#'   columns `selected_var`, `selected_cover_scaled`, and scaled cover columns.}
+#'   \item{data}{Selected rows, #'   columns `selected_var`, `selected_cover_scaled`, and scaled cover columns.}
 #'   \item{thresholds}{Quantile thresholds by region and variable.}
 #' }
 #' @export
 select_purer_by_region <- function(dat,
-                                       cover_vars,
-                                       region_col = "region",
-                                       q = 0.9,
-                                       min_raw_cover = 0.05,
-                                       id_col = NULL,
-                                       keep_cols = NULL,
-                                       min_sum = 0) {
+                                   cover_vars,
+                                   region_col = "region",
+                                   q = 0.9,
+                                   min_raw_cover = 0.05,
+                                   id_col = NULL,
+                                   keep_cols = NULL,
+                                   min_sum = 0,
+                                   duplicates = FALSE
+                                    ) {
   stopifnot(is.data.frame(dat),
             length(cover_vars) >= 1,
             all(cover_vars %in% names(dat)),
@@ -47,7 +51,8 @@ select_purer_by_region <- function(dat,
             is.numeric(min_raw_cover), 
             length(min_raw_cover) == 1, 
             min_raw_cover >= 0, 
-            min_raw_cover <= 1)
+            min_raw_cover <= 1,
+            all_of(str_detect(cover_vars, 'Cov')))
   scaled_suffix = "_scaled"
   dat2 <- dplyr::as_tibble(dat)
   
@@ -79,15 +84,37 @@ select_purer_by_region <- function(dat,
   scaled[eligible_sum, ] <- scaled[eligible_sum, , drop = FALSE] / cov_sum[eligible_sum]
   scaled[!eligible_sum, ] <- NA_real_
   
-  scaled_names <- paste0('.', cover_vars, scaled_suffix)
+  scaled_names <- paste0(cover_vars, scaled_suffix)
   names(scaled) <- scaled_names
   
   dat2 <- dplyr::bind_cols(dat2, dplyr::as_tibble(scaled))
   
   # long form includes BOTH scaled and raw for filtering
+  long <- dat2 %>% 
+    dplyr::select(dplyr::all_of(c(id_col, region_col,
+                                  cover_vars, scaled_names))) %>% 
+    pivot_longer(
+      cols = all_of(c(cover_vars, scaled_names)),
+      names_to  = c("pft", ".value"),
+      names_pattern = "^(.*)(Cov.*)$",
+      values_drop_na = FALSE
+    ) 
+  # CONTINUE HERE
+  long %>% 
+    dplyr::filter(!is.na(Cov),
+           !is.na(Cov_scaled)) %>% 
+    dplyr::rename(selected_var = pft) %>% 
+    dplyr::group_by(.data[[region_col]], .data$selected_var) %>% 
+    dplyr::summarise(
+      threshold = stats::quantile(.data$Cov_scaled, probs = q, 
+                                  na.rm = TRUE, type = 7),
+      n_eligible = dplyr::n(),
+      .groups = "drop"
+    )
+  
   long <- dplyr::bind_cols(
     dat2 %>% dplyr::select(dplyr::all_of(c(id_col, region_col))),
-    dplyr::as_tibble(cov_mat) %>% rlang::set_names(cover_vars),
+    dplyr::as_tibble(cov_mat),
     dat2 %>% dplyr::select(dplyr::all_of(scaled_names))
   ) %>%
     tidyr::pivot_longer(
@@ -114,7 +141,8 @@ select_purer_by_region <- function(dat,
     dplyr::filter(.data$selected_cover_raw >= min_raw_cover) %>%
     dplyr::group_by(.data[[region_col]], .data$selected_var) %>%
     dplyr::summarise(
-      threshold = stats::quantile(.data$selected_cover_scaled, probs = q, na.rm = TRUE, type = 7),
+      threshold = stats::quantile(.data$selected_cover_scaled, probs = q, 
+                                  na.rm = TRUE, type = 7),
       n_eligible = dplyr::n(),
       .groups = "drop"
     )
@@ -165,7 +193,7 @@ dat_test <- tibble::tibble(
   dplyr::bind_cols(as.data.frame(cover_mat)) %>%
   dplyr::mutate(bareGroundCov = bare)
 
-res <- select_near_pure_by_region(
+res <- select_purer_by_region(
   dat = dat_test,
   cover_vars = pfts,
   region_col = "region",

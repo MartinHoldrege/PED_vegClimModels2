@@ -2,7 +2,7 @@
 # Cover-weighted exponential (cwexp) lognormal model
 # implemented directly in R (likely slow), but for testing/development
 # log(y_i) ~ Normal(log(mu_i), sigma^2)
-# mu_i = sum_g C_ig * exp(alpha_g + X_i %*% beta_g)
+# mu_i = sum_g C_ig * log(1 + exp(alpha_g + X_i %*% beta_g))
 # where y_i is total biomass, C_ig is cover at the ith pixel of the gth 
 # plant functional group, and X is a matrix of climate predictors
 # and the beta's are the learned coefficients
@@ -117,7 +117,7 @@ cwexp_mu <- function(alpha, B, X, C, cap_eta = 50, eps_mu = 1e-12) {
   # adding alpha[1] to column 1, alpha[2] to column 2 etc. 
   eta <- sweep(eta, 2, alpha, FUN = "+") 
   eta <- pmin(eta, cap_eta)
-  mu <- rowSums(C * exp(eta))
+  mu <- rowSums(C * log1p(exp(eta)))
   pmax(mu, eps_mu)
 }
 
@@ -164,7 +164,7 @@ cwexp_nll_lognormal <- function(par, prep, cap_eta = 50, eps_mu = 1e-12) {
 #' Model:
 #' \deqn{log(y_i) ~ Normal(log(mu_i), sigma^2)}
 #' where
-#' \deqn{mu_i = sum_g C_ig * exp(alpha_g + X_i %*% beta_g)}
+#' \deqn{mu_i = sum_g C_ig *log(1 +  exp(alpha_g + X_i %*% beta_g))}
 #'
 #' @param data A data.frame containing outcome, predictors, and cover columns.
 #' @param formula A model formula of the form y ~ x1 + x2 + ....
@@ -194,7 +194,9 @@ cwexp_fit_lognormal <- function(data,
     c_bar <- colMeans(prep$C) # mean cover
     # calculating an alpha (same for each group) gives
     # you y_bar given the mean c_bar values 
-    alpha0 <- rep(log(y_bar/sum(c_bar)), times = prep$G)
+    a_bar <- log(exp(y_bar/sum(c_bar)) - 1)
+    alpha0 <- rep(a_bar, times = prep$G)
+    #sum(log(1+exp(a_bar))*c_bar) # confirm sums to y_bar
     B0 <- matrix(0, nrow = prep$P, ncol = prep$G) # starting w/ intercept only model
     log_sigma0 <- log(stats::sd(log(prep$y)) + 1e-6)
     par0 <- cwexp_pack(alpha0, B0, log_sigma0)
