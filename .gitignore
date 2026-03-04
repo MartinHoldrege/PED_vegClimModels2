@@ -80,6 +80,15 @@ cache/
 tmp/
 temp/
 
+# compiled artifacts from using TMB
+
+src/*.o
+src/*.dll
+src/*.so
+src/*.a
+src/*.def
+src/*.exp
+
 # ==============================
 # Safety: allow code + docs back in
 # ==============================
@@ -98,6 +107,8 @@ temp/
 !NAMESPACE
 !LICENSE*
 !README*
+
+
 
 # boilerplate r gitignore: 
 
