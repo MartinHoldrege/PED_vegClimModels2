@@ -145,7 +145,7 @@ cwexp_fit_tmb <- function(data,
   opt <- nlminb(
     start = obj$par,
     objective = obj$fn,
-    gradient = obj$gr,
+    gradient = gradient,
     control = control
   )
   
