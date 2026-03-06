@@ -184,7 +184,135 @@ cwexp_fit_tmb <- function(data,
 }
 
 
+#' Compute lambda_max_l1 for the cwexp TMB model
+#'
+#' Calculates the L1 regularization scale (`lambda_max_l1`) for the cover-weighted
+#' exponential log-normal TMB model.It provides the upper bound of a
+#' lambda path for LASSO-style regularization.
+#'
+#' The function fits the model with all slopes fixed at zero. I can't 
+#' can't confirm the math, but mostly just needs to provide roughly
+#' the right answer. Ie this estimates that lambda value that
+#' if made any smaller the B estimates would start being non-zero (note
+#' here 0 is approximate--B's won't fully go to zero)
+#'
+#' @param data A data frame containing the response and predictor variables.
+#' @param formula A model formula describing the predictors used in the
+#'   exponential component.
+#' @param cover_cols Character vector giving the column names of cover
+#'   variables used in the cover-weighted mixture.
+#' @param dll_en Character name of the compiled TMB dynamic library for the
+#'   elastic-net model.
+#' @param eps_mu Small numeric value added inside the softplus transformation
+#'   to avoid numerical issues.
+#' @param l1_eps Small smoothing constant used in the smoothed L1 penalty
+#'   approximation.
+#' @param control List of control parameters passed to `nlminb()` for the
+#'   nuisance-parameter optimization.
+#'
+#' @return A list with elements:
+#' \describe{
+#'   \item{lambda_max_l1}{Numeric scalar giving the L1 lambda value at which
+#'   slopes begin to move away from zero.}
+#'   \item{grad_B}{Matrix of gradients of the mean negative log-likelihood
+#'   with respect to each slope parameter evaluated at `B = 0`.}
+#'   \item{opt_fixB}{`nlminb` optimization result from fitting the model with
+#'   slopes fixed at zero.}
+#' }
+#'
+#' @details
+#' The returned `lambda_max_l1` is typically used as the starting point for a
+#' decreasing lambda path when fitting LASSO or elastic-net regularized models.
+#'
+#' @export
+cwexp_lambda_max_l1_tmb <- function(data,
+                                    formula,
+                                    cover_cols,
+                                    dll_en,              # elastic-net DLL
+                                    eps_mu = 1e-12,
+                                    l1_eps = 1e-8,
+                                    control = list(iter.max = 200, eval.max = 200)) {
+  
+  if (!is.finite(l1_eps) || l1_eps <= 0) {
+    stop("l1_eps must be > 0.")
+  }
+  
+  prep <- cwexp_prepare(data = data, formula = formula, cover_cols = cover_cols)
+  par0 <- cwexp_start_params(prep)
+  par0$B[,] <- 0 # make sure setting to 0
+  
+  # Dimensions
+  P <- prep$P
+  G <- prep$G
+  
+  # For lambda_max_l1 we set en_alpha = 1 (pure L1), and lambda = 0 (penalty OFF)
+  # so we can compute the gradient of mean NLL at B = 0.
+  data_tmb <- list(
+    y = prep$y,
+    X = prep$X,
+    C = prep$C,
+    eps_mu = as.numeric(eps_mu),
+    en_alpha = 1.0,
+    lambda   = 0.0,
+    l1_eps   = as.numeric(l1_eps)
+  )
+  
+  # Step 1: optimize nuisance params with B fixed at 0
+  map_fixB <- list(B = factor(matrix(NA, nrow = P, ncol = G)))
+  
+  obj_fixB <- TMB::MakeADFun(
+    data = data_tmb,
+    parameters = par0,
+    map = map_fixB,# this makes TMB fix (not optimize) the betas. 
+    # they're fixed at they're starting (0) value
+    DLL = dll_en
+  )
+  
+  opt_fixB <- nlminb(
+    start     = obj_fixB$par,
+    objective = obj_fixB$fn,
+    gradient  = obj_fixB$gr,
+    control   = control
+  )
+  
+  if (!is.null(opt_fixB$convergence) && opt_fixB$convergence != 0) {
+    warning(
+      "nlminb did not report convergence when fitting with B fixed at 0. ",
+      "lambda_max_l1 may be unreliable. convergence=", opt_fixB$convergence
+    )
+  }
+  
+  est_fixB <- obj_fixB$env$parList(opt_fixB$par)
+  
+  # Step 2: rebuild objective with B free; evaluate gradient at (B=0, nuisance params optimized)
+  par_at0 <- list(
+    alpha = est_fixB$alpha,
+    B = matrix(0, nrow = P, ncol = G),
+    log_sigma = est_fixB$log_sigma
+  )
+  
+  obj_grad <- TMB::MakeADFun(
+    data = data_tmb,
+    parameters = par_at0, 
+    DLL = dll_en
+  )
+  
+  # this returns the partial derivative of the objective function with 
+  # respect to each parameter, evaluated at the current parameter values
+  # (i.e. 0 for the B's). So rougly this tells you how much the thing
+  # negative log likelihood would change if you increased the given Beta value
+  g <- obj_grad$gr(obj_grad$par)
+  
+  grad_B <- cwexp_unpack(g, G, P)$B# the slopes at B = 0
 
+  lambda_max_l1 <- max(abs(as.numeric(grad_B)))
+  
+  list(
+    lambda_max_l1 = as.numeric(lambda_max_l1),
+    grad_B = grad_B,
+    opt_fixB = opt_fixB
+  )
+}
 
 # ---------------------------
 # example usage
@@ -201,10 +329,10 @@ if (FALSE) {
   dll <- cwexp_tmb_compile("src/cwexp_lognormal_tmb.cpp")
   
   # 2) fit
-
+  formula = totalBio ~ tmean + ppt + vpd + sand
   fit <- cwexp_fit_tmb(
     data = dat,
-    formula = totalBio ~ tmean + ppt + vpd + sand,
+    formula = formula,
     cover_cols = cover_cols,
     dll = dll,
     control = list(iter.max = 200, eval.max = 200)
@@ -223,7 +351,7 @@ if (FALSE) {
   
   fit_en <- cwexp_fit_tmb(
     data = dat,
-    formula = totalBio ~ tmean + ppt + vpd + sand,
+    formula = formula,
     cover_cols = cover_cols,
     dll = dll_en,
     control = list(iter.max = 200, eval.max = 200),
@@ -241,5 +369,44 @@ if (FALSE) {
   abline(0, 1)
   plot(as.numeric(fit_en$par$B) ~ as.numeric(fit$par$B))
   abline(0, 1)
+  
+
+  # finding max lambda ------------------------------------------------------
+
+  max_obj <- cwexp_lambda_max_l1_tmb(
+    data = dat,
+    formula = formula,
+    cover_cols = cover_cols,
+    dll_en = dll_en
+  )
+  
+  en_alpha = 0.5
+  lambda_max_en <-  max_obj$lambda_max_l1/en_alpha
+  
+  # should result in > 0 B's
+  fit_at_max <- cwexp_fit_tmb(
+    data = dat,
+    formula = formula,
+    cover_cols = cover_cols,
+    dll = dll_en,
+    penalty = "elastic_net",
+    en_alpha = 0.8*en_alpha,
+    lambda = lambda_max_en,
+  )
+  
+  max(abs(fit_at_max$par$B))
+  
+  # should result in near 0 B's
+  fit_at_max <- cwexp_fit_tmb(
+    data = dat,
+    formula = formula,
+    cover_cols = cover_cols,
+    dll = dll_en,
+    penalty = "elastic_net",
+    en_alpha = 1.2*en_alpha,
+    lambda = lambda_max_en,
+  )
+  
+  max(abs(fit_at_max$par$B))
 }
 
