@@ -13,7 +13,7 @@
 
 source('Functions/init.R')
 source('Functions/data/simulate_data.R')
-source('Functions/grouping/make_regions.R')
+source('Functions/grouping/environmental_clustering.R')
 
 # params ------------------------------------------------------------------
 

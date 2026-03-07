@@ -73,7 +73,7 @@ cwexp_tmb_compile <- function(cpp_file = "src/cwexp_lognormal_tmb.cpp",
 #' @param start optional list of starting values: list(alpha=..., B=..., log_sigma=...)
 #' @param eps_mu small positive value to keep log(mu) defined (passed to C++)
 #' @param control list of control parameters for optimizer
-#' @param do_sdreport logical; compute sdreport() (can be slow)
+#' @param include_report logical; return report objects from cpp
 #'
 #' @return object of class "cwexp_tmb_fit"
 cwexp_fit_tmb <- function(data,
