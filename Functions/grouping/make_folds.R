@@ -9,6 +9,8 @@
 #'   value per row of the data.
 #' @param n_folds Integer number of folds.
 #' @param seed Optional integer random seed for reproducibility.
+#' @param data dataframe provided as alternative to env_cluster vector
+#' @param data_column name of column in data that gives env_cluster
 #'
 #' @return A list of folds. Each fold is a list with elements:
 #' \describe{
@@ -25,9 +27,20 @@
 #' folds <- make_cluster_folds(env_cluster = env_cluster, n_folds = 3, seed = 1)
 #'
 #' folds[[1]]
-make_cluster_folds <- function(env_cluster,
-                               n_folds,
-                               seed = NULL) {
+make_cluster_folds <- function(env_cluster = NULL,
+                               data = NULL,
+                               n_folds = 3,
+                               seed = NULL,
+                               data_column = 'env_cluster') {
+  
+  if(is.null(env_cluster)) {
+    if(is.null(data) || !is.data.frame(data) || is.null(data[[data_column]])) {
+      stop('if env_cluster not provided dataframe needs to be provided w/ ', 
+      data_column, ' column')
+    }
+    env_cluster <- data[[data_column]]
+  }
+  
   if (length(env_cluster) < 1) {
     stop("env_cluster must have length >= 1.")
   }

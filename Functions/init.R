@@ -30,3 +30,11 @@ options(readr.show_col_types = FALSE)
 source('Functions/params.R')
 source('config/paths.R')
 source('Functions/constants.R')
+
+
+# optional function to use to source all functions
+source_functions <- function(path = "./Functions") {
+  files <- sort(list.files(path, pattern = "\\.R$", full.names = TRUE, recursive = TRUE))
+  files <- stringr::str_subset(files, 'init.R$', negate = TRUE) # don't need to run this again
+  invisible(lapply(files, source))
+}

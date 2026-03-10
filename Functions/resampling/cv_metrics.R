@@ -138,6 +138,32 @@ score_fit <- function(fit,
   out
 }
 
+#' Score a fitted model on new data and return a one-row data frame
+#'
+#' Thin wrapper around `score_fit()`.
+#'
+#' @param fit A fitted model object.
+#' @param newdata Data frame used for holdout scoring.
+#' @param ... Additional arguments passed to `score_fit()`.
+#'
+#' @return One-row data frame of score metrics.
+score_fit_df <- function(fit, newdata, ...) {
+  scores <- score_fit(fit = fit, newdata = newdata, ...)
+  
+  if (!is.list(scores)) {
+    stop("score_fit() must return a named list.")
+  }
+  
+  out <- as.data.frame(scores, stringsAsFactors = FALSE)
+  
+  if (nrow(out) != 1L) {
+    stop("score_fit_df() expected score_fit() to produce one row.")
+  }
+  
+  out
+}
+
+
 
 #' Score a fitted model path on a holdout dataset
 #'
@@ -277,3 +303,35 @@ select_lambda <- function(score_df,
     tol = tol
   )
 }
+
+
+# misc --------------------------------------------------------------------
+
+
+summarize_scores <- function(scores, metric_cols) {
+  se <- function(x) sd(x)/length(x)
+  score_summary <- scores |>
+    dplyr::group_by(.data$lambda) |>
+    dplyr::summarise(
+      dplyr::across(
+        dplyr::all_of(metric_cols),
+        mean,
+        .names = "{.col}"
+      ),
+      dplyr::across(
+        dplyr::all_of(metric_cols),
+        se,
+        .names = "{.col}_se"
+      ),
+      n = dplyr::n(),
+      .groups = "drop"
+    )
+  score_summary$summary_stat <- "mean"
+  score_summary
+}
+
+
+
+
+
+
