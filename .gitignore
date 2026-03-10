@@ -68,7 +68,7 @@
 # ==============================
 # Large outputs / scratch dirs
 # ==============================
-data/
+/data/
 Data_raw/
 Data_processed/
 outputs/
