@@ -135,7 +135,8 @@ cwexp_fit_tmb <- function(data,
   obj <- TMB::MakeADFun(
     data = data_tmb,
     parameters = parameters,
-    DLL = dll
+    DLL = dll,
+    silent = TRUE
   )
   
   # ----- optimize with nlminb -----
@@ -265,7 +266,8 @@ cwexp_lambda_max_l1_tmb <- function(data,
     parameters = par0,
     map = map_fixB,# this makes TMB fix (not optimize) the betas. 
     # they're fixed at they're starting (0) value
-    DLL = dll_en
+    DLL = dll_en,
+    silent = TRUE
   )
   
   opt_fixB <- nlminb(
@@ -294,7 +296,8 @@ cwexp_lambda_max_l1_tmb <- function(data,
   obj_grad <- TMB::MakeADFun(
     data = data_tmb,
     parameters = par_at0, 
-    DLL = dll_en
+    DLL = dll_en,
+    silent = TRUE
   )
   
   # this returns the partial derivative of the objective function with 

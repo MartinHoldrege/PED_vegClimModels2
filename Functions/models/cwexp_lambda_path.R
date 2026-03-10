@@ -195,7 +195,7 @@ cwexp_fit_lambda_path_tmb <- function(data,
   current_start <- start
   
   for (i in seq_along(lambda_seq)) {
-    print(i)
+
     lam <- lambda_seq[i]
     
     fit_i <- cwexp_fit_tmb(
