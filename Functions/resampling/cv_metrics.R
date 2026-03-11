@@ -332,6 +332,59 @@ summarize_scores <- function(scores, metric_cols) {
 
 
 
-
+#' Compare fitted models to known truth
+#'
+#' Given the true parameters (from simulation) and one or more fitted model
+#' objects, computes recovery metrics for alpha, B, and mu. Intended for
+#' evaluating model performance on simulated data where truth is known.
+#'
+#' @param truth Object of class `cwexp_dummy` (from `cwexp_make_dummy_data()`),
+#'   or a list with elements `par` (containing `alpha`, `B`) and `data`.
+#' @param fits Named list of fitted model objects (e.g., `cwexp_tmb_fit`), each
+#'   with a `par` sub-list containing `alpha` and `B`.
+#' @param newdata Optional data frame for computing mu predictions. If NULL,
+#'   uses `truth$data`.
+#'
+#' @return A tibble with one row per model and columns for each metric.
+#' @examples
+#' \dontrun{
+#' dummy <- cwexp_make_dummy_data(n = 500)
+#' # ... fit models ...
+#' compare_to_truth(
+#'   truth = dummy,
+#'   fits = list(unpenalized = fit0, regularized = final_fit)
+#' )
+#' }
+compare_to_truth <- function(truth, fits, newdata = NULL) {
+  stopifnot(is.list(truth), !is.null(truth$par))
+  stopifnot(is.list(fits), length(fits) >= 1)
+  
+  if (is.null(names(fits))) {
+    names(fits) <- paste0("model_", seq_along(fits))
+  }
+  
+  data <- if (!is.null(newdata)) newdata else truth$data
+  mu_true <- predict(truth, new_data = data, type = "mu")
+  alpha_true <- truth$par$alpha
+  B_true <- as.numeric(truth$par$B)
+  
+  rows <- lapply(names(fits), function(nm) {
+    fit <- fits[[nm]]
+    mu_hat <- predict(fit, data, type = "mu")
+    
+    dplyr::tibble(
+      model = nm,
+      alpha_rmse = metric_rmse(alpha_true, fit$par$alpha),
+      alpha_cor  = cor(alpha_true, fit$par$alpha),
+      B_rmse     = metric_rmse(B_true, as.numeric(fit$par$B)),
+      B_cor      = cor(B_true, as.numeric(fit$par$B)),
+      mu_rmse    = metric_rmse(mu_true, mu_hat),
+      mu_cor     = cor(mu_true, mu_hat),
+      mu_mae_log = metric_mae_log(mu_true, mu_hat)
+    )
+  })
+  
+  dplyr::bind_rows(rows)
+}
 
 

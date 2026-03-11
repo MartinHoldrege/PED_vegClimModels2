@@ -6,9 +6,9 @@
 #   mu_i   = sum_g C_ig * log(1 + exp(eta_ig))      # softplus
 #   log(y_i) ~ Normal(log(mu_i), sigma^2)
 
-# ---------------------------
-# helpers
-# ---------------------------
+
+# helpers -------------------
+
 
 # stable-ish inverse softplus for start values:
 # softplus(a) = log(1 + exp(a)) = t  -> a = log(expm1(t))
@@ -18,9 +18,9 @@ inv_softplus <- function(t) log(expm1(t))
 softplus_R <- function(x) log1p(exp(x))  # OK if x not enormous; use ifelse() variant if needed
 
 
-# ---------------------------
-# TMB compilation / loading
-# ---------------------------
+
+# TMB compilation / loading -----------------
+
 
 #' Compile and load a cwexp TMB model (only recompile if needed)
 #'
@@ -57,9 +57,9 @@ cwexp_tmb_compile <- function(cpp_file = "src/cwexp_lognormal_tmb.cpp",
   dll_base
 }
 
-# ---------------------------
-# main fit wrapper (TMB engine)
-# ---------------------------
+
+# main fit wrapper (TMB engine) -----
+
 
 #' Fit cwexp softplus-lognormal model with TMB
 #'
@@ -317,9 +317,9 @@ cwexp_lambda_max_l1_tmb <- function(data,
   )
 }
 
-# ---------------------------
-# example usage
-# ---------------------------
+
+# example usage ---
+
 if (FALSE) {
   
   # create fake data

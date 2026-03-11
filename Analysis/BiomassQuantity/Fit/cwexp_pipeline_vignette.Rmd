@@ -47,7 +47,7 @@ theme_set(theme_bw())
 
 ```{r simulate}
 set.seed(42)
-dummy <- cwexp_make_dummy_data(n = 1000, sigma = 1.5, n_junk_pred = 3)
+dummy <- cwexp_make_dummy_data(n = 1000, sigma = 0.6, n_junk_pred = 3)
 dat <- dummy$data
 cover_cols <- dummy$spec$cover_cols
 formula_full <- dummy$spec$formula  # totalBio ~ tmean + ppt + vpd + sand + junk1 + junk2 + junk3
@@ -76,17 +76,17 @@ dll_en <- cwexp_tmb_compile("src/cwexp_lognormal_en_tmb.cpp", quiet = TRUE)
 First, fit with `lambda = 0` (no penalty) to see baseline recovery.
 
 ```{r fit-unpenalized, message = FALSE, results = 'hide'}
-invisible(capture.output(
-  fit0 <- cwexp_fit_tmb(
-    data = dat,
-    formula = formula_full,
-    cover_cols = cover_cols,
-    dll = dll_en,
-    penalty = "elastic_net",
-    en_alpha = 0.5,
-    lambda = 0
-  )
-))
+
+fit0 <- cwexp_fit_tmb(
+  data = dat,
+  formula = formula_full,
+  cover_cols = cover_cols,
+  dll = dll_en,
+  penalty = "elastic_net",
+  en_alpha = 0.5,
+  lambda = 0
+)
+
 
 mu_true <- predict(dummy, type = "mu")
 mu_hat0 <- predict(fit0, dat, type = "mu")
@@ -142,32 +142,32 @@ Fit models across a range of lambda values to visualize the regularization
 path.
 
 ```{r lambda-path}
-invisible(capture.output({
-  lam_max <- cwexp_lambda_max_l1_tmb(
-    data = dat,
-    formula = formula_full,
-    cover_cols = cover_cols,
-    dll_en = dll_en
-  )
-  
-  en_alpha <- 0.5
-  
-  lam_seq <- cwexp_lambda_path(
-    lambda_max_l1 = lam_max$lambda_max_l1,
-    en_alpha = en_alpha,
-    n_lambda = 15,
-    include_zero = TRUE
-  )
-  
-  path_fit <- cwexp_fit_lambda_path_tmb(
-    data = dat,
-    formula = formula_full,
-    cover_cols = cover_cols,
-    dll = dll_en,
-    en_alpha = en_alpha,
-    lambda_seq = lam_seq
-  )
-}))
+
+lam_max <- cwexp_lambda_max_l1_tmb(
+  data = dat,
+  formula = formula_full,
+  cover_cols = cover_cols,
+  dll_en = dll_en
+)
+
+en_alpha <- 0.5
+
+lam_seq <- cwexp_lambda_path(
+  lambda_max_l1 = lam_max$lambda_max_l1,
+  en_alpha = en_alpha,
+  n_lambda = 15,
+  include_zero = TRUE
+)
+
+path_fit <- cwexp_fit_lambda_path_tmb(
+  data = dat,
+  formula = formula_full,
+  cover_cols = cover_cols,
+  dll = dll_en,
+  en_alpha = en_alpha,
+  lambda_seq = lam_seq
+)
+
 ```
 
 ### Coefficient paths
@@ -200,7 +200,13 @@ plot(path_fit$summary$lambda, rmse_mu, type = "b", pch = 19,
 
 ## 5. Inner Cross-Validation
 
+Note the outer cross validation (below), has this part built into
+it, but it's shown here to illustrate. 
 Use environmentally-blocked folds to select the best lambda via inner CV.
+
+Note--here the 'inner' cross validation is being done on the entire dataset
+so it leads to a smaller lambda then the outer cv (i.e. bigger dataset then when 
+done inside of the outer CV). 
 
 ```{r inner-cv}
 # create environmental clusters for fold construction
@@ -220,31 +226,31 @@ inner_folds <- make_cluster_folds(
   seed = 1
 )
 
-invisible(capture.output({
-  inner_cv <- run_inner_cv(
-    data = dat,
-    folds = inner_folds,
-    en_alpha = en_alpha,
-    lambda_max_fun = cwexp_lambda_max_l1_tmb,
-    lambda_max_args = list(
-      formula = formula_full,
-      cover_cols = cover_cols,
-      dll_en = dll_en
-    ),
-    lambda_path_args = list(
-      n_lambda = 15,
-      include_zero = TRUE
-    ),
-    fit_path_fun = cwexp_fit_lambda_path_tmb,
-    fit_path_args = list(
-      formula = formula_full,
-      cover_cols = cover_cols,
-      dll = dll_en,
-      include_report = FALSE
-    ),
-    keep_fold_results = TRUE
-  )
-}))
+
+inner_cv <- run_inner_cv(
+  data = dat,
+  folds = inner_folds,
+  en_alpha = en_alpha,
+  lambda_max_fun = cwexp_lambda_max_l1_tmb,
+  lambda_max_args = list(
+    formula = formula_full,
+    cover_cols = cover_cols,
+    dll_en = dll_en
+  ),
+  lambda_path_args = list(
+    n_lambda = 10,
+    include_zero = TRUE
+  ),
+  fit_path_fun = cwexp_fit_lambda_path_tmb,
+  fit_path_args = list(
+    formula = formula_full,
+    cover_cols = cover_cols,
+    dll = dll_en,
+    include_report = FALSE
+  ),
+  keep_fold_results = TRUE
+)
+
 
 cat("Selected lambda (inner CV):", inner_cv$selected$lambda, "\n")
 ```
@@ -273,44 +279,44 @@ ggplot(score_summary, aes(x = lambda, y = mae_log)) +
 Nested CV to get an honest estimate of out-of-sample performance.
 
 ```{r outer-cv}
-invisible(capture.output({
-  outer_folds <- make_cluster_folds(
-    env_cluster = dat$env_cluster,
-    n_folds = 3,
-    seed = 2
-  )
+
+outer_folds <- make_cluster_folds(
+  env_cluster = dat$env_cluster,
+  n_folds = 3,
+  seed = 2
+)
   
-  outer_cv <- run_outer_cv(
-    data = dat,
-    outer_folds = outer_folds,
-    lambda_max_args = list(
-      formula = formula_full,
-      cover_cols = cover_cols,
-      dll_en = dll_en
-    ),
-    lambda_path_args = list(
-      n_lambda = 10,
-      include_zero = TRUE
-    ),
-    fit_path_args = list(
-      formula = formula_full,
-      cover_cols = cover_cols,
-      dll = dll_en,
-    ),
-    final_fit_args = list(
-      formula = formula_full,
-      cover_cols = cover_cols,
-      dll = dll_en,
-      en_alpha = en_alpha,
-      include_report = FALSE
-    ),
-    final_score_args = list(
-      metrics = c("mae_log", "rmse_log"),
-      predict_type = "mu"
-    ),
-    keep_inner_cv = TRUE
-  )
-}))
+outer_cv <- run_outer_cv(
+  data = dat,
+  outer_folds = outer_folds,
+  en_alpha = en_alpha, 
+  lambda_max_args = list(
+    formula = formula_full,
+    cover_cols = cover_cols,
+    dll_en = dll_en
+  ),
+  lambda_path_args = list(
+    n_lambda = 10,
+    include_zero = TRUE
+  ),
+  fit_path_args = list(
+    formula = formula_full,
+    cover_cols = cover_cols,
+    dll = dll_en
+  ),
+  final_fit_args = list(
+    formula = formula_full,
+    cover_cols = cover_cols,
+    dll = dll_en,
+    include_report = FALSE
+  ),
+  final_score_args = list(
+    metrics = c("mae_log", "rmse_log"),
+    predict_type = "mu"
+  ),
+  keep_inner_cv = TRUE
+)
+
 ```
 
 ```{r outer-cv-results}
@@ -325,16 +331,16 @@ cat("\nFinal lambda (median across folds):", outer_cv$lambda_final, "\n")
 Refit on all data at the final lambda.
 
 ```{r final-fit}
-invisible(capture.output({
-  final_fit <- cwexp_fit_tmb(
-    data = dat,
-    formula = formula_full,
-    cover_cols = cover_cols,
-    dll = dll_en,
-    en_alpha = en_alpha,
-    lambda = outer_cv$lambda_final
-  )
-}))
+
+final_fit <- cwexp_fit_tmb(
+  data = dat,
+  formula = formula_full,
+  cover_cols = cover_cols,
+  dll = dll_en,
+  en_alpha = en_alpha,
+  lambda = outer_cv$lambda_final,
+  penalty = 'elastic_net'
+)
 
 mu_hat_final <- predict(final_fit, dat, type = "mu")
 
@@ -350,15 +356,35 @@ cat("  Lambda used:", outer_cv$lambda_final, "\n")
 ```{r compare-B-final, fig.width=6, fig.height=5}
 B_hat_final_vec <- as.numeric(final_fit$par$B)
 
+lims <- range(c(B_true_vec, B_hat_final_vec))
 plot(B_true_vec, B_hat_final_vec, pch = 16,
      col = ifelse(is_junk, "red", "black"),
      xlab = "True B", ylab = "Estimated B (final, regularized)",
-     main = "B recovery: regularized final model")
+     main = "B recovery: regularized final model",
+     ylim = lims, xlim = lims)
 abline(0, 1, col = "grey50", lty = 2)
 abline(h = 0, v = 0, col = "grey80")
 legend("topleft", legend = c("Real predictors", "Junk predictors"),
        col = c("black", "red"), pch = 16, bty = "n")
 ```
+
+### Compare final B to unregularized estimate
+
+```{r compare-B-unreg, fig.width=6, fig.height=5}
+B_hat_fit0_vec <- as.numeric(fit0$par$B)
+
+lims <- range(c(B_hat_fit0_vec, B_hat_final_vec))
+plot(B_hat_fit0_vec, B_hat_final_vec, pch = 16,
+     col = ifelse(is_junk, "red", "black"),
+     xlab = "Estimated B (unregularized)", ylab = "Estimated B (final, regularized)",
+     main = "B: regularized final model vs unregularized model",
+     ylim = lims, xlim = lims)
+abline(0, 1, col = "grey50", lty = 2)
+abline(h = 0, v = 0, col = "grey80")
+legend("topleft", legend = c("Real predictors", "Junk predictors"),
+       col = c("black", "red"), pch = 16, bty = "n")
+```
+
 
 ### Junk predictor shrinkage
 
@@ -379,20 +405,10 @@ Since we know the true mu for our simulated data, we can directly compare
 how well the unpenalized vs regularized model recovers it.
 
 ```{r truth-comparison}
-cat("Training set recovery (cor with true mu):\n")
-cat("  Unpenalized:", round(cor(mu_true, mu_hat0), 4), "\n")
-cat("  Regularized:", round(cor(mu_true, mu_hat_final), 4), "\n")
-
-cat("\nTraining set MAE on log scale (vs true mu, not observed y):\n")
-cat("  Unpenalized:", round(mean(abs(log(mu_true) - log(mu_hat0))), 4), "\n")
-cat("  Regularized:", round(mean(abs(log(mu_true) - log(mu_hat_final))), 4), "\n")
-
-cat("\nAlpha recovery:\n")
-cat("  True alpha:       ", round(dummy$par$alpha, 3), "\n")
-cat("  Unpenalized alpha:", round(fit0$par$alpha, 3), "\n")
-cat("  Regularized alpha:", round(final_fit$par$alpha, 3), "\n")
-cat("  cor(true, unpen): ", round(cor(dummy$par$alpha, fit0$par$alpha), 3), "\n")
-cat("  cor(true, reg):   ", round(cor(dummy$par$alpha, final_fit$par$alpha), 3), "\n")
+metrics <- compare_to_truth(truth = dummy,
+                            fits = list(unpenalized = fit0, regularized = final_fit))
+                            
+knitr::kable(metrics, digits = 2)
 ```
 
 ## Summary
