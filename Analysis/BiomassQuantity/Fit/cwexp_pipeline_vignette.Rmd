@@ -47,8 +47,11 @@ theme_set(theme_bw())
 
 ```{r simulate}
 set.seed(42)
-dummy <- cwexp_make_dummy_data(n = 1000, sigma = 0.6, n_junk_pred = 3)
-dat <- dummy$data
+n <- 1000
+dummy <- cwexp_make_dummy_data(n = n*2, sigma = 0.6, n_junk_pred = 3)
+dat <- dummy$data[1:n, ]
+ # not a traditional test set, but just for seeing how well model's recover the truth
+dat_test <- dummy$data[(n+1):(2*n), ]
 cover_cols <- dummy$spec$cover_cols
 formula_full <- dummy$spec$formula  # totalBio ~ tmean + ppt + vpd + sand + junk1 + junk2 + junk3
 pred_vars <- dummy$prep$x_cols
@@ -75,7 +78,7 @@ dll_en <- cwexp_tmb_compile("src/cwexp_lognormal_en_tmb.cpp", quiet = TRUE)
 
 First, fit with `lambda = 0` (no penalty) to see baseline recovery.
 
-```{r fit-unpenalized, message = FALSE, results = 'hide'}
+```{r fit-unpenalized, message = FALSE}
 
 fit0 <- cwexp_fit_tmb(
   data = dat,
@@ -87,11 +90,9 @@ fit0 <- cwexp_fit_tmb(
   lambda = 0
 )
 
-
-mu_true <- predict(dummy, type = "mu")
-mu_hat0 <- predict(fit0, dat, type = "mu")
-
-
+# predicting on held out data
+mu_true <- predict(dummy, newdata = dat_test, type = "mu")
+mu_hat0 <- predict(fit0, newdata = dat_test, type = "mu")
 ```
 
 Unpenalized fit
@@ -106,9 +107,9 @@ cat("  Estimated sigma:", round(fit0$par$sigma, 3),
 
 ```{r plot-unpenalized, fig.width=5, fig.height=4.5}
 
-plot(mu_true, dummy$data$totalBio, ylim = c(0, 200),
+plot(mu_true, dat_test$totalBio,
      ylab = 'simulated biomass', xlab = 'true mu')
-plot(log(mu_true), log(dummy$data$totalBio),
+plot(log(mu_true), log(dat_test$totalBio),
      ylab = 'log(simulated biomass)', xlab = 'log(true mu))')
 plot(mu_true, mu_hat0, pch = 16, cex = 0.4, col = rgb(0, 0, 0, 0.3),
      xlab = "True mu", ylab = "Fitted mu",
@@ -406,6 +407,7 @@ how well the unpenalized vs regularized model recovers it.
 
 ```{r truth-comparison}
 metrics <- compare_to_truth(truth = dummy,
+                            newdata = dat_test,
                             fits = list(unpenalized = fit0, regularized = final_fit))
                             
 knitr::kable(metrics, digits = 2)

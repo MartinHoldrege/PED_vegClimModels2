@@ -364,7 +364,7 @@ compare_to_truth <- function(truth, fits, newdata = NULL) {
   }
   
   data <- if (!is.null(newdata)) newdata else truth$data
-  mu_true <- predict(truth, new_data = data, type = "mu")
+  mu_true <- predict(truth, newdata = data, type = "mu")
   alpha_true <- truth$par$alpha
   B_true <- as.numeric(truth$par$B)
   

@@ -158,7 +158,7 @@ cwexp_mu <- function(alpha, B, X, C, eps_mu = 1e-12) {
 #' Generates predictions from a fitted cwexp model.
 #'
 #' @param object A fitted \code{"cwexp_fit"} object.
-#' @param new_data A data.frame containing predictor and cover columns.
+#' @param newdata A data.frame containing predictor and cover columns.
 #' @param type Prediction scale: \code{"mu"} (default) returns mu,
 #'   \code{"log_mu"} returns log(mu).
 #' @param ... Unused.
@@ -166,9 +166,9 @@ cwexp_mu <- function(alpha, B, X, C, eps_mu = 1e-12) {
 #' @return Numeric vector of predictions.
 #'
 #' @export
-predict.cwexp_fit <- function(object, new_data, type = c("mu", "log_mu"), ...) {
+predict.cwexp_fit <- function(object, newdata, type = c("mu", "log_mu"), ...) {
   type <- match.arg(type)
-  prep <- cwexp_prepare(data = new_data, formula = object$spec$formula, 
+  prep <- cwexp_prepare(data = newdata, formula = object$spec$formula, 
                         cover_cols = object$spec$cover_cols)
   
   mu <- cwexp_mu(
@@ -187,12 +187,12 @@ predict.cwexp_tmb_fit <- predict.cwexp_fit
 
 
 # predicts mu from object created in cwexp_make_dummy_data
-predict.cwexp_dummy <-  function(object, new_data = NULL, 
+predict.cwexp_dummy <-  function(object, newdata = NULL, 
                                  type = c("mu", "log_mu"), ...) {
 
-  data = if(is.null(new_data)) object$data else new_data
+  data = if(is.null(newdata)) object$data else newdata
   
-  predict.cwexp_fit(object = object, new_data = data, type = type, ...)
+  predict.cwexp_fit(object = object, newdata = data, type = type, ...)
 }
 
 # optional convenience
