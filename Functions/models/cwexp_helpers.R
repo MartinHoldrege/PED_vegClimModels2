@@ -204,4 +204,65 @@ cwexp_coef <- function(fit) {
 
 
 
+#' Compute per-group mean contributions
+#'
+#' Returns an N x G matrix where column g is the contribution of group g
+#' to total mu.
+#'
+#' @param alpha Numeric vector of group intercepts (length G).
+#' @param B Numeric matrix of coefficients (P x G).
+#' @param X Predictor matrix (N x P).
+#' @param C Cover matrix (N x G).
+#' @param weighted Logical. If TRUE (default), returns C_ig * softplus(...).
+#'   If FALSE, returns softplus(alpha_g + X_i * beta_g) without cover weighting.
+#'
+#' @return N x G matrix. Column names inherited from C.
+#' @export
+cwexp_mu_by_group <- function(alpha, B, X, C, weighted = TRUE) {
+  eta <- X %*% B
+  eta <- sweep(eta, 2, alpha, FUN = "+")
+  sp <- log1p(exp(eta))  # softplus, N x G
+  
+  if (weighted) {
+    out <- C * sp
+  } else {
+    out <- sp
+  }
+  
+  if (!is.null(colnames(C))) colnames(out) <- colnames(C)
+  out
+}
 
+
+#' Predict per-group mu from a fitted cwexp model
+#'
+#' Convenience wrapper that extracts parameters and data matrices from a fitted
+#' model object (or `cwexp_dummy`) and calls `cwexp_mu_by_group`.
+#'
+#' @param object A `cwexp_fit`, `cwexp_tmb_fit`, or `cwexp_dummy` object.
+#' @param newdata Optional data frame. If NULL, uses the object's data
+#'   (only works for `cwexp_dummy`).
+#' @param weighted Logical. Passed to `cwexp_mu_by_group`.
+#'
+#' @return N x G matrix of per-group mu values.
+#' @export
+predict_by_group <- function(object, newdata = NULL, weighted = TRUE) {
+  if (inherits(object, "cwexp_dummy") && is.null(newdata)) {
+    newdata <- object$data
+  }
+  if (is.null(newdata)) stop("newdata is required for fitted model objects.")
+  
+  prep <- cwexp_prepare(
+    data = newdata,
+    formula = object$spec$formula,
+    cover_cols = object$spec$cover_cols
+  )
+  
+  cwexp_mu_by_group(
+    alpha = object$par$alpha,
+    B = object$par$B,
+    X = prep$X,
+    C = prep$C,
+    weighted = weighted
+  )
+}

@@ -388,3 +388,43 @@ compare_to_truth <- function(truth, fits, newdata = NULL) {
 }
 
 
+
+#' Compare per-group mu recovery across models
+#'
+#' Computes RMSE and correlation between true and predicted per-group mu
+#' for one or more fitted models. Uses cover-weighted group contributions
+#' by default.
+#'
+#' @param truth Object with true parameters (`cwexp_dummy` or similar).
+#' @param fits Named list of fitted model objects.
+#' @param newdata Optional data frame. If NULL, uses `truth$data`.
+#' @param weighted Logical. Passed to `predict_by_group`.
+#'
+#' @return A tibble with columns: model, group, rmse, cor.
+#' @export
+compare_group_to_truth <- function(truth, fits, newdata = NULL,
+                                   weighted = TRUE) {
+  stopifnot(is.list(fits), length(fits) >= 1)
+  if (is.null(names(fits))) names(fits) <- paste0("model_", seq_along(fits))
+  
+  data <- if (!is.null(newdata)) newdata else truth$data
+  
+  mu_true_grp <- predict_by_group(truth, newdata = data, weighted = weighted)
+  group_names <- colnames(mu_true_grp)
+  
+  rows <- lapply(names(fits), function(nm) {
+    mu_hat_grp <- predict_by_group(fits[[nm]], newdata = data, weighted = weighted)
+    
+    grp_rows <- lapply(seq_along(group_names), function(g) {
+      dplyr::tibble(
+        model = nm,
+        group = group_names[g],
+        rmse = metric_rmse(mu_true_grp[, g], mu_hat_grp[, g]),
+        cor = cor(mu_true_grp[, g], mu_hat_grp[, g])
+      )
+    })
+    dplyr::bind_rows(grp_rows)
+  })
+  
+  dplyr::bind_rows(rows)
+}

@@ -37,6 +37,7 @@ source("Functions/resampling/cv_metrics.R")
 source("Functions/resampling/cv_main.R")
 source("Functions/grouping/environmental_clustering.R")
 source("Functions/grouping/make_folds.R")
+source("Functions/viz/plot_true_recovery.R")
 library(ggplot2)
 library(dplyr)
 theme_set(theme_bw())
@@ -47,8 +48,8 @@ theme_set(theme_bw())
 
 ```{r simulate}
 set.seed(42)
-n <- 1000
-dummy <- cwexp_make_dummy_data(n = n*2, sigma = 0.6, n_junk_pred = 3)
+n <- 2000
+dummy <- cwexp_make_dummy_data(n = n*2, sigma = 0.8, n_junk_pred = 3)
 dat <- dummy$data[1:n, ]
  # not a traditional test set, but just for seeing how well model's recover the truth
 dat_test <- dummy$data[(n+1):(2*n), ]
@@ -191,7 +192,7 @@ ggplot(df_B, aes(x = lambda, y = B, group = interaction(predictor, group))) +
 
 ```{r mu-recovery-path, fig.width=6, fig.height=4}
 rmse_mu <- sapply(path_fit$fits, function(fit) {
-  metric_rmse(mu_true, predict(fit, dat, type = "mu"))
+  metric_rmse(mu_true, predict(fit, dat_test, type = "mu"))
 })
 
 plot(path_fit$summary$lambda, rmse_mu, type = "b", pch = 19,
@@ -352,6 +353,8 @@ cat("  Estimated sigma:", round(final_fit$par$sigma, 3),
 cat("  Lambda used:", outer_cv$lambda_final, "\n")
 ```
 
+## Final model--comparisons to truth
+
 ### Compare final B to truth
 
 ```{r compare-B-final, fig.width=6, fig.height=5}
@@ -400,7 +403,30 @@ cat("Max |B_junk| unpenalized:", round(max(abs(B_junk_unpen)), 4), "\n")
 cat("Max |B_junk| regularized:", round(max(abs(B_junk_final)), 4), "\n")
 ```
 
-## 8. Compare Models Against Truth
+### Predicted mean (mu) biomass of each group (vs truth)
+
+
+```{r}
+# table
+compare_group_to_truth(
+  truth = dummy,
+  newdata = dat_test,
+  fits = list(unpenalized = fit0, regularized = final_fit)
+) |>
+  dplyr::mutate(dplyr::across(where(is.numeric), \(x) round(x, 3))) |>
+  knitr::kable()
+
+# plot
+plot_group_recovery(truth = dummy, fit = final_fit,
+                    newdata = dat_test) +
+  labs(subtitle = 'Regularized model')
+plot_group_recovery(truth = dummy, fit = fit0,
+                    newdata = dat_test) +
+  labs(subtitle = 'Unpenalized model')
+```
+
+
+### General summary stats Against Truth 
 
 Since we know the true mu for our simulated data, we can directly compare
 how well the unpenalized vs regularized model recovers it.
