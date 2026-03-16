@@ -23,6 +23,12 @@ pfts <- const$pfts
 vs <- opt$vs
 cover_suffix <- 'Cover_rel' # end of col names that denote cover
 n_sample <- 1e5
+
+# noise parameters
+sigma_pft <- 0.4    # per-PFT linear predictor noise, multiplicative
+sigma_obs <- 0.4     # log-scale observation noise on totalBio, noise is proportional
+sigma_region <- 0.2  # region-level correlated bias on linear predictor, multiplicative
+
 # read in data ------------------------------------------------------------
 
 # file output by
@@ -61,7 +67,6 @@ dat4 <- dat3 %>%
 
 region_vars <- c("tmean_CLIM", 
                 "precip_CLIM", 
-                "PrecipTempCorr_CLIM",
                 "x",
                 "y")
 
@@ -69,7 +74,7 @@ reg <- make_region_kmeans(
   dat = dat4,
   vars = region_vars,
   nstart = 1,
-  k = 10,
+  k = 20,
   seed = 42
 )
 
@@ -91,8 +96,11 @@ inter <- list(
 pred_vars2 <- c(as.list(pred_vars1), inter)
 n <- length(pfts)
 
+intercepts <- c(20, 148, 148, 12, 7, 4)
+sd <- intercepts*0.2 # making climate effects proportional to intercept
+
 rcoef <- function() {
-  rnorm(n = n, mean = 0,  sd = 0.4)
+  rnorm(n = n, mean = 0,  sd = sd)
 }
 
 set.seed(123)
@@ -103,7 +111,7 @@ coefs1 <- map(pred_vars2, function(var) {
        coef = coef)
 })
 
-intercepts <- c(3, 5, 5, 2.5, 2, 1.5)
+intercepts <- c(20, 148, 148, 12, 7, 4)
 names(intercepts) <- const$pfts
 
 # simulated data -----------------------------------------------------------
@@ -115,20 +123,22 @@ sim <- sim_bio(data = dat4,
                intercepts = intercepts,
                pred_vars = pred_vars1,
                inter = inter,
-               sigma = 0.1,
+               sigma_pft = sigma_pft,
+               sigma_obs = sigma_obs,
+               sigma_region = sigma_region,
+               region = dat4$region,
                normalize = TRUE) 
 
-# data = dat4
-# coefs = coefs1
-# intercepts = intercepts
-# pred_vars = pred_vars1
-# inter = inter
-# sigma = 0.1
-dat5 <- bind_cols(sim, select(dat4, -totalBio))
+with(sim$data, cor(totalMu, totalBio))
 
+dat5 <- sim$data
+dat5[which(is.infinite(dat5$totalBio)), grep("Bio|Mu$", names(dat5))]
+which(is.infinite(dat5$totalMu))
 # write files -------------------------------------------------------------
 
-p2 <- file.path(paths$large, 'Data_processed/BiomassQuantityData/simulated', 
-                paste0('simBiomass_', vs, '.csv'))
 
-write_csv(dat5, p2)
+# save full sim object (includes true parameters for validation)
+p3 <- file.path(paths$large, 'Data_processed/BiomassQuantityData/simulated',
+                paste0('simBiomass_', vs, '.rds'))
+
+saveRDS(sim, p3)

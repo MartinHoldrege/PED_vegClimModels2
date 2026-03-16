@@ -42,26 +42,67 @@ coefs_to_matrix <- function(coefs, X_colnames, pfts) {
   
   B
 }
-
-# simulate biomass for each pft 
+safe_softplus <- function(x) ifelse(x > 20, x, log1p(exp(x)))
+# simulate biomass for each pft
+#'
+#' Generates simulated per-PFT and total biomass using the cwexp model
+#' (cover-weighted softplus). Per-PFT noise is added on the linear predictor
+#' scale; observation noise is added on the log scale of totalBio. Optionally
+#' adds region-level correlated bias, where all observations in a region share
+#' a common shift — this creates the spatial autocorrelation structure that
+#' makes blocked CV necessary.
+#'
+#' @param data Data frame with cover and predictor columns.
+#' @param coefs List of coefficient specifications (from `coefs_to_matrix`).
+#' @param intercepts Named numeric vector of per-PFT intercepts.
+#' @param pred_vars Character vector of predictor variable names.
+#' @param response_var Character; name of the total biomass column.
+#' @param inter List of interaction tuples (e.g., `list(c("tmean", "precip"))`).
+#' @param sigma_pft Numeric >= 0; SD of noise added to the linear predictor
+#'   per PFT. Makes the problem harder by perturbing per-PFT contributions.
+#' @param sigma_obs Numeric >= 0; SD of log-scale observation noise on totalBio.
+#' @param sigma_region Numeric >= 0; SD of region-level which is bias multiplied by linear
+#'   predictor. Each region gets one random draw shared across all observations
+#'   and all PFTs in that region.
+#' @param region Character or numeric vector of region assignments, one per row
+#'   of `data`. Required when `sigma_region > 0`.
+#' @param normalize Logical; if TRUE, standardize predictors before building X.
+#'
+#' @return A list of class `cwexp_sim` with:
+#' \describe{
+#'   \item{data}{The input data with simulated columns appended: `{pft}Bio`
+#'     (noiseless per-PFT mu), `totalMu` (noiseless total), and `totalBio`
+#'     (observed total with all noise sources).}
+#'   \item{par}{List with `alpha` (intercepts, length G), `B` (slopes only,
+#'     P x G matrix without intercept row — matches cwexp fitted model
+#'     structure), `sigma_pft`, `sigma_obs`, `sigma_region`.}
+#'   \item{spec}{List with `formula` (response ~ predictors, no intercept
+#'     term), `cover_cols`, `pred_vars`.}
+#'   \item{prep}{List with `x_cols` (predictor column names) and `outcome`.}
+#' }
 sim_bio <- function(data,
                     coefs,
                     intercepts,
                     pred_vars,
-                    response_var = 'totalBio', 
+                    response_var = 'totalBio',
                     inter = list(),
-                    sigma = 0,
+                    sigma_pft = 0,
+                    sigma_obs = 0,
+                    sigma_region = 0,
+                    region = NULL,
                     normalize = TRUE) {
   
   pfts <- names(intercepts)
   nms <- names(data)
   stopifnot(length(pfts) == length(intercepts),
             pred_vars %in% nms)
-  # optionally standardize predictors (and any interaction components will reflect standardized inputs)
+  
+  # optionally standardize predictors
   dat <- data
   if (normalize) {
     vars_to_scale <- unique(c(pred_vars, unlist(inter)))
-    dat <- dplyr::mutate(dat, dplyr::across(dplyr::all_of(vars_to_scale), ~ as.numeric(scale(.x))))
+    dat <- dplyr::mutate(dat, dplyr::across(dplyr::all_of(vars_to_scale),
+                                            ~ as.numeric(scale(.x))))
   }
   
   f <- make_formula(pred_vars = pred_vars, inter = inter)
@@ -72,26 +113,182 @@ sim_bio <- function(data,
   # set intercepts
   B["(Intercept)", ] <- intercepts
   
-  eta <- X %*% B  # nrow(data) x n_pfts # linear predictions
+  eta <- X %*% B  # nrow(data) x n_pfts
   
-  if (sigma > 0) {
-    eta <- eta + matrix(stats::rnorm(length(eta), mean = 0, sd = sigma),
-                        nrow = nrow(eta), ncol = ncol(eta))
+  # region-level correlated bias (same shift for all obs/PFTs in a region)
+  if (sigma_region > 0) {
+    if (is.null(region)) {
+      stop("region must be provided when sigma_region > 0.")
+    }
+    
+    if(is.character(region) && region %in% names(data)) {
+      region <- data[[region]]
+    }
+    
+    if (length(region) != nrow(data)) {
+      stop("region must have one value per row of data.")
+    }
+    region_ids <- unique(region)
+    region_bias <- truncnorm::rtruncnorm(length(region_ids), a = 0,
+                                         mean = 1, sd = sigma_region)
+    names(region_bias) <- as.character(region_ids)
+    bias_vec <- region_bias[as.character(region)]
+    eta <- eta * bias_vec  # broadcasts across all PFT columns
   }
   
-  eta2 <- exp(eta)
+  # per-PFT noise on the linear predictor
+  # (not in the model we're trying to capture, so this 
+  # 'extra' change in the data generating model, that 
+  # we'll be misspecifying)
+  # per-PFT noise on the linear predictor (multiplicative, proportional to signal)
+  if (sigma_pft > 0) {
+    pft_noise <- matrix(truncnorm::rtruncnorm(length(eta), a = 0,
+                                              mean = 1, sd = sigma_pft),
+                        nrow = nrow(eta), ncol = ncol(eta))
+    eta_noisy <- eta * pft_noise
+  } else {
+    eta_noisy <- eta
+  }
+  # noiseless per-PFT mu: cover * softplus(eta) — the validation truth
   cols_cov <- paste0(pfts, 'Cov')
-  eta3 <- dat[cols_cov]*eta2
- 
+  pft_mu <- as.matrix(dat[cols_cov]) * safe_softplus(exp(eta))
   
-  # return as tibble, with one column per PFT
-  out <- tibble::as_tibble(eta3, .name_repair = "minimal")
-  names(out) <- str_replace(names(out), 'Cov', 'Bio')
-  out[[response_var]] = rowSums(eta3)
+  # noisy total mu (includes per-PFT noise, before observation noise)
+  pft_noisy <- as.matrix(dat[cols_cov]) * safe_softplus(exp(eta_noisy))
+  total_mu_noisy <- rowSums(pft_noisy)
   
+  # observation noise on log scale of total
+  if (sigma_obs > 0) {
+    total_bio <- exp(log(total_mu_noisy) +
+                       stats::rnorm(nrow(dat), mean = 0, sd = sigma_obs))
+  } else {
+    total_bio <- total_mu_noisy
+  }
+  
+  # assemble simulated columns
+  sim_cols <- tibble::as_tibble(pft_mu, .name_repair = "minimal")
+  names(sim_cols) <- stringr::str_replace(names(sim_cols), 'Cov', 'Bio')
+  sim_cols$totalMu <- rowSums(pft_mu)
+  sim_cols[[response_var]] <- total_bio
+  
+  # merge simulated columns back onto input data
+  # (drop original response if it exists, replace with simulated)
+  out_data <- data
+  if (response_var %in% names(out_data)) {
+    out_data[[response_var]] <- NULL
+  }
+  out_data <- dplyr::bind_cols(sim_cols, out_data)
+  
+  # build par list matching cwexp fitted model structure:
+  # alpha = intercepts, B = slopes only (no intercept row)
+  B_slopes <- B[rownames(B) != "(Intercept)", , drop = FALSE]
+  
+  # build formula: response ~ pred1 + pred2 (+ interactions)
+  f_rhs <- make_formula(pred_vars = pred_vars, inter = inter)
+  f_full <- stats::as.formula(paste(response_var, "~",
+                                    as.character(f_rhs)[2]))
+  
+  # x_cols from model matrix without intercept
+  x_cols <- colnames(X)[colnames(X) != "(Intercept)"]
+  
+  out <- list(
+    data = out_data,
+    par = list(
+      alpha = intercepts,
+      B = B_slopes,
+      sigma_pft = sigma_pft,
+      sigma_obs = sigma_obs,
+      sigma_region = sigma_region
+    ),
+    spec = list(
+      formula = f_full,
+      cover_cols = cols_cov,
+      pred_vars = pred_vars
+    ),
+    prep = list(
+      x_cols = x_cols,
+      outcome = response_var
+    )
+  )
+  class(out) <- "cwexp_sim"
   out
 }
 
+if(FALSE) {
+  # objects for stepping through sim_bio()
+  # run after sourcing Functions/data/simulate_data.R
+  
+  library(dplyr)
+  library(stringr)
+  
+  pfts <- c("shrub", "tree", "grass")
+  
+  # minimal data with cover and predictors
+  set.seed(1)
+  n <- 20
+  data <- tibble(
+    shrubCov = runif(n, 0, 0.4),
+    treeCov = runif(n, 0, 0.5),
+    grassCov = runif(n, 0, 0.3),
+    tmean = rnorm(n, 10, 5),
+    precip = rnorm(n, 500, 200),
+    region = sample(1:3, n, replace = TRUE),
+    totalBio = rlnorm(n, 3, 0.5)  # placeholder, gets replaced
+  )
+  
+  pred_vars <- c("tmean", "precip")
+  inter <- list()  # no interactions for simplicity
+  
+  # coefficients: one entry per predictor
+  coefs <- list(
+    list(var = "tmean",  coef = c(shrub = 0.3, tree = -0.1, grass = 0.2)),
+    list(var = "precip", coef = c(shrub = 0.1, tree = 0.4, grass = -0.2))
+  )
+  
+  intercepts <- c(shrub = 2.0, tree = 3.0, grass = 1.5)
+  
+  response_var <- "totalBio"
+  sigma_pft <- 0.3
+  sigma_obs <- 0.2
+  sigma_region <- 0.2
+  region <- data$region
+  normalize <- TRUE
+}
+
+
+#' Predict from a cwexp simulation object
+#'
+#' Uses the true (noiseless) parameters to compute mu on the simulation data
+#' or on new data. Compatible with `compare_to_truth()` and `predict_by_group()`.
+#'
+#' @param object A `cwexp_sim` object from `sim_bio()`.
+#' @param new_data Optional data frame. If NULL, uses `object$data`.
+#' @param type `"mu"` (default) or `"log_mu"`.
+#' @param ... Unused.
+#'
+#' @return Numeric vector of predictions.
+#' @export
+predict.cwexp_sim <- function(object, newdata = NULL,
+                              type = c("mu", "log_mu"), ...) {
+  type <- match.arg(type)
+  data <- if (is.null(newdata)) object$data else newdata
+  
+  prep <- cwexp_prepare(
+    data = data,
+    formula = object$spec$formula,
+    cover_cols = object$spec$cover_cols
+  )
+  
+  mu <- cwexp_mu(
+    alpha = object$par$alpha,
+    B = object$par$B,
+    X = prep$X,
+    C = prep$C
+  )
+  
+  if (type == "mu") return(mu)
+  log(mu)
+}
 
 
 # make a synthetic dataset consistent with the model ----

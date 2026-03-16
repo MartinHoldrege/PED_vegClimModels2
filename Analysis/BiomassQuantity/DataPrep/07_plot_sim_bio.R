@@ -6,7 +6,7 @@
 # dependencies ------------------------------------------------------------
 
 source('Functions/init.R')
-source('Functions/figFuns.R')
+source('Functions/viz/figFuns.R')
 library(patchwork)
 
 # params ------------------------------------------------------------------
@@ -17,10 +17,10 @@ pfts <- const$pfts
 # read in data ------------------------------------------------------------
 
 p1 <- file.path(paths$large, 'Data_processed/BiomassQuantityData/simulated', 
-                paste0('simBiomass_', vs, '.csv'))
+                paste0('simBiomass_', vs, '.rds'))
 
-sim1 <- read_csv(p1)
-
+sim0 <- read_rds(p1)
+sim1 <- sim0$data
 # prep data ---------------------------------------------------------------
 
 set.seed(123)
@@ -48,7 +48,7 @@ g1 <- ggplot(sim_long1, aes(cover, biomass)) +
    facet_wrap(~pft) +
   labs(y = 'simulated biomass')
  
-g2 <- ggplot(sim_long1, aes(cover, biomass/totalBio)) +
+g2 <- ggplot(sim_long1, aes(cover, biomass/totalMu)) +
   geom_point(alpha = 0.2) +
   geom_smooth(se = FALSE) +
   facet_wrap(~pft) +
