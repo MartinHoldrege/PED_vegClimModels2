@@ -277,24 +277,88 @@ select_lambda_within_tol <- function(score_df,
   score_keep[which.max(score_keep$lambda), ]
 }
 
+#' Select lambda using the 1-SE rule
+#'
+#' Selects the largest (most regularized) lambda whose mean metric is within
+#' one standard error of the best mean metric. This is the standard "1-SE rule"
+#' which favors parsimony when models are statistically indistinguishable.
+#'
+#' @param score_df Data frame from `summarize_scores()`, containing columns
+#'   for `lambda`, the metric, and `{metric}_se`.
+#' @param metric Character scalar naming the metric column to optimize.
+#'
+#' @return One-row data frame corresponding to the selected lambda.
+#' @export
+select_lambda_1se <- function(score_df, metric = "mae_log") {
+  if (!"lambda" %in% names(score_df)) {
+    stop("score_df must contain a 'lambda' column.")
+  }
+  if (!metric %in% names(score_df)) {
+    stop("metric column not found in score_df.")
+  }
+  
+  se_col <- paste0(metric, "_se")
+  if (!se_col %in% names(score_df)) {
+    stop("SE column '", se_col, "' not found in score_df. ",
+         "Make sure score_df comes from summarize_scores().")
+  }
+  
+  vals <- score_df[[metric]]
+  ses  <- score_df[[se_col]]
+  
+  best_idx <- which.min(vals)
+  threshold <- vals[best_idx] + ses[best_idx]
+  
+  # candidates: all lambdas whose mean metric is within 1 SE of best
+  keep <- vals <= threshold
+  score_keep <- score_df[keep, , drop = FALSE]
+  
+  # among those, pick the largest lambda (most regularized)
+  score_keep[which.max(score_keep$lambda), , drop = FALSE]
+}
+
+
 #' Select lambda from a scored path
 #'
 #' Applies a named selection rule to a scored lambda path.
 #'
 #' @param score_df Data frame containing lambda values and metric columns.
 #' @param metric Character scalar naming the metric column to optimize.
-#' @param rule Character scalar. Currently `"min"` or `"largest_within_tol"`.
+#' @param rule Character scalar. One of `"min"`, `"largest_within_tol"`,
+#'   or `"1se"`.
 #' @param tol Numeric scalar >= 0. Used only for `"largest_within_tol"`.
 #'
 #' @return One-row data frame corresponding to the selected lambda.
+#' @examples
+#' # simulate a score_df like summarize_scores() would produce
+#' score_df <- data.frame(
+#'   lambda     = c(1.0, 0.5, 0.1, 0.01, 0),
+#'   mae_log    = c(0.60, 0.52, 0.48, 0.47, 0.50),
+#'   mae_log_se = c(0.05, 0.04, 0.03, 0.03, 0.04)
+#' )
+#'
+#' # minimum: picks lambda with lowest mean metric
+#' select_lambda(score_df, metric = "mae_log", rule = "min")
+#'
+#' # 1se: largest lambda within 1 SE of best
+#' select_lambda(score_df, metric = "mae_log", rule = "1se")
+#'
+#' # within tolerance: largest lambda within fixed tol of best
+#' select_lambda(score_df, metric = "mae_log", rule = "largest_within_tol",
+#'               tol = 0.02)
+#' @export
 select_lambda <- function(score_df,
                           metric = "mae_log",
-                          rule = c("min", "largest_within_tol"),
+                          rule = c("1se", "min", "largest_within_tol"),
                           tol = 0) {
   rule <- match.arg(rule)
   
   if (rule == "min") {
     return(select_lambda_min_metric(score_df = score_df, metric = metric))
+  }
+  
+  if (rule == "1se") {
+    return(select_lambda_1se(score_df = score_df, metric = metric))
   }
   
   select_lambda_within_tol(
@@ -303,7 +367,6 @@ select_lambda <- function(score_df,
     tol = tol
   )
 }
-
 
 # misc --------------------------------------------------------------------
 

@@ -461,7 +461,7 @@ run_inner_cv <- function(data,
                          select_fun = select_lambda,
                          select_args = list(
                            metric = "mae_log",
-                           rule = "min",
+                           rule = "1se",
                            tol = 0
                          ),
                          keep_fold_results = FALSE,
