@@ -390,7 +390,13 @@ run_fold_path <- function(data,
 #'   `run_fold_path()` for each fold. Useful for debugging.
 #' @param run_fold_path_args Named list of additional arguments passed to
 #'   `run_fold_path()`.
-#'
+#' @param parallel Logical. If `TRUE`, run inner folds in parallel via the
+#'   `future` backend. Requires `future` and `future.apply`. Default `FALSE`.
+#' @param dll_path Character; path to the `.cpp` file for the TMB model
+#'   (e.g., `"src/cwexp_lognormal_en_tmb.cpp"`). Needed when `parallel = TRUE`
+#'   with `plan(multisession)` (Windows), because each worker is a separate R
+#'   session without the DLL loaded. Not needed with `plan(multicore)` (Linux),
+#'   where forked workers inherit loaded DLLs from the main process.
 #' @return A lightweight inner-CV result.
 #' @examples
 #' # Simulate example data
@@ -408,7 +414,8 @@ run_fold_path <- function(data,
 #' )
 #' env_cluster <- clust$env_cluster
 #' # Compile elastic-net TMB model
-#' dll_en <- cwexp_tmb_compile("src/cwexp_lognormal_en_tmb.cpp", quiet = TRUE)
+#' dll_path <- "src/cwexp_lognormal_en_tmb.cpp"
+#' dll_en <- cwexp_tmb_compile(dll_path, quiet = TRUE)
 #'
 #' # Create inner CV folds
 #' folds <- make_cluster_folds(env_cluster, n_folds = 3)
@@ -434,6 +441,11 @@ run_fold_path <- function(data,
 #'
 #' # Selected lambda across folds
 #' res$selected
+#' # for running in parallel:
+#'# library(future)
+# # plan(multisession, workers = 4)  # number of folds or cores whichever is less
+# # the call to run_inner_cv(..., parallel = TRUE, dll_path = dll_path)
+# # plan(sequential)  # reset when done
 run_inner_cv <- function(data,
                          folds,
                          en_alpha,
@@ -453,7 +465,10 @@ run_inner_cv <- function(data,
                            tol = 0
                          ),
                          keep_fold_results = FALSE,
-                         run_fold_path_args = list()) {
+                         run_fold_path_args = list(),
+                         parallel = FALSE,
+                         dll_path = NULL
+) {
   if (!is.data.frame(data)) {
     stop("data must be a data frame.")
   }
@@ -491,6 +506,14 @@ run_inner_cv <- function(data,
     stop("run_fold_path_args must be a list.")
   }
   
+  if (isTRUE(parallel)) {
+    if (!requireNamespace("future", quietly = TRUE) ||
+        !requireNamespace("future.apply", quietly = TRUE)) {
+      stop("Packages 'future' and 'future.apply' are required for parallel = TRUE.")
+    }
+  }
+  
+  # lambda sequence (computed ONCE, before any parallelism) ---
   if (is.null(lambda_seq)) {
     if (!is.function(lambda_max_fun)) {
       stop("lambda_max_fun must be a function when lambda_seq is NULL.")
@@ -514,16 +537,28 @@ run_inner_cv <- function(data,
     stop("lambda_seq must be a non-empty numeric vector of finite values.")
   }
   
-  fold_results <- vector("list", length(folds))
-  names(fold_results) <- paste0("fold", seq_along(folds))
-  
-  for (i in seq_along(folds)) {
-    fold_results[[i]] <- do.call(
+  .run_one_fold <- function(fold) {
+    
+    # ensure DLL is loaded on parallel workers
+    if (isTRUE(parallel) && !is.null(dll_path)) {
+      cwexp_tmb_compile(dll_path, quiet = TRUE)
+    }
+    
+    if (isTRUE(parallel)) {
+      # loading the needed functions (b/ own environment)
+      source_functions(path = file.path(
+            './Functions',
+            c('grouping', 'models', 'resampling')
+          )
+          )
+    }
+    
+    do.call(
       run_fold_path,
       c(
         list(
           data = data,
-          fold = folds[[i]],
+          fold = fold,
           en_alpha = en_alpha,
           lambda_seq = lambda_seq,
           lambda_max_fun = lambda_max_fun,
@@ -541,6 +576,16 @@ run_inner_cv <- function(data,
       )
     )
   }
+  
+  
+  if (isTRUE(parallel)) {
+    fold_results <- future.apply::future_lapply(
+      folds, .run_one_fold, future.seed = TRUE
+    )
+  } else {
+    fold_results <- lapply(folds, .run_one_fold)
+  }
+  names(fold_results) <- paste0("fold", seq_along(folds))
   
   spec_list <- lapply(fold_results, \(x) x[['spec']])
   
