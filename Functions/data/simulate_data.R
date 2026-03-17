@@ -42,7 +42,7 @@ coefs_to_matrix <- function(coefs, X_colnames, pfts) {
   
   B
 }
-safe_softplus <- function(x) ifelse(x > 20, x, log1p(exp(x)))
+
 # simulate biomass for each pft
 #'
 #' Generates simulated per-PFT and total biomass using the cwexp model
@@ -156,7 +156,7 @@ sim_bio <- function(data,
   # noisy total mu (includes per-PFT noise, before observation noise)
   pft_noisy <- as.matrix(dat[cols_cov]) * safe_softplus(eta_noisy)
   total_mu_noisy <- rowSums(pft_noisy)
-  
+  total_mu_noisy <- pmax(total_mu_noisy, 1e-12)  # safety for log
   # observation noise on log scale of total
   if (sigma_obs > 0) {
     total_bio <- exp(log(total_mu_noisy) +
@@ -191,6 +191,7 @@ sim_bio <- function(data,
   # x_cols from model matrix without intercept
   x_cols <- colnames(X)[colnames(X) != "(Intercept)"]
   
+  names(intercepts) <- paste0(names(intercepts), 'Cov')
   out <- list(
     data = out_data,
     par = list(

@@ -221,7 +221,7 @@ cwexp_coef <- function(fit) {
 cwexp_mu_by_group <- function(alpha, B, X, C, weighted = TRUE) {
   eta <- X %*% B
   eta <- sweep(eta, 2, alpha, FUN = "+")
-  sp <- log1p(exp(eta))  # softplus, N x G
+  sp <- safe_softplus(eta)  # softplus, N x G
   
   if (weighted) {
     out <- C * sp

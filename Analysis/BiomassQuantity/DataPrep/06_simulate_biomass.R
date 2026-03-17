@@ -12,8 +12,7 @@
 # dependencies ------------------------------------------------------------
 
 source('Functions/init.R')
-source('Functions/data/simulate_data.R')
-source('Functions/grouping/environmental_clustering.R')
+source_functions()
 
 # params ------------------------------------------------------------------
 
@@ -62,6 +61,32 @@ dat4 <- dat3 %>%
   select(-.cov_total)
 
 
+# normalize potential predictor variables ---------------------------------
+
+# normalize predictors (all potential predictors, not just those in the model)
+# doing this before sim_bio so all data are on standardized scale
+
+vars_to_scale <- names(dat4)[!names(dat4) %in% c(
+  # skip non-numeric / identifier columns
+  "biomassSource", "biomassType", "year", 
+  "burnedMoreThan20YearsAgo", "region",
+  # skip cover columns (these are proportions, not climate)
+  paste0(pfts, "Cov"), "bareGroundCov",
+  "totalTreeCov", "totalHerbaceousCov",
+  # skip response
+  "totalBio",
+  # skip coordinates (keep raw for spatial analyses)
+  "x", "y"
+)]
+
+scale_df <- tibble::tibble(
+  variable = vars_to_scale,
+  mean = sapply(dat4[vars_to_scale], mean, na.rm = TRUE),
+  sd = sapply(dat4[vars_to_scale], sd, na.rm = TRUE)
+)
+
+dat4 <- dat4 |>
+  mutate(across(all_of(vars_to_scale), ~ as.numeric(scale(.x))))
 # add artificial regions --------------------------------------------------
 # based on climate clustering
 
@@ -127,9 +152,12 @@ sim <- sim_bio(data = dat4,
                sigma_obs = sigma_obs,
                sigma_region = sigma_region,
                region = dat4$region,
-               normalize = TRUE) 
+               # already normalized
+               normalize = FALSE) 
 
 with(sim$data, cor(totalMu, totalBio))
+
+sim$scale <- scale_df
 
 # write files -------------------------------------------------------------
 

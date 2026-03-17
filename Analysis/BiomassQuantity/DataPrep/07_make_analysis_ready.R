@@ -24,6 +24,7 @@ if(opt$use_simulated) {
   dat1 <- read_rds(p)$data
   v <- opt$vs
 } else {
+  # STOP--predictor variables should be normalized
   stop('code not updated')
 }
 

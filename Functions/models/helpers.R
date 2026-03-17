@@ -71,3 +71,5 @@ check_collinearity <- function(data, formula = NULL, pred_vars = NULL,
   
   invisible(cor_mat)
 }
+
+safe_softplus <- function(x) ifelse(x > 20, x, log1p(exp(x)))
