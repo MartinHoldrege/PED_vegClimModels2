@@ -209,6 +209,9 @@ score_path <- function(path_fit,
     
     row_i <- as.list(path_fit$summary[i, , drop = FALSE])
     out[[i]] <- c(row_i, score_i)
+    stopifnot(!'n' %in% names(out[[i]])) # expecting no n column
+    out[[i]]$n <- 1 # single row has a 'single' observation--relevant so 
+    # know we can't calculate 1se rule
   }
   
   out_df <- dplyr::bind_rows(out)
@@ -299,12 +302,17 @@ select_lambda_1se <- function(score_df, metric = "mae_log") {
   
   se_col <- paste0(metric, "_se")
   if (!se_col %in% names(score_df)) {
+    if('n' %in% names(score_df) & all(score_df$n == 1)) {
+      ses <- 0 # '0' SE b/ only 1 n
+    }
     stop("SE column '", se_col, "' not found in score_df. ",
-         "Make sure score_df comes from summarize_scores().")
+         "Make sure score_df comes from summarize_scores().
+         or n needs be 1 (w/ n column provided)")
+  } else {
+    ses  <- score_df[[se_col]]
   }
   
   vals <- score_df[[metric]]
-  ses  <- score_df[[se_col]]
   
   best_idx <- which.min(vals)
   threshold <- vals[best_idx] + ses[best_idx]
