@@ -378,13 +378,13 @@ summarize_scores <- function(scores, metric_cols) {
     dplyr::summarise(
       dplyr::across(
         dplyr::all_of(metric_cols),
-        mean,
-        .names = "{.col}"
+        se,
+        .names = "{.col}_se"
       ),
       dplyr::across(
         dplyr::all_of(metric_cols),
-        se,
-        .names = "{.col}_se"
+        mean,
+        .names = "{.col}"
       ),
       n = dplyr::n(),
       .groups = "drop"

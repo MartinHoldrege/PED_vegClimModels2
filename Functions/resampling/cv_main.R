@@ -436,7 +436,12 @@ run_fold_path <- function(data,
 #'     formula = formula,
 #'     cover_cols = cover_cols,
 #'     dll = dll_en
-#'   )
+#'   ),
+#'   select_args = list(
+#' metric = "mae_log",
+#' rule = "1se",
+#' tol = 0
+#' )
 #' )
 #'
 #' # Selected lambda across folds
@@ -710,13 +715,15 @@ if(FALSE) {
   select_fun <- select_lambda
   select_args <- list(
     metric = "mae_log",
-    rule = "min",
+    rule = "1se",
     tol = 0
   )
   
   keep_fold_results <- FALSE
   
   run_fold_path_args <- list()
+  parallel = FALSE
+  dll_path = NULL
 }
 
 
