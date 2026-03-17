@@ -25,9 +25,9 @@ cover_suffix <- 'Cover_rel' # end of col names that denote cover
 n_sample <- 1e5
 
 # noise parameters
-sigma_pft <- 0.4    # per-PFT linear predictor noise, multiplicative
+sigma_pft <- 0.2    # per-PFT linear predictor noise, multiplicative
 sigma_obs <- 0.4     # log-scale observation noise on totalBio, noise is proportional
-sigma_region <- 0.2  # region-level correlated bias on linear predictor, multiplicative
+sigma_region <- 0.4  # region-level correlated bias on linear predictor, multiplicative
 
 # read in data ------------------------------------------------------------
 
@@ -85,14 +85,14 @@ dat4$region <- reg$data
 pred_vars1 <- c("tmean_CLIM", 
                 "precip_CLIM", 
                 "PrecipTempCorr_CLIM", 
-                "VPD_mean", 
                 "sand")
 
 # interactions, touples define the interactions
 inter <- list(
-  c('tmean_CLIM', 'precip_CLIM')
+  # c('tmean_CLIM', 'precip_CLIM'),
+  NULL
 )
-
+inter <- purrr::keep(inter, \(x) !is.null(x))
 pred_vars2 <- c(as.list(pred_vars1), inter)
 n <- length(pfts)
 

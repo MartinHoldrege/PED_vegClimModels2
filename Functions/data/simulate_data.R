@@ -182,7 +182,7 @@ sim_bio <- function(data,
   # build par list matching cwexp fitted model structure:
   # alpha = intercepts, B = slopes only (no intercept row)
   B_slopes <- B[rownames(B) != "(Intercept)", , drop = FALSE]
-  
+  colnames(B_slopes) <- cols_cov
   # build formula: response ~ pred1 + pred2 (+ interactions)
   f_rhs <- make_formula(pred_vars = pred_vars, inter = inter)
   f_full <- stats::as.formula(paste(response_var, "~",

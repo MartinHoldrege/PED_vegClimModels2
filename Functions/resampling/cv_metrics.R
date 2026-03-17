@@ -394,30 +394,99 @@ summarize_scores <- function(scores, metric_cols) {
 }
 
 
+# compare to truth --------------------------------------------------------
+# functions relevant for determining recovery of simulated data
+
+#' Align two B matrices by row and column names
+#'
+#' Aligns a fitted B matrix to a truth B matrix by matching row names
+#' (predictors) and column names (groups). Predictors in the fitted model
+#' that don't exist in truth are compared against 0. Predictors in truth
+#' that aren't in the fitted model are excluded from the comparison.
+#'
+#' @param B_true Matrix with named rows and columns (from simulation).
+#' @param B_fit Matrix with named rows and columns (from fitted model).
+#'
+#' @return A list with `true` and `fit` matrices of the same dimensions,
+#'   aligned by name, plus `extra_in_fit` (predictor names in fit but not
+#'   truth, compared against 0) and `missing_in_fit` (predictor names in
+#'   truth but not fit, excluded).
+#' @examples A tibble with columns: model, group, rmse, cor.
+#' # truth has 2 predictors x 3 groups
+#' B_true <- matrix(c(0.3, 0.1, -0.2, 0.4, 0.1, -0.1, 0.1, 0.1, 0.1),
+#'                  nrow = 3, ncol = 3,
+#'                  dimnames = list(c("tmean", "precip", "other_var"),
+#'                                 c("shrubCov", "treeCov", "grassCov")))
+#'
+#' # fitted model has 3 predictors (extra "junk1") x same 3 groups
+#' B_fit <- matrix(c(0.28, 0.09, 0.02, -0.18, 0.38, 0.01,
+#'                   0.12, -0.09, -0.01),
+#'                 nrow = 3, ncol = 3,
+#'                 dimnames = list(c("tmean", "precip", "junk1"),
+#'                                c("shrubCov", "treeCov", "grassCov")))
+#'
+#' aligned <- align_B_matrices(B_true, B_fit)
+#' aligned$true   # 3 x 3: tmean, precip, junk1 — junk1 row is 0
+#' aligned$fit    # 3 x 3: all fitted values
+#' aligned$extra_in_fit   # "junk1"
+#' aligned$missing_in_fit # character(0)
+align_B_matrices <- function(B_true, B_fit) {
+  stopifnot(is.matrix(B_true), is.matrix(B_fit))
+  
+  if (is.null(rownames(B_true)) || is.null(rownames(B_fit))) {
+    stop("Both B matrices must have row names (predictor names).")
+  }
+  if (is.null(colnames(B_true)) || is.null(colnames(B_fit))) {
+    stop("Both B matrices must have column names (group/cover names).")
+  }
+  
+  # align columns (groups) — use fitted model's column order
+  shared_cols <- intersect(colnames(B_fit), colnames(B_true))
+  if (length(shared_cols) == 0) {
+    stop("No shared column names between B_true and B_fit.")
+  }
+  
+  # align rows (predictors) — union of both, filling missing with 0
+  all_rows <- union(rownames(B_fit), rownames(B_true))
+  extra_in_fit <- setdiff(rownames(B_fit), rownames(B_true))
+  missing_in_fit <- setdiff(rownames(B_true), rownames(B_fit))
+  
+  # build aligned matrices
+  B_true_aligned <- matrix(0, nrow = length(all_rows), ncol = length(shared_cols),
+                           dimnames = list(all_rows, shared_cols))
+  B_fit_aligned <- B_true_aligned
+  
+  # fill in values that exist
+  B_true_aligned[rownames(B_true), shared_cols] <- B_true[rownames(B_true), shared_cols]
+  B_fit_aligned[rownames(B_fit), shared_cols] <- B_fit[rownames(B_fit), shared_cols]
+  
+  list(
+    true = B_true_aligned,
+    fit = B_fit_aligned,
+    extra_in_fit = extra_in_fit,
+    missing_in_fit = missing_in_fit
+  )
+}
+
 
 #' Compare fitted models to known truth
 #'
 #' Given the true parameters (from simulation) and one or more fitted model
-#' objects, computes recovery metrics for alpha, B, and mu. Intended for
-#' evaluating model performance on simulated data where truth is known.
+#' objects, computes recovery metrics for alpha, B, and mu. Handles mismatched
+#' predictor sets between truth and fitted models by aligning B matrices by
+#' name (predictors in the fitted model but not in truth are compared against 0).
 #'
-#' @param truth Object of class `cwexp_dummy` (from `cwexp_make_dummy_data()`),
-#'   or a list with elements `par` (containing `alpha`, `B`) and `data`.
+#' @param truth Object of class `cwexp_sim` or `cwexp_dummy`, or a list with
+#'   elements `par` (containing named `alpha` and `B`) and `data`.
 #' @param fits Named list of fitted model objects (e.g., `cwexp_tmb_fit`), each
-#'   with a `par` sub-list containing `alpha` and `B`.
+#'   with a `par` sub-list containing named `alpha` and `B`.
 #' @param newdata Optional data frame for computing mu predictions. If NULL,
 #'   uses `truth$data`.
 #'
 #' @return A tibble with one row per model and columns for each metric.
-#' @examples
-#' \dontrun{
-#' dummy <- cwexp_make_dummy_data(n = 500)
-#' # ... fit models ...
-#' compare_to_truth(
-#'   truth = dummy,
-#'   fits = list(unpenalized = fit0, regularized = final_fit)
-#' )
-#' }
+#'   Includes `B_extra` and `B_missing` columns documenting any predictor
+#'   mismatches.
+#' @export
 compare_to_truth <- function(truth, fits, newdata = NULL) {
   stopifnot(is.list(truth), !is.null(truth$par))
   stopifnot(is.list(fits), length(fits) >= 1)
@@ -429,21 +498,38 @@ compare_to_truth <- function(truth, fits, newdata = NULL) {
   data <- if (!is.null(newdata)) newdata else truth$data
   mu_true <- predict(truth, newdata = data, type = "mu")
   alpha_true <- truth$par$alpha
-  B_true <- as.numeric(truth$par$B)
+  B_true <- truth$par$B
   
   rows <- lapply(names(fits), function(nm) {
     fit <- fits[[nm]]
     mu_hat <- predict(fit, data, type = "mu")
     
+    # align alpha by name (use cover_cols order from fit)
+    fit_alpha <- fit$par$alpha
+    if (!is.null(names(alpha_true)) && !is.null(names(fit_alpha))) {
+      shared_groups <- intersect(names(fit_alpha), names(alpha_true))
+      alpha_t <- alpha_true[shared_groups]
+      alpha_f <- fit_alpha[shared_groups]
+    } else {
+      # fall back to positional if no names
+      alpha_t <- alpha_true
+      alpha_f <- fit_alpha
+    }
+    
+    # align B matrices by name
+    aligned <- align_B_matrices(B_true, fit$par$B)
+    
     dplyr::tibble(
       model = nm,
-      alpha_rmse = metric_rmse(alpha_true, fit$par$alpha),
-      alpha_cor  = cor(alpha_true, fit$par$alpha),
-      B_rmse     = metric_rmse(B_true, as.numeric(fit$par$B)),
-      B_cor      = cor(B_true, as.numeric(fit$par$B)),
+      alpha_rmse = metric_rmse(alpha_t, alpha_f),
+      alpha_cor  = cor(alpha_t, alpha_f),
+      B_rmse     = metric_rmse(as.numeric(aligned$true), as.numeric(aligned$fit)),
+      B_cor      = cor(as.numeric(aligned$true), as.numeric(aligned$fit)),
       mu_rmse    = metric_rmse(mu_true, mu_hat),
       mu_cor     = cor(mu_true, mu_hat),
-      mu_mae_log = metric_mae_log(mu_true, mu_hat)
+      mu_mae_log = metric_mae_log(mu_true, mu_hat),
+      B_extra    = paste(aligned$extra_in_fit, collapse = ", "),
+      B_missing  = paste(aligned$missing_in_fit, collapse = ", ")
     )
   })
   
@@ -462,8 +548,6 @@ compare_to_truth <- function(truth, fits, newdata = NULL) {
 #' @param fits Named list of fitted model objects.
 #' @param newdata Optional data frame. If NULL, uses `truth$data`.
 #' @param weighted Logical. Passed to `predict_by_group`.
-#'
-#' @return A tibble with columns: model, group, rmse, cor.
 #' @export
 compare_group_to_truth <- function(truth, fits, newdata = NULL,
                                    weighted = TRUE) {
@@ -491,3 +575,4 @@ compare_group_to_truth <- function(truth, fits, newdata = NULL,
   
   dplyr::bind_rows(rows)
 }
+

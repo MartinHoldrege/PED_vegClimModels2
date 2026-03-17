@@ -154,6 +154,10 @@ cwexp_fit_tmb <- function(data,
   est <- obj$env$parList(opt$par)
   est$sigma <- exp(est$log_sigma)
   
+  names(est$alpha) <- cover_cols
+  rownames(est$B) <- prep$x_cols
+  colnames(est$B) <- cover_cols
+  
   # (optional) capture REPORT() outputs at the optimum
   rep <- NULL
   if (isTRUE(include_report)) {

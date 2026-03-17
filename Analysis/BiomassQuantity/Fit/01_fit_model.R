@@ -8,16 +8,7 @@
 # dependencies ------------------------------------------------------------
 
 source('Functions/init.R')
-source('Functions/read_write.R')
-source('Functions/data/simulate_data.R')
-source('Functions/models/cwexp_helpers.R')
-source('Functions/models/cwexp_lognormal_tmb.R')
-source('Functions/models/cwexp_lambda_path.R')
-source('Functions/resampling/cv_metrics.R')
-source('Functions/resampling/cv_main.R')
-source('Functions/grouping/environmental_clustering.R')
-source('Functions/grouping/make_folds.R')
-source('Functions/sampling/select_purer.R')
+source_functions()
 library(future)
 library(future.apply)
 
@@ -28,13 +19,15 @@ pfts <- const$pfts
 cover_cols <- paste0(pfts, "Cov")
 
 # predictor variables (main effects only for now)
+# vpd and tmean are highly correlated so having both 
+# causes convergence issues
 pred_vars <- c("tmean_CLIM",
                "precip_CLIM",
                "PrecipTempCorr_CLIM",
-               "VPD_mean",
                "sand")
 
 inter <- list(c("tmean_CLIM", "precip_CLIM"))
+inter <- NULL
 
 inter_terms <- purrr::map_chr(inter, ~ paste(.x, collapse = ":"))
 all_terms <- c(pred_vars, inter_terms)
@@ -62,8 +55,8 @@ config <- list(
   ),
   # environmental clustering (for CV folds)
   clustering = list(
-    vars = c("tmean_CLIM", "precip_CLIM", "VPD_mean","PrecipTempCorr_CLIM",
-             "sand"),
+    vars = c("tmean_CLIM", "precip_CLIM", "PrecipTempCorr_CLIM",
+             "PrecipTempCorr_CLIM", "sand"),
     k = 20,
     seed = 1
   ),
@@ -85,13 +78,15 @@ config <- list(
   )
 )
 
+control = list(iter.max =  1000, eval.max = 1000) # for optimization
+
 # read in data ------------------------------------------------------------
 
 # reading output from DataPrep/07_make_analysis_ready.R
 dat1 <- read_analysis_ready(opt)
 
 if(test_run) {
-  dat1 <- dplyr::sample_n(dat1, 1000)
+  dat1 <- dplyr::sample_n(dat1, 3000)
 }
 # compile TMB model -------------------------------------------------------
 
@@ -118,6 +113,29 @@ cat("  Selected rows:", nrow(dat_train), "\n")
 cat("  Thresholds:\n")
 print(purer$thresholds)
 cat("\n")
+
+print(check_collinearity(data = dat_train, formula = config$model$formula))
+
+# testing convergence -----------------------------------------------------
+
+if(FALSE) {
+  # useful for getting a sense about whether convergence will occur
+  # convergence gets harder with more variables
+  test_fit <- cwexp_fit_tmb(
+    data = dat_train,
+    formula = totalBio ~ tmean_CLIM + precip_CLIM + VPD_mean + PrecipTempCorr_CLIM +
+      sand + tmean_CLIM:precip_CLIM,
+    cover_cols = config$model$cover_cols,
+    dll = dll_en,
+    penalty = "elastic_net",
+    en_alpha = config$cv$en_alpha,
+    lambda = 0.1,
+    start = NULL,
+    include_report = TRUE,
+    control = list(iter.max = 500, eval.max = 5000)
+  )
+  test_fit$tmb$opt$convergence
+}
 
 # create environmental clusters and CV folds ------------------------------
 
@@ -167,7 +185,8 @@ inner_cv <- run_inner_cv(
     formula = config$model$formula,
     cover_cols = config$model$cover_cols,
     dll = dll_en,
-    include_report = FALSE
+    include_report = FALSE,
+    control = list(iter.max = 500, eval.max = 500)
   ),
   select_args = list(
     metric = config$cv$select_metric,
@@ -203,7 +222,8 @@ global_fit <- cwexp_fit_tmb(
   en_alpha = config$cv$en_alpha,
   lambda = selected_lambda,
   start = start,
-  include_report = FALSE
+  include_report = FALSE,
+  control = list(iter.max = 1000, eval.max = 500)
 )
 
 cat("Global model convergence:", global_fit$tmb$opt$convergence, "\n")
@@ -235,7 +255,7 @@ suffix <- if(test_run) {
   paste(config$data$version, config$purer$pv, config$mv, sep = '-')
 }
 
-p_out <- file.path(
+p_out <- file.path(paths$large,
   'Data_processed/BiomassQuantityData/Fit',
   paste0('fitted_model_', suffix, '.rds')
 )

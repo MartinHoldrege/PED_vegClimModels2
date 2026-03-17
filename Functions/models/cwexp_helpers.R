@@ -149,7 +149,7 @@ cwexp_mu <- function(alpha, B, X, C, eps_mu = 1e-12) {
   eta <- X %*% B # (N x G)
   # adding alpha[1] to column 1, alpha[2] to column 2 etc. 
   eta <- sweep(eta, 2, alpha, FUN = "+") 
-  mu <- rowSums(C * log1p(exp(eta)))
+  mu <- rowSums(C * ifelse(eta > 20, eta, log1p(exp(eta)))) # so doesn't blow up if eta large
   pmax(mu, eps_mu)
 }
 
