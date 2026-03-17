@@ -575,7 +575,8 @@ run_inner_cv <- function(data,
           score_fun = score_fun,
           score_args = score_args,
           select_fun = select_fun,
-          select_args = select_args
+          # 1se rule doesn't apply for single fold scores (ie n = 1)
+          select_args = list(metric = select_args$metric, rule = "min")
         ),
         run_fold_path_args
       )

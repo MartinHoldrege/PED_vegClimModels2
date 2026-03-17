@@ -53,6 +53,7 @@ config <- list(
   ),
   # purer pixel selection
   purer = list(
+    pv = 'p01', # version of purer selection
     region_col = "region",
     q = 0.9,
     min_raw_cover = 0.05,
@@ -227,16 +228,20 @@ out <- list(
   )
 )
 
+
+suffix <- if(test_run) {
+  'test_run'
+} else {
+  paste(config$data$version, config$purer$pv, config$mv, sep = '-')
+}
+
 p_out <- file.path(
-  paths$large,
   'Data_processed/BiomassQuantityData/Fit',
-  paste0('fitted_model_', config$data$version, "_", config$mv, '.rds')
+  paste0('fitted_model_', suffix, '.rds')
 )
 
-if(!test_run) {
-  dir.create(dirname(p_out), recursive = TRUE, showWarnings = FALSE)
-  saveRDS(out, p_out)
-  cat("Saved fitted model to:", p_out, "\n")
-}
+dir.create(dirname(p_out), recursive = TRUE, showWarnings = FALSE)
+saveRDS(out, p_out)
+cat("Saved fitted model to:", p_out, "\n")
 
 
