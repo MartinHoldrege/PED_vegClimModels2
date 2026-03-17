@@ -151,10 +151,10 @@ sim_bio <- function(data,
   }
   # noiseless per-PFT mu: cover * softplus(eta) — the validation truth
   cols_cov <- paste0(pfts, 'Cov')
-  pft_mu <- as.matrix(dat[cols_cov]) * safe_softplus(exp(eta))
+  pft_mu <- as.matrix(dat[cols_cov]) * safe_softplus(eta)
   
   # noisy total mu (includes per-PFT noise, before observation noise)
-  pft_noisy <- as.matrix(dat[cols_cov]) * safe_softplus(exp(eta_noisy))
+  pft_noisy <- as.matrix(dat[cols_cov]) * safe_softplus(eta_noisy)
   total_mu_noisy <- rowSums(pft_noisy)
   
   # observation noise on log scale of total

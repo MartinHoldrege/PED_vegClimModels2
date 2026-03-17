@@ -48,18 +48,27 @@ g1 <- ggplot(sim_long1, aes(cover, biomass)) +
    facet_wrap(~pft) +
   labs(y = 'simulated biomass')
  
-g2 <- ggplot(sim_long1, aes(cover, biomass/totalMu)) +
+ggplot(sim_long1, aes(totalMu, totalBio)) +
+  geom_point()
+g2 <- ggplot(sim_long1, aes(cover, biomass/totalBio)) +
   geom_point(alpha = 0.2) +
   geom_smooth(se = FALSE) +
   facet_wrap(~pft) +
-  labs(y = 'Proportion of total biomass')
+  labs(y = 'Proportion of total biomass') +
+  coord_cartesian(ylim = c(0, 2))
 
-g <- g1 + g2
+g3 <- ggplot(sim2, aes(totalMu, totalBio)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(se = FALSE) +
+  labs(x = 'Mean (Mu) biomass',
+       y = 'Simulated biomass')
+
+g <- (g1 + g2)/(g3 + patchwork::plot_spacer())
 
 ggsave(
   filename = paste0('Figures/BiomassQuantity/simulated/',
                     'cov_vs_simBio_', vs, '.png'),
   plot = g,
   width = 14,
-  height = 6
+  height = 12
 )

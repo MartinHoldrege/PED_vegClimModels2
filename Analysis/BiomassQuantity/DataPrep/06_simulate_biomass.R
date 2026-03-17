@@ -131,9 +131,6 @@ sim <- sim_bio(data = dat4,
 
 with(sim$data, cor(totalMu, totalBio))
 
-dat5 <- sim$data
-dat5[which(is.infinite(dat5$totalBio)), grep("Bio|Mu$", names(dat5))]
-which(is.infinite(dat5$totalMu))
 # write files -------------------------------------------------------------
 
 

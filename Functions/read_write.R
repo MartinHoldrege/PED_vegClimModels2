@@ -17,8 +17,17 @@ read_analysis_ready <- function(opt, root = paths$large) {
   
   v <- if(opt$use_simulated) opt$vs else opt$vd
   
-  p <- file.path(paths$large, 
-                'Data_processed/BiomassQuantityData/analysis_ready', 
-                paste0('biomass_', v, '.rds'))
-  readRDS(p)
+  if(opt$use_simulated) {
+    
+    p <- file.path(paths$large, 'Data_processed/BiomassQuantityData/simulated',
+                    paste0('simBiomass_', v, '.rds'))
+    data <- readRDS(p)$data
+  } else {
+    p <- file.path(paths$large, 
+                   'Data_processed/BiomassQuantityData/analysis_ready', 
+                   paste0('biomass_', v, '.rds'))
+    data <- readRDS(p)
+  }
+  
+  data
 }

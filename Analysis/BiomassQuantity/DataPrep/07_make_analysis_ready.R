@@ -20,8 +20,8 @@ source('Functions/init.R')
 
 if(opt$use_simulated) {
   p <- file.path(paths$large, 'Data_processed/BiomassQuantityData/simulated', 
-                  paste0('simBiomass_', opt$vs, '.csv'))
-  dat1 <- read_csv(p)
+                  paste0('simBiomass_', opt$vs, '.rds'))
+  dat1 <- read_rds(p)$data
   v <- opt$vs
 } else {
   stop('code not updated')
@@ -33,7 +33,11 @@ if(opt$use_simulated) {
 dat3 <- dat1
 # write file --------------------------------------------------------------
 
-p_out <- file.path(paths$large, 'Data_processed/BiomassQuantityData/analysis_ready', 
-                   paste0('biomass_', v, '.rds'))
+# for now not saving another version of simulated data when testing
+if(!opt$use_simulated) {
+  p_out <- file.path(paths$large, 'Data_processed/BiomassQuantityData/analysis_ready', 
+                     paste0('biomass_', v, '.rds'))
+  
+  saveRDS(dat3, p_out)
+}
 
-saveRDS(dat3, p_out)
