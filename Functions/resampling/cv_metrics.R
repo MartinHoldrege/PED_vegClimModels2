@@ -469,36 +469,48 @@ align_B_matrices <- function(B_true, B_fit) {
 }
 
 
-#' Compare fitted models to known truth
+#' Compare fitted models to truth (simulated or observed) for total mu
 #'
-#' Given the true parameters (from simulation) and one or more fitted model
-#' objects, computes recovery metrics for alpha, B, and mu. Handles mismatched
-#' predictor sets between truth and fitted models by aligning B matrices by
-#' name (predictors in the fitted model but not in truth are compared against 0).
+#' Computes parameter- and prediction-level metrics comparing fitted models to
+#' a known truth object or observed data columns. When observed `totalMu` is
+#' present in the data, it can be used in place of predicted truth mu.
 #'
-#' @param truth Object of class `cwexp_sim` or `cwexp_dummy`, or a list with
-#'   elements `par` (containing named `alpha` and `B`) and `data`.
-#' @param fits Named list of fitted model objects (e.g., `cwexp_tmb_fit`), each
-#'   with a `par` sub-list containing named `alpha` and `B`.
-#' @param newdata Optional data frame for computing mu predictions. If NULL,
-#'   uses `truth$data`.
+#' @param truth Object with true parameters (`cwexp_sim`, `cwexp_dummy`, or
+#'   similar list with `par` and `data`).
+#' @param fits Named list of fitted model objects.
+#' @param newdata Optional data frame. If NULL, uses `truth$data`. Must contain
+#'   `totalMu` column if `use_observed = "force"`.
+#' @param use_observed One of `"auto"` (use observed `totalMu` if present,
+#'   otherwise predict from truth), `"force"` (require observed column, error
+#'   if absent), or `"never"` (always predict from truth parameters).
 #'
 #' @return A tibble with one row per model and columns for each metric.
-#'   Includes `B_extra` and `B_missing` columns documenting any predictor
-#'   mismatches.
 #' @export
-compare_to_truth <- function(truth, fits, newdata = NULL) {
-  stopifnot(is.list(truth), !is.null(truth$par))
-  stopifnot(is.list(fits), length(fits) >= 1)
+compare_to_truth <- function(truth, fits, newdata = NULL,
+                             use_observed = "auto") {
+  stopifnot(is.list(truth), !is.null(truth$par),
+            is.list(fits), length(fits) >= 1,
+            use_observed %in% c("auto", "force", "never")
+            )
   
   if (is.null(names(fits))) {
     names(fits) <- paste0("model_", seq_along(fits))
   }
   
   data <- if (!is.null(newdata)) newdata else truth$data
-  mu_true <- predict(truth, newdata = data, type = "mu")
   alpha_true <- truth$par$alpha
   B_true <- truth$par$B
+  
+  has_obs <- "totalMu" %in% names(data)                      
+  if (use_observed == "force" && !has_obs) {                   
+    stop("use_observed = 'force' but 'totalMu' not found in data")  
+  }                                                             
+  use_obs_mu <- has_obs && use_observed != "never"             
+  mu_true <- if (use_obs_mu) {                                 
+    data$totalMu                                               
+  } else {                                                     
+    predict(truth, newdata = data, type = "mu")
+  }   
   
   rows <- lapply(names(fits), function(nm) {
     fit <- fits[[nm]]
@@ -521,6 +533,7 @@ compare_to_truth <- function(truth, fits, newdata = NULL) {
     
     dplyr::tibble(
       model = nm,
+      mu_source    = if (use_obs_mu) "observed" else "predicted",  
       alpha_rmse = metric_rmse(alpha_t, alpha_f),
       alpha_cor  = cor(alpha_t, alpha_f),
       B_rmse     = metric_rmse(as.numeric(aligned$true), as.numeric(aligned$fit)),
@@ -538,39 +551,88 @@ compare_to_truth <- function(truth, fits, newdata = NULL) {
 
 
 
-#' Compare per-group mu recovery across models
+#' Compare fitted models to truth (simulated or observed) for per-group mu
 #'
-#' Computes RMSE and correlation between true and predicted per-group mu
-#' for one or more fitted models. Uses cover-weighted group contributions
-#' by default.
+#' Computes per-group prediction metrics comparing fitted models to a truth
+#' object or observed per-group biomass columns. When `{group}Bio` columns are
+#' present in the data they can be used in place of predicted group-level truth.
+#' predicted group-level truth can be different from 'observed' if there
+#' are some structural complications added in the simulation of truth (e.g. regional
+#' intercepts differ around the 'true' or mean intercept)
 #'
-#' @param truth Object with true parameters (`cwexp_dummy` or similar).
+#' @param truth Object with true parameters (`cwexp_sim`, `cwexp_dummy`, or
+#'   similar).
 #' @param fits Named list of fitted model objects.
-#' @param newdata Optional data frame. If NULL, uses `truth$data`.
-#' @param weighted Logical. Passed to `predict_by_group`.
+#' @param newdata Optional data frame. If NULL, uses `truth$data`. Must contain
+#'   `{group}Bio` columns if `use_observed != "never"`.
+#' @param weighted Logical. If TRUE, uses cover-weighted group mu.
+#' @param use_observed One of `"auto"` (use `{group}Bio` columns if present,
+#'   otherwise predict from truth), `"force"` (require observed columns, error
+#'   if any are absent), or `"never"` (always predict from truth parameters).
+#'
+#' @return A tibble with one row per model-group combination and metric columns.
 #' @export
 compare_group_to_truth <- function(truth, fits, newdata = NULL,
-                                   weighted = TRUE) {
+                                   weighted = TRUE,
+                                   use_observed = "auto") {    
+  stopifnot(is.list(truth), !is.null(truth$par))
   stopifnot(is.list(fits), length(fits) >= 1)
-  if (is.null(names(fits))) names(fits) <- paste0("model_", seq_along(fits))
+  stopifnot(use_observed %in% c("auto", "force", "never"))  
   
-  data <- if (!is.null(newdata)) newdata else truth$data
+  if (is.null(names(fits))) {
+    names(fits) <- paste0("model_", seq_along(fits))
+  }
   
-  mu_true_grp <- predict_by_group(truth, newdata = data, weighted = weighted)
-  group_names <- colnames(mu_true_grp)
+  data        <- if (!is.null(newdata)) newdata else truth$data
+  group_names <- names(truth$par$alpha)
+  
+  # --- resolve per-group truth ---                             
+  if (use_observed != "never") {                              
+    bio_cols    <- paste0(stringr::str_replace(group_names, 'Cov$', ''), 
+                          "Bio")                 
+    present     <- bio_cols %in% names(data)                   
+    if (use_observed == "force" && !all(present)) {            
+      missing <- bio_cols[!present]                            
+      stop("use_observed = 'force' but columns not found: ",    
+           paste(missing, collapse = ", "))                     
+    }                                                           
+    use_obs_grp <- any(present)                                 
+  } else {                                                      
+    use_obs_grp <- FALSE                                        
+  }                                                             
+  
+  mu_true_grp <- if (use_obs_grp) {                            
+    # build matrix from observed columns; NA for absent groups  
+    bio_cols <- paste0(stringr::str_replace(group_names, 'Cov$', ''), "Bio")                      
+    mat <- sapply(bio_cols, function(col) {                    
+      if (col %in% names(data)) data[[col]] else rep(NA_real_, nrow(data)) 
+    })                                                        
+    colnames(mat) <- group_names                              
+    mat                                                      
+  } else {                                                     
+    predict_by_group(truth, newdata = data, weighted = weighted)
+  }                                                           
   
   rows <- lapply(names(fits), function(nm) {
-    mu_hat_grp <- predict_by_group(fits[[nm]], newdata = data, weighted = weighted)
+    fit        <- fits[[nm]]
+    mu_hat_grp <- predict_by_group(fit, newdata = data, weighted = weighted)
     
-    grp_rows <- lapply(seq_along(group_names), function(g) {
+    dplyr::bind_rows(lapply(group_names, function(g) {
+      true_vec <- mu_true_grp[, g]
+      pred_vec <- mu_hat_grp[, g]
+      ok       <- is.finite(true_vec) & is.finite(pred_vec)
+      
       dplyr::tibble(
-        model = nm,
-        group = group_names[g],
-        rmse = metric_rmse(mu_true_grp[, g], mu_hat_grp[, g]),
-        cor = cor(mu_true_grp[, g], mu_hat_grp[, g])
+        model      = nm,
+        group      = stringr::str_replace(g, "Cov", ''),
+        mu_source  = if (use_obs_grp && !is.na(mu_true_grp[1, g])) 
+          "observed" else "predicted",                 
+        n_obs      = sum(ok),
+        rmse       = metric_rmse(true_vec[ok], pred_vec[ok]),
+        cor        = cor(true_vec[ok], pred_vec[ok]),
+        mae_log    = metric_mae_log(true_vec[ok], pred_vec[ok])
       )
-    })
-    dplyr::bind_rows(grp_rows)
+    }))
   })
   
   dplyr::bind_rows(rows)

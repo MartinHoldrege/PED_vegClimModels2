@@ -314,7 +314,7 @@ predict.cwexp_sim <- function(object, newdata = NULL,
 #'   and `prep`. When `n_junk_pred > 0`, the B matrix has additional rows of
 #'   zeros, and the formula/x_cols include the junk predictor names.
 cwexp_make_dummy_data <- function(n = 500,
-                                  cover_cols = paste0("cov_g", 1:6),
+                                  cover_cols = paste0("g", 1:6, 'Cov'),
                                   x_cols = c("tmean", "ppt", "vpd", "sand"),
                                   sigma = 0.6,
                                   n_junk_pred = 0) {
@@ -328,15 +328,18 @@ cwexp_make_dummy_data <- function(n = 500,
   names(Xdat) <- x_cols
   
   # covers: nonnegative, with many small values
-  C <- matrix(rexp(n * G, rate = 2), nrow = n, ncol = G)
+  C <- matrix(rexp(n * G, rate = 8), nrow = n, ncol = G)
+  tot <- rowSums(C)
+  C <- C/ifelse(tot >1, tot, 1) # forcing total cover to be <=1
+
   colnames(C) <- cover_cols
   
   # "true" parameters (so you can check recovery)
-  alpha_true <- rnorm(G, mean = 1, sd = 0.4)
-  B_true <- matrix(rnorm(P * G, mean = 0, sd = 0.25), nrow = P, ncol = G)
+  alpha_true <- rnorm(G, mean = 4, sd = 1)
+  B_true <- matrix(rnorm(P * G, mean = 0, sd = 0.5), nrow = P, ncol = G)
   rownames(B_true) <- x_cols
   colnames(B_true) <- cover_cols
-  
+  names(alpha_true) <- cover_cols
   # --- junk predictors (correlated with real, true effect = 0) -------------
   all_x_cols <- x_cols
   

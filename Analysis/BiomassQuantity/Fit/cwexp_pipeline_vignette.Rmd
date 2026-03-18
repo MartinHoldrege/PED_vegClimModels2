@@ -27,17 +27,10 @@ where we know the truth. The goals are to:
 
 ## Setup
 
-```{r source-functions}
+```{r source-functions, warning = FALSE}
 # source project code
-source("Functions/data/simulate_data.R")
-source("Functions/models/cwexp_helpers.R")
-source("Functions/models/cwexp_lognormal_tmb.R")
-source("Functions/models/cwexp_lambda_path.R")
-source("Functions/resampling/cv_metrics.R")
-source("Functions/resampling/cv_main.R")
-source("Functions/grouping/environmental_clustering.R")
-source("Functions/grouping/make_folds.R")
-source("Functions/viz/plot_true_recovery.R")
+source('Functions/init.R')
+source_functions()
 library(ggplot2)
 library(dplyr)
 theme_set(theme_bw())
@@ -49,7 +42,7 @@ theme_set(theme_bw())
 ```{r simulate}
 set.seed(42)
 n <- 2000
-dummy <- cwexp_make_dummy_data(n = n*2, sigma = 0.8, n_junk_pred = 3)
+dummy <- cwexp_make_dummy_data(n = n*2, sigma = 0.4, n_junk_pred = 3)
 dat <- dummy$data[1:n, ]
  # not a traditional test set, but just for seeing how well model's recover the truth
 dat_test <- dummy$data[(n+1):(2*n), ]
@@ -417,14 +410,28 @@ compare_group_to_truth(
   knitr::kable()
 
 # plot
-plot_group_recovery(truth = dummy, fit = final_fit,
-                    newdata = dat_test) +
-  labs(subtitle = 'Regularized model')
+
 plot_group_recovery(truth = dummy, fit = fit0,
                     newdata = dat_test) +
   labs(subtitle = 'Unpenalized model')
+plot_group_recovery(truth = dummy, fit = final_fit,
+                    newdata = dat_test) +
+  labs(subtitle = 'Regularized model')
 ```
+### biomass at 100%: Predicted vs true
 
+
+```{r}
+
+plot_group_recovery(truth = dummy, fit = fit0,
+                    newdata = dat_test,
+                    weighted = FALSE) +
+  labs(subtitle = 'Unpenalized model')
+plot_group_recovery(truth = dummy, fit = final_fit,
+                    newdata = dat_test,
+                    weighted = FALSE) +
+  labs(subtitle = 'Regularized model')
+```
 
 ### General summary stats Against Truth 
 
