@@ -1,0 +1,277 @@
+---
+title: "Model Evaluation: Simulated Data"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.width = 7, fig.height = 5)
+```
+
+## Purpose
+
+Evaluate the fitted cwexp model against known simulation truth. This script
+is specific to simulated data where we know the true parameters and per-PFT
+biomass.
+
+## Setup
+
+
+```{r source-and-load}
+source('Functions/init.R')
+source_functions()
+library(ggplot2)
+library(dplyr)
+theme_set(theme_bw())
+
+# --- load fitted model output ---
+pv <- 'p01' # version of purer selection
+mv <- 'm01' # version of model
+suffix <- paste(opt$vs, pv, mv, sep = '-')
+test_run <- FALSE
+if(test_run) suffix <- 'test_run'
+# created in
+# "Analysis/BiomassQuantity/Fit/01_fit_model.R"
+p_fit <- file.path(
+  paths$large,
+  'Data_processed/BiomassQuantityData/Fit',
+  paste0('fitted_model_', suffix, '.rds')
+)
+m1 <- readRDS(p_fit)
+
+# --- load simulation truth ---
+p_truth <- file.path(
+  paths$large,
+  'Data_processed/BiomassQuantityData/simulated',
+  paste0('simBiomass_', opt$vs, '.rds')
+)
+truth <- readRDS(p_truth)
+
+# --- evaluation data (full simulated dataset) ---
+dat_eval <- truth$data
+
+# --- extract key objects ---
+fit <- m1$fit
+cv <- m1$cv
+config <- m1$config
+```
+
+```{r print-config}
+cat("Model version:", mv, "\n")
+cat("Data version:", opt$vs, "\n")
+cat("Formula:", deparse(config$model$formula), "\n")
+cat("Selected lambda:", cv$selected$lambda, "\n")
+cat("Selection rule:", config$cv$select_rule, "\n")
+cat("N training (purer pixels):", m1$purer$n_selected, "\n")
+cat("N evaluation (full data):", nrow(dat_eval), "\n")
+```
+
+## 1. Overall Mu Recovery
+
+```{r mu-scatter, fig.width=7, fig.height=4.5}
+mu_true <- dat_eval$totalMu
+mu_hat_reg <- predict(fit, dat_eval, type = "mu")
+hist(mu_hat_reg)
+hist(mu_true)
+
+lims <- quantile(c(mu_hat_reg, mu_true), c(0, 0.9))
+plot(mu_true, mu_hat_reg, pch = 16, cex = 0.3, col = rgb(0, 0, 0, 0.2),
+     xlab = "True mu", ylab = "Predicted mu",
+     xlim = lims, ylim = lims,
+     main = paste0("Regularized (lambda = ", round(cv$selected$lambda, 4), ")"))
+abline(0, 1, col = "red", lwd = 2)
+par(mfrow = c(1, 1))
+```
+
+## 2. B Matrix Recovery
+
+```{r B-recovery}
+aligned <- align_B_matrices(truth$par$B, fit$par$B)
+
+if (length(aligned$extra_in_fit) > 0) {
+  cat("Predictors in fitted model but not in truth (compared to 0):\n ",
+      paste(aligned$extra_in_fit, collapse = ", "), "\n")
+}
+if (length(aligned$missing_in_fit) > 0) {
+  cat("Predictors in truth but not in fitted model (excluded):\n ",
+      paste(aligned$missing_in_fit, collapse = ", "), "\n")
+}
+```
+
+```{r B-scatter, fig.width=10, fig.height=4.5}
+
+
+B_true_vec <- as.numeric(aligned$true)
+B_reg_vec <- as.numeric(aligned$fit)
+
+# tag extra predictors (truth = 0)
+extra_rows <- rownames(aligned$true) %in% aligned$extra_in_fit
+is_extra <- rep(extra_rows, ncol(aligned$true))
+
+
+plot(B_true_vec, B_reg_vec, pch = 16,
+     col = ifelse(is_extra, "red", "black"),
+     xlab = "True B", ylab = "Fitted B",
+     main = "B recovery: regularized")
+abline(0, 1, col = "grey50", lty = 2)
+abline(h = 0, v = 0, col = "grey80")
+
+if (any(is_extra)) {
+  legend("topleft", legend = c("Shared predictors", "Extra in fit (true = 0)"),
+         col = c("black", "red"), pch = 16, bty = "n")
+}
+```
+
+## 3. Alpha Recovery
+
+```{r alpha-recovery}
+# align by name
+shared_groups <- intersect(names(fit$par$alpha), names(truth$par$alpha))
+
+alpha_df <- tibble(
+  group = shared_groups,
+  true_alpha = truth$par$alpha[shared_groups],
+  reg_alpha = fit$par$alpha[shared_groups]
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 2)))
+
+```
+
+```{r alpha-scatter, fig.width=5, fig.height=4.5}
+plot(alpha_df$true_alpha, alpha_df$reg_alpha, pch = 16, cex = 1.5,
+     xlab = "True alpha", ylab = "Fitted alpha",
+     main = "Alpha recovery (regularized)")
+abline(0, 1)
+```
+
+## 4. Per-Group Recovery
+
+```{r group-table}
+compare_group_to_truth(
+  truth = truth,
+  fits = list(regularized = fit),
+  newdata = dat_eval,
+  use_observed = 'force'
+) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  knitr::kable(caption = "Per-group mu recovery on full dataset")
+```
+
+```{r group-plots, fig.width=8, fig.height=6}
+
+plot_group_recovery(truth = truth, fit = fit, 
+                    newdata = dat_eval,
+                    density = TRUE,
+                    use_observed = 'force', 
+                    title = "Per-PFT: regularized") +
+  geom_smooth(se = FALSE)
+
+
+plot_group_recovery(truth = truth, fit = fit, 
+                    newdata = dat_eval,
+                    weighted = FALSE,
+                    density = TRUE,
+                    use_observed = 'force', 
+                    title = "Per-PFT: regularized, (biomass at 100% cover)") +
+  geom_smooth(se = FALSE)
+```
+
+## 5. CV Diagnostics: Score vs Lambda
+
+```{r cv-score-lambda, fig.width=7, fig.height=4}
+score_summary <- cv$score_summary
+
+ggplot(score_summary, aes(x = lambda, y = mae_log)) +
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(ymin = mae_log - mae_log_se,
+                    ymax = mae_log + mae_log_se),
+                width = 0) +
+  geom_vline(xintercept = cv$selected$lambda,
+             linetype = "dashed", color = "red") +
+  labs(x = "Lambda", y = "MAE (log scale)",
+       title = "CV holdout score vs lambda",
+       subtitle = paste("Selected lambda =",
+                        signif(cv$selected$lambda, 2),
+                        "(rule:", config$cv$select_rule, ")"))
+```
+
+## 6. Truth Recovery vs Lambda
+
+Using the stored per-fold parameters at each lambda to compute truth metrics
+across the full lambda path.
+
+```{r truth-vs-lambda}
+# helper: wrap stored par into a minimal object predict() can use
+make_par_obj <- function(par_list, spec) {
+  obj <- list(
+    par = list(
+      alpha = par_list$alpha,
+      B = par_list$B,
+      sigma = if ("sigma" %in% names(par_list)) par_list$sigma else exp(par_list$log_sigma)
+    ),
+    spec = spec
+  )
+  class(obj) <- "cwexp_tmb_fit"
+  obj
+}
+
+# compute truth metrics at each lambda (averaged across folds)
+path_par <- cv$path_par
+spec <- cv$spec
+
+truth_by_lambda <- path_par |>
+  group_by(lambda) |>
+  summarise(
+    mu_rmse = mean(purrr::map_dbl(par, function(p) {
+      obj <- make_par_obj(p, spec)
+      mu_hat <- predict(obj, dat_eval, type = "mu")
+      metric_rmse(mu_true, mu_hat)
+    })),
+    B_rmse = mean(purrr::map_dbl(par, function(p) {
+      aligned_i <- align_B_matrices(truth$par$B,
+                                     {
+                                       B_i <- p$B
+                                       rownames(B_i) <- spec$x_cols %||% rownames(truth$par$B)
+                                       colnames(B_i) <- spec$cover_cols
+                                       B_i
+                                     })
+      metric_rmse(as.numeric(aligned_i$true), as.numeric(aligned_i$fit))
+    })),
+    .groups = "drop"
+  )
+```
+
+```{r truth-vs-lambda-plot, fig.width=10, fig.height=4}
+par(mfrow = c(1, 2))
+
+plot(truth_by_lambda$lambda, truth_by_lambda$mu_rmse,
+     type = "b", pch = 19,
+     xlab = "Lambda", ylab = "rmse(true mu, predicted mu)",
+     main = "Mu recovery vs lambda")
+abline(v = cv$selected$lambda, col = "red", lty = 2)
+
+plot(truth_by_lambda$lambda, truth_by_lambda$B_rmse,
+     type = "b", pch = 19,
+     xlab = "Lambda", ylab = "rmse(true B, fitted B)",
+     main = "B recovery vs lambda")
+abline(v = cv$selected$lambda, col = "red", lty = 2)
+
+par(mfrow = c(1, 1))
+```
+
+## Summary
+
+```{r summary}
+cat("Model:", deparse(config$model$formula), "\n")
+cat("Selected lambda:", signif(cv$selected$lambda, 2),
+    "(", config$cv$select_rule, "rule )\n")
+cat("Mu cor (regularized, full data):", round(cor(mu_true, mu_hat_reg), 3), "\n")
+cat("B cor (regularized):", round(cor(B_true_vec, B_reg_vec), 3), "\n")
+```
