@@ -372,7 +372,7 @@ select_lambda <- function(score_df,
 
 
 summarize_scores <- function(scores, metric_cols) {
-  se <- function(x) sd(x)/length(x)
+  se <- function(x) sd(x)/sqrt(length(x))
   score_summary <- scores |>
     dplyr::group_by(.data$lambda) |>
     dplyr::summarise(
