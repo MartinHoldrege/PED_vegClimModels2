@@ -191,12 +191,12 @@ longdf2deciles <- function(df, response_vars, filter_var = FALSE,
 #' compute the average for each percentile
 predvars2deciles <- function(df, response_vars, pred_vars,
                              filter_var = FALSE,
-                             filter_vars,
+                             filter_vars = NULL,
                              add_mid = FALSE,
                              cut_points = seq(0, 1, 0.01),
                              summary_fun = 'mean') {
   
-  if (filter_var && missing(filter_vars)) {
+  if (filter_var && is.null(filter_vars)) {
     stop("filter_vars must be specified when filter_var = TRUE.")
   }
   
@@ -321,4 +321,101 @@ decile_dotplot <- function(yvar, df, ylab = 'response',
     scale_shape_manual(name = 'legend', values = shape_values) +
     labs(caption = caption)
   out
+}
+
+
+#' Compute per-PFT quantile summaries across climate variables
+#'
+#' For each PFT, bins data by quantiles of each climate variable and computes
+#' mean predicted biomass within each bin. Uses `predvars2deciles()` internally.
+#'
+#' @param fit Fitted cwexp model object (or any object accepted by
+#'   `cwexp_mu_by_group`).
+#' @param data Data frame with predictor and cover columns.
+#' @param formula Model formula.
+#' @param cover_cols Character vector of cover column names.
+#' @param pred_vars Character vector of climate/predictor variables to bin by.
+#' @param weighted Logical. If TRUE, returns cover-weighted per-PFT biomass.
+#'   If FALSE, returns potential biomass (cover = 100%).
+#' @param cut_points Numeric vector of quantile break points.
+#'
+#' @return A tibble in long format with columns: `PFT`, `name` (climate var),
+#'   `mean_value` (mean or median climate within bin), `decile` (bin id), and `biomass`
+#'   (mean predicted biomass within bin).
+#' @export
+pft_quantile_summary <- function(fit, data, formula, cover_cols, pred_vars,
+                                 weighted = TRUE,
+                                 cut_points = seq(0, 1, 0.01),
+                                 summary_fun = 'median') {
+  
+  prep <- cwexp_prepare(data = data, formula = formula, cover_cols = cover_cols)
+  
+  mu_grp <- cwexp_mu_by_group(
+    alpha = fit$par$alpha,
+    B = fit$par$B,
+    X = prep$X,
+    C = prep$C,
+    weighted = weighted
+  )
+  
+  pft_labels <- stringr::str_remove(cover_cols, "Cov$")
+  
+  # add per-PFT predictions as columns
+  colnames(mu_grp) <- stringr::str_remove(colnames(mu_grp), "Cov$")
+  df <- cbind(data[, pred_vars, drop = FALSE], mu_grp)
+  
+  # predvars2deciles treats the PFT columns as response variables
+  quant <- predvars2deciles(
+    df = df,
+    response_vars = pft_labels,
+    pred_vars = pred_vars,
+    cut_points = cut_points,
+    summary_fun = summary_fun
+  )
+  
+  # pivot PFTs to long format for facet_grid
+  quant |>
+    tidyr::pivot_longer(
+      cols = dplyr::all_of(pft_labels),
+      names_to = "PFT",
+      values_to = "biomass"
+    ) |>
+    dplyr::mutate(PFT = factor(PFT, levels = pft_labels))
+}
+
+
+#' Plot per-PFT biomass across climate quantiles
+#'
+#' Creates a PFT × climate grid plot from the output of
+#' `pft_quantile_summary()`. Rows are PFTs, columns are climate variables.
+#'
+#' @param quant_df Output of `pft_quantile_summary()`.
+#' @param title Character; plot title.
+#' @param ylab Character; y-axis label.
+#' @param point_color Character; color for the dots.
+#' @param point_size Numeric; size of the dots.
+#' @param scales Character; passed to `facet_grid()`. Default `"free"`.
+#'
+#' @return A ggplot object.
+#' @export
+plot_pft_quantiles <- function(quant_df,
+                               title = NULL,
+                               ylab = "Predicted biomass",
+                               point_color = "blue",
+                               point_size = 0.5,
+                               scales = "free") {
+  
+  ggplot2::ggplot(quant_df, ggplot2::aes(x = mean_value, y = biomass)) +
+    ggplot2::geom_point(size = point_size, color = point_color) +
+    ggplot2::facet_grid(PFT ~ name, scales = scales, switch = "x") +
+    ggplot2::labs(
+      x = NULL,
+      y = ylab,
+      title = title
+    ) +
+    ggplot2::theme(
+      strip.text.y = ggplot2::element_text(angle = 0),
+      strip.placement = "outside",
+      strip.background.x = ggplot2::element_blank()
+    )
 }

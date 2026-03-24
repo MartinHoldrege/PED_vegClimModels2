@@ -29,7 +29,7 @@ plot_residual <- function(data, observed = 'observed', predicted = 'predicted',
   
   size <- if(!is.null(size) && size < nrow(data)) size else nrow(data)
   
-  
+  data2 <- data
   data2$residual <- log10(data2[[observed]]) - log10(data2[[predicted]])
   data3 <- dplyr::sample_n(data2, size = size)
   g1 <- ggplot(data3, aes(.data[[predicted]],

@@ -46,7 +46,7 @@ p_fit <- file.path(
   "Data_processed/BiomassQuantityData/Fit",
   paste0("fitted_model_", suffix, ".rds")
 )
-stopifnot(file.exists(p_fit))
+stopifnot(isTRUE(file.exists(p_fit)))
 m1 <- readRDS(p_fit)
 
 fit <- m1$fit
@@ -88,7 +88,7 @@ plot_cv_scores(score_summary = cv$score_summary,
 ```
 
 ```{r selected-lambda-info}
-cat("Selected lambda:", signif(selected_lambda, 3), "\n")
+cat("Selected lambda:", signif(cv$selected$lambda, 3), "\n")
 cat("Rule:", config$cv$select_rule, "\n\n")
 
 cat("Scores at selected lambda:\n")
@@ -107,7 +107,7 @@ or lambda selection.
 ```{r cv-fold-scores}
 # scores at the selected lambda only
 fold_scores_at_selected <- cv$scores |>
-  filter(abs(lambda - selected_lambda) < 1e-10)
+  filter(abs(lambda - cv$selected$lambda) < 1e-10)
 
 ```
 
@@ -153,8 +153,6 @@ plot_residual(dat_full)
 
 ## 4. Total Biomass Across Climate (Quantile Plots)
 
-## 4. Total Biomass Across Climate (Quantile Plots)
-
 Mean observed and predicted total biomass within percentile bins of each
 predictor variable.
 
@@ -190,12 +188,50 @@ for (f in c('mean', 'median')) {
 
 ```
 
+## Coefficients
+
+
 ## 5. Per-PFT Biomass Across Climate
 
-*To be implemented — requires quantile plotting functions.*
-Continue here--NOTE want to create a large matrix of
-predicted biomass by group 
 
+### Cover-Weighted
+```{r pft-weighted, fig.width=12, fig.height=10}
+
+quant_weighted <- pft_quantile_summary(
+  fit = fit, data = dat_full,
+  formula = config$model$formula,
+  cover_cols = config$model$cover_cols,
+  pred_vars = params$quantile_vars,
+  weighted = TRUE,
+  summary_fun = 'median'
+)
+
+plot_pft_quantiles(quant_weighted,
+                   title = "Per-PFT biomass across climate (cover-weighted)")
+
+```
+
+### Potential Biomass (Cover = 100%)
+
+```{r pft-potential, fig.width=12, fig.height=10}
+quant_potential <- pft_quantile_summary(
+  fit = fit, data = dat_full,
+  formula = config$model$formula,
+  cover_cols = config$model$cover_cols,
+  pred_vars = params$quantile_vars,
+  weighted = FALSE
+)
+
+plot_pft_quantiles(quant_potential,
+                   title = "Per-PFT potential biomass across climate (if cover = 100%)",
+                   ylab = "Potential biomass (if cover = 100%)")
+```
+
+## Cofficients
+
+```{r coefs}
+lapply(fit$par, round, 2)
+```
 ## 5. Partial dependence plots
 
 

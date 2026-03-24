@@ -247,7 +247,8 @@ cwexp_mu_by_group <- function(alpha, B, X, C, weighted = TRUE) {
 #' @return N x G matrix of per-group mu values.
 #' @export
 predict_by_group <- function(object, newdata = NULL, weighted = TRUE) {
-  if (inherits(object, "cwexp_dummy") && is.null(newdata)) {
+  if (inherits(object, "cwexp_dummy" || inherits(object, "cwexp_sim")) 
+      && is.null(newdata)) {
     newdata <- object$data
   }
   if (is.null(newdata)) stop("newdata is required for fitted model objects.")
