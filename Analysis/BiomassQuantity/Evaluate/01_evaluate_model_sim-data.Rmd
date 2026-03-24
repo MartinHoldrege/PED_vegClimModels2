@@ -31,9 +31,9 @@ library(dplyr)
 theme_set(theme_bw())
 
 # --- load fitted model output ---
-pv <- 'p01' # version of purer selection
-mv <- 'm01' # version of model
-suffix <- paste(opt$vs, pv, mv, sep = '-')
+vp <- 'p01' # version of purer selection
+vm <- 'm01' # version of model
+suffix <- paste(opt$vs, vp, vm, sep = '-')
 test_run <- FALSE
 if(test_run) suffix <- 'test_run'
 # created in
@@ -63,7 +63,7 @@ config <- m1$config
 ```
 
 ```{r print-config}
-cat("Model version:", mv, "\n")
+cat("Model version:", vm, "\n")
 cat("Data version:", opt$vs, "\n")
 cat("Formula:", deparse(config$model$formula), "\n")
 cat("Selected lambda:", cv$selected$lambda, "\n")

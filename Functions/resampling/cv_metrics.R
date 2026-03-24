@@ -393,6 +393,29 @@ summarize_scores <- function(scores, metric_cols) {
   score_summary
 }
 
+cv_metrics_df <- function(data, observed = 'observed',
+                             predicted = 'predicted') {
+  
+  stopifnot(
+    c(observed, predicted) %in% names(data)
+  )
+  obs <- data[[observed]]
+  pred <- data[[predicted]]
+  
+  metrics_df <- tibble(
+    metric = c("MAE (log)", "RMSE (log)", "MAE", "RMSE", "Correlation", "N"),
+    value = c(
+      metric_mae_log(obs, pred),
+      metric_rmse_log(obs, pred),
+      metric_mae(obs, pred),
+      metric_rmse(obs, pred),
+      metric_cor(obs, pred),
+      length(obs)
+    )
+  ) 
+  metrics_df
+}
+
 
 # compare to truth --------------------------------------------------------
 # functions relevant for determining recovery of simulated data

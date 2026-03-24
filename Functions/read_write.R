@@ -4,20 +4,30 @@
 #' (generally output of DataPrep/07_make_analysis_ready.R)
 #'
 #' @param opt list of options (init.R needs to have been run)
+#' @param vd vrsion of data, starts with s (simulated) or d (not simulated)
 #' @param root where data is, by default needs init.R to be run
 #'
 #' @returns
 #' dataframe
-read_analysis_ready <- function(opt, root = paths$large) {
-  stopifnot(is.list(opt),
-            c('use_simulated', 'vs', 'vd') %in% names(opt),
-            dir.exists(root)
+read_analysis_ready <- function(opt = NULL, vd = NULL, root = paths$large) {
+  stopifnot(is.list(opt) | is.character(vd),
+            is.null(opt) | c('use_simulated', 'vs', 'vd') %in% names(opt),
+            dir.exists(root),
+            !(is.null(opt) & is.null(vd))
             )
   
   
-  v <- if(opt$use_simulated) opt$vs else opt$vd
   
-  if(opt$use_simulated) {
+  
+  if(is.null(opt)) {
+    use_simulated <- str_detect(vd, '^s')
+    v <- vd
+  } else {
+    use_simulated <- opt$use_simulated
+    v <- if(opt$use_simulated) opt$vs else opt$vd
+  }
+  
+  if(use_simulated) {
     
     p <- file.path(paths$large, 'Data_processed/BiomassQuantityData/simulated',
                     paste0('simBiomass_', v, '.rds'))

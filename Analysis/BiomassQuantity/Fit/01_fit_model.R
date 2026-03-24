@@ -37,7 +37,7 @@ formula_full <- as.formula(
 
 # --- config: all tunable settings in one place ----------------------------
 config <- list(
-  mv = 'm01',
+  vm = 'm01',
   # model specification
   model = list(
     formula = formula_full,
@@ -46,7 +46,7 @@ config <- list(
   ),
   # purer pixel selection
   purer = list(
-    pv = 'p01', # version of purer selection
+    vp = 'p01', # version of purer selection
     region_col = "region",
     q = 0.9,
     min_raw_cover = 0.05,
@@ -252,7 +252,7 @@ out <- list(
 suffix <- if(test_run) {
   'test_run'
 } else {
-  paste(config$data$version, config$purer$pv, config$mv, sep = '-')
+  paste(config$data$version, config$purer$vp, config$vm, sep = '-')
 }
 
 p_out <- file.path(paths$large,

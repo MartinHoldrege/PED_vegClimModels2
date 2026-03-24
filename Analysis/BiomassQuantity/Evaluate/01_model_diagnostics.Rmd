@@ -1,0 +1,207 @@
+---
+title: "Model Diagnostics"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  model_version: "m01"
+  data_version: "s02"
+  purer_version: 'p01'
+  # climate vars to bin by in quantile plots (sections 4-5)
+  quantile_vars: !r c("tmean_CLIM", "precip_CLIM", "PrecipTempCorr_CLIM", "sand")
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.width = 8, fig.height = 5)
+```
+
+## Purpose
+
+Model diagnostics for the cwexp biomass model. This report works for both
+simulated and real data — it evaluates the fitted model without requiring
+knowledge of the true parameters.
+
+## Setup
+
+```{r source-and-load}
+source("Functions/init.R")
+library(patchwork)
+source_functions()
+theme_set(theme_bw())
+
+vm <- params$model_version
+vd <- params$data_version
+vp <- params$purer_version
+
+# --- load fitted model ---
+suffix <- paste(vd, vp, vm, sep = '-')
+
+p_fit <- file.path(
+  paths$large,
+  "Data_processed/BiomassQuantityData/Fit",
+  paste0("fitted_model_", suffix, ".rds")
+)
+stopifnot(file.exists(p_fit))
+m1 <- readRDS(p_fit)
+
+fit <- m1$fit
+cv <- m1$cv
+config <- m1$config
+
+# --- load full dataset ---
+dat_full <- read_analysis_ready(vd = vd)
+
+# --- predictions on full data ---
+mu_hat <- predict(fit, dat_full, type = "mu")
+dat_full$predicted <- mu_hat
+dat_full$observed <- dat_full$totalBio
+```
+
+```{r print-config}
+cat("Model version:", vm, "\n")
+cat("Data version:", vd, "\n")
+cat("Sampling (purer) version:", vp, '\n')
+cat("Formula:", deparse(config$model$formula), "\n")
+cat("EN alpha:", config$cv$en_alpha, "\n")
+cat("Selected lambda:", round(cv$selected$lambda, 5), "\n")
+cat("Selection rule:", config$cv$select_rule, "\n")
+cat("N training (purer pixels):", m1$purer$n_selected, "\n")
+cat("N full data:", nrow(dat_full), "\n")
+```
+
+## 1. Lambda Selection
+
+Cross-validation score across the lambda path, with the selected lambda
+marked.
+
+```{r cv-score-plots, fig.width=10, fig.height=7}
+plot_cv_scores(score_summary = cv$score_summary, 
+               selected_lambda = cv$selected$lambda)
+plot_cv_scores(score_summary = cv$score_summary, 
+               selected_lambda = cv$selected$lambda,
+               x_scale = 'rank')
+```
+
+```{r selected-lambda-info}
+cat("Selected lambda:", signif(selected_lambda, 3), "\n")
+cat("Rule:", config$cv$select_rule, "\n\n")
+
+cat("Scores at selected lambda:\n")
+cv$selected |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  as.data.frame() |>
+  print()
+```
+
+## 2. CV Holdout Error on Total Biomass
+
+Per-fold holdout prediction errors from cross-validation. These are honest
+out-of-sample metrics since each fold's test data was not used for training
+or lambda selection.
+
+```{r cv-fold-scores}
+# scores at the selected lambda only
+fold_scores_at_selected <- cv$scores |>
+  filter(abs(lambda - selected_lambda) < 1e-10)
+
+```
+
+```{r cv-fold-summary}
+# summary across folds
+fold_summary <- fold_scores_at_selected |>
+  summarise(
+    across(c(mae_log, rmse_log, mae, rmse, cor),
+           list(mean = mean, sd = sd),
+           .names = "{.col}_{.fn}")
+  ) |>
+  pivot_longer(everything(),
+               names_to = c("metric", "stat"),
+               names_sep = "_(?=[^_]+$)") |>
+  pivot_wider(names_from = stat, values_from = value) |>
+  mutate(across(where(is.numeric), \(x) round(x, 4)))
+
+knitr::kable(fold_summary,
+             caption = "CV holdout error summary (mean ± sd across folds)")
+```
+
+## 3. Final Model Error on Full Dataset
+
+Predictions from the global model (fitted at the selected lambda on the
+purer training data) evaluated on the full dataset. This is optimistic
+since it includes the training data, but shows overall model behavior.
+
+```{r final-model-metrics}
+metrics_df <- cv_metrics_df(dat_full) |> 
+  mutate(value = signif(value, 3))
+
+knitr::kable(metrics_df, caption = "Final model error on full dataset")
+```
+
+```{r obs-vs-pred-scatter, fig.width=10, fig.height=4.5}
+plot_obs_vs_pred(dat_full, title = 'Observed vs predicted total biomass')
+```
+
+```{r residual-plots, fig.width=10, fig.height=4.5}
+plot_residual(dat_full)
+
+```
+
+## 4. Total Biomass Across Climate (Quantile Plots)
+
+## 4. Total Biomass Across Climate (Quantile Plots)
+
+Mean observed and predicted total biomass within percentile bins of each
+predictor variable.
+
+```{r quantile-setup}
+quantile_vars <- params$quantile_vars
+
+# decile functions expect yvar and yvar_pred naming convention
+dat_quant <- dat_full |>
+  dplyr::rename(totalBio_pred = predicted)
+```
+
+
+```{r quantile-total-bio, fig.width=10, fig.height=7}
+
+for (f in c('mean', 'median')) {
+  quant_df <- predvars2deciles(
+    df = dat_quant,
+    response_vars = c("totalBio", "totalBio_pred"),
+    pred_vars = quantile_vars,
+    summary_fun = f
+  )
+
+  g <- decile_dotplot(
+    yvar = "totalBio",
+    df = quant_df,
+    add_predicted = TRUE,
+    ylab = paste0("Total Biomass (", f, ")"),
+    xlab = paste(f, "of quantile of predictor variable"),
+    title = "Observed vs Predicted totalBio across climate percentiles"
+  )
+  print(g)
+}
+
+```
+
+## 5. Per-PFT Biomass Across Climate
+
+*To be implemented — requires quantile plotting functions.*
+Continue here--NOTE want to create a large matrix of
+predicted biomass by group 
+
+## 5. Partial dependence plots
+
+
+## Session Info
+
+```{r session-info}
+cat("Model file:", p_fit, "\n")
+cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+```
