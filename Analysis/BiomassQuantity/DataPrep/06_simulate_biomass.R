@@ -51,8 +51,8 @@ dat1 <- read_csv(p)
 
 # prep dataframe ----------------------------------------------------------
 
-
-dat4_l <- prepare_d01(data = dat1, cover_suffix = cover_suffix, pfts = pfts)
+dat4_l <- prepare_d01(data = dat1, cover_suffix = cover_suffix, pfts = pfts,
+                      trim_tree_cov = trim_tree_cov)
 
 dat4 <- dat4_l$data
 nrow(dat4)

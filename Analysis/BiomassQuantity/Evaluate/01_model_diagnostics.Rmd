@@ -188,8 +188,6 @@ for (f in c('mean', 'median')) {
 
 ```
 
-## Coefficients
-
 
 ## 5. Per-PFT Biomass Across Climate
 
@@ -240,8 +238,6 @@ lapply(fit$par, round, 2)
 ```{r pdp-total, fig.width=6, fig.height=4}
 pdp_total <- cwexp_pdp(
   fit = fit, data = dat_full,
-  formula = config$model$formula,
-  cover_cols = config$model$cover_cols,
   type = "total"
 )
 
@@ -253,8 +249,6 @@ plot_cwexp_pdp(pdp_total,
 ```{r pdp-pft-weighted, fig.width=12, fig.height=10}
 pdp_weighted <- cwexp_pdp(
   fit = fit, data = dat_full,
-  formula = config$model$formula,
-  cover_cols = config$model$cover_cols,
   type = "by_group",
   weighted = TRUE
 )
@@ -268,8 +262,6 @@ plot_cwexp_pdp(pdp_weighted,
 ```{r pdp-pft-potential, fig.width=12, fig.height=10}
 pdp_potential <- cwexp_pdp(
   fit = fit, data = dat_full,
-  formula = config$model$formula,
-  cover_cols = config$model$cover_cols,
   type = "by_group",
   weighted = FALSE
 )

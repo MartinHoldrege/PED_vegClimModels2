@@ -40,6 +40,11 @@ metric_mae_log <- function(truth, estimate) {
   mean(abs(log(truth) - log(estimate)))
 }
 
+# log(x + 1) scale
+metric_mae_log1p <- function(truth, estimate) {
+  mean(abs(log1p(truth) - log1p(estimate)))
+}
+
 #' RMSE on log scale
 #'
 #' Computes RMSE between log-transformed truth and estimate.
@@ -50,6 +55,11 @@ metric_mae_log <- function(truth, estimate) {
 #' @return Numeric scalar.
 metric_rmse_log <- function(truth, estimate) {
   sqrt(mean((log(truth) - log(estimate))^2))
+}
+
+# log(x + 1) scale
+metric_rmse_log1p <- function(truth, estimate) {
+  sqrt(mean((log1p(truth) - log1p(estimate))^2))
 }
 
 #' Correlation between truth and estimate
@@ -71,11 +81,15 @@ metric_cor <- function(truth, estimate) {
 #' @param metric Character scalar naming the metric.
 #'
 #' @return A function with arguments `truth` and `estimate`.
-get_metric_fun <- function(metric = c("mae_log", "rmse_log", "mae", "rmse", "cor")) {
+get_metric_fun <- function(metric = c("mae_log1p", "rmse_log1p",
+                                      "mae_log", "rmse_log", "mae", 
+                                      "rmse", "cor")) {
   metric <- match.arg(metric)
   
   switch(
     metric,
+    mae_log1p = metric_mae_log1p,
+    rmse_log1p = metric_rmse_log1p,
     mae_log = metric_mae_log,
     rmse_log = metric_rmse_log,
     mae = metric_mae,
@@ -105,7 +119,8 @@ get_metric_fun <- function(metric = c("mae_log", "rmse_log", "mae", "rmse", "cor
 score_fit <- function(fit,
                       newdata,
                       outcome = NULL,
-                      metrics = c("mae_log", "rmse_log"),
+                      metrics = c("mae_log1p", "rmse_log1p",
+                                  "mae_log", "rmse_log"),
                       predict_fun = predict,
                       predict_type = "mu") {
   if (!is.data.frame(newdata)) {
@@ -182,7 +197,8 @@ score_fit_df <- function(fit, newdata, ...) {
 score_path <- function(path_fit,
                        newdata,
                        outcome = NULL,
-                       metrics = c("mae_log", "rmse_log", "mae", "rmse", "cor"),
+                       metrics = c("mae_log1p", "rmse_log1p", "mae_log", 
+                                   "rmse_log", "mae", "rmse", "cor"),
                        predict_fun = predict,
                        predict_type = "mu") {
   if (!is.list(path_fit) || is.null(path_fit$fits) || is.null(path_fit$summary)) {
@@ -227,7 +243,7 @@ score_path <- function(path_fit,
 #' @param metric Character scalar naming the metric column to optimize.
 #'
 #' @return One-row data frame corresponding to the selected lambda.
-select_lambda_min_metric <- function(score_df, metric = "mae_log") {
+select_lambda_min_metric <- function(score_df, metric = "mae_log1p") {
   if (!"lambda" %in% names(score_df)) {
     stop("score_df must contain a 'lambda' column.")
   }
@@ -255,7 +271,7 @@ select_lambda_min_metric <- function(score_df, metric = "mae_log") {
 #'
 #' @return One-row data frame corresponding to the selected lambda.
 select_lambda_within_tol <- function(score_df,
-                                     metric = "mae_log",
+                                     metric = "mae_log1p",
                                      tol = 0) {
   if (!"lambda" %in% names(score_df)) {
     stop("score_df must contain a 'lambda' column.")
@@ -289,7 +305,7 @@ select_lambda_within_tol <- function(score_df,
 #'
 #' @return One-row data frame corresponding to the selected lambda.
 #' @export
-select_lambda_1se <- function(score_df, metric = "mae_log") {
+select_lambda_1se <- function(score_df, metric = "mae_log1p") {
   if (!"lambda" %in% names(score_df)) {
     stop("score_df must contain a 'lambda' column.")
   }
@@ -348,7 +364,7 @@ select_lambda_1se <- function(score_df, metric = "mae_log") {
 #'               tol = 0.02)
 #' @export
 select_lambda <- function(score_df,
-                          metric = "mae_log",
+                          metric = "mae_log1p",
                           rule = c("1se", "min", "largest_within_tol"),
                           tol = 0) {
   rule <- match.arg(rule)
@@ -403,8 +419,11 @@ cv_metrics_df <- function(data, observed = 'observed',
   pred <- data[[predicted]]
   
   metrics_df <- tibble(
-    metric = c("MAE (log)", "RMSE (log)", "MAE", "RMSE", "Correlation", "N"),
+    metric = c("MAE (log1p)", "RMSE (log1p)", "MAE (log)", "RMSE (log)", 
+               "MAE", "RMSE", "Correlation", "N"),
     value = c(
+      metric_mae_log1p(obs, pred),
+      metric_rmse_log1p(obs, pred),
       metric_mae_log(obs, pred),
       metric_rmse_log(obs, pred),
       metric_mae(obs, pred),
@@ -660,4 +679,6 @@ compare_group_to_truth <- function(truth, fits, newdata = NULL,
   
   dplyr::bind_rows(rows)
 }
+
+
 

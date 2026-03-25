@@ -91,7 +91,6 @@ prepare_d01 <- function(data, cover_suffix, pfts, trim_tree_cov = NULL) {
   
   dat4$region <- reg$data
   
-
   # 'cleaning' 
 
   stopifnot(mean(dat4$totalBio == 0) < 0.01) # if there are many zeros that's suspect

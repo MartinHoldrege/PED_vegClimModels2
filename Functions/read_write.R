@@ -31,6 +31,8 @@ read_analysis_ready <- function(opt = NULL, vd = NULL, root = paths$large) {
     data <- readRDS(p)$data
   } else if(v == 'd01') {
     data <- read_prepare_d01(root = root)$data
+  } else if(v == 'd02') {
+    data <- read_prepare_d01(root = root, trim_tree_cov = 0.01)$data
   } else{
     p <- file.path(paths$large, 
                    'Data_processed/BiomassQuantityData/analysis_ready', 
@@ -42,10 +44,12 @@ read_analysis_ready <- function(opt = NULL, vd = NULL, root = paths$large) {
 }
 
 
-read_prepare_d01 <- function(root = paths$large) {
+read_prepare_d01 <- function(root = paths$large,
+                             trim_tree_cov = NULL) {
   p <- file.path(root, 'Data_processed/BiomassQuantityData/', 
                  'GEDIbiomass_modeledCover_clim_soils.csv')
   
   dat1 <- read_csv(p)
-  prepare_d01(dat1, cover_suffix = "Cover_rel",pfts = const$pfts)
+  prepare_d01(dat1, cover_suffix = "Cover_rel",pfts = const$pfts,
+              trim_tree_cov = NULL)
 } 

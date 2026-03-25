@@ -12,8 +12,6 @@
 #'
 #' @param fit Fitted cwexp model object.
 #' @param data Data frame with predictor and cover columns.
-#' @param formula Model formula.
-#' @param cover_cols Character vector of cover column names.
 #' @param focal_vars Character vector of predictor variables to compute PDPs
 #'   for. Default: all main-effect predictors in the formula.
 #' @param n_background Integer; number of background rows to subsample.
@@ -30,16 +28,64 @@
 #' @return A tibble. For `type = "total"`: columns `variable`, `x_value`,
 #'   `yhat`. For `type = "by_group"`: columns `variable`, `x_value`, `PFT`,
 #'   `yhat`.
+#' @examples
+#' # note this is setup up so can steup throught the function
+#' # (i.e. creating all args as objects)
+#' dll_en <- cwexp_tmb_compile("src/cwexp_lognormal_en_tmb.cpp", quiet = TRUE)
+#' set.seed(1)
+#' dummy <- cwexp_make_dummy_data(n = 500)
+#' data <- dummy$data
+#' focal_vars = c("tmean", "ppt")
+#' n_background = 200
+#' n_grid = 20
+#' type = 'total'
+#' seed = 42
+#' weighted = TRUE
+#' fit <- cwexp_fit_tmb(
+#'   data = data,
+#'   formula = formula,
+#'   cover_cols = cover_cols,
+#'   dll = dll_en,
+#'   penalty = "elastic_net",
+#'   en_alpha = 0.5,
+#'   lambda = 0.01
+#' )
+#'
+#' # total biomass PDP
+#' pdp_total <- cwexp_pdp(
+#'   fit = fit, data = data,
+#'   focal_vars = focal_vars,
+#'   n_background = n_background, n_grid = n_grid,
+#'   seed = seed,
+#'   weighted = weighted
+#' )
+#' plot_cwexp_pdp(pdp_total)
+#'
+#' # per-PFT PDP (potential biomass)
+#' pdp_pft <- cwexp_pdp(
+#'   fit = fit, data = data,
+#'   focal_vars = c("tmean", "ppt"),
+#'   n_background = 200, n_grid = 20,
+#'   type = "by_group", weighted = FALSE
+#' )
+#' plot_cwexp_pdp(pdp_pft)  
 #' @export
-cwexp_pdp <- function(fit, data, formula, cover_cols,
-                      focal_vars = NULL,
+cwexp_pdp <- function(fit, data, focal_vars = NULL,
                       n_background = 1000,
-                      n_grid = 100,
+                      n_grid = 50,
                       type = c("total", "by_group"),
                       weighted = TRUE,
                       seed = 42) {
 
   type <- match.arg(type)
+  
+  formula <- fit$spec$formula
+  cover_cols <- fit$spec$cover_cols
+  
+  stopifnot(
+    !is.null(formula),
+    !is.null(cover_cols)
+  )
 
   # default focal vars: main-effect predictors from formula
 
@@ -64,12 +110,8 @@ cwexp_pdp <- function(fit, data, formula, cover_cols,
 
     # grid: percentiles + min/max
     x_obs <- data[[var]]
-    probs <- seq(0, 1, length.out = n_grid)
-    x_grid <- sort(unique(c(
-      min(x_obs, na.rm = TRUE),
-      stats::quantile(x_obs, probs = probs, na.rm = TRUE),
-      max(x_obs, na.rm = TRUE)
-    )))
+    x_grid <- seq(min(x_obs, na.rm = TRUE), 
+                 max(x_obs, na.rm = TRUE), length.out = n_grid)
 
     # for each grid value, substitute into background and predict
     grid_results <- lapply(x_grid, function(x_val) {
@@ -107,11 +149,6 @@ cwexp_pdp <- function(fit, data, formula, cover_cols,
 
   out <- dplyr::bind_rows(results)
 
-  if (type == "by_group") {
-    out$PFT <- factor(out$PFT, levels = pft_labels)
-  }
-
-  out$variable <- factor(out$variable, levels = focal_vars)
   out
 }
 
