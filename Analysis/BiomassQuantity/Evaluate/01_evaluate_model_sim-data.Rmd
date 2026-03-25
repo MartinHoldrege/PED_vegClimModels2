@@ -2,6 +2,10 @@
 title: "Model Evaluation: Simulated Data"
 author: "Martin Holdrege"
 date: "`r Sys.Date()`"
+params:
+  model_version: "m01"
+  data_version: "s02"
+  purer_version: 'p01'
 output:
   html_document:
     toc: true
@@ -31,9 +35,13 @@ library(dplyr)
 theme_set(theme_bw())
 
 # --- load fitted model output ---
-vp <- 'p01' # version of purer selection
-vm <- 'm01' # version of model
-suffix <- paste(opt$vs, vp, vm, sep = '-')
+vm <- params$model_version
+vs <- params$data_version
+vp <- params$purer_version
+
+# this script only works for simulated data where truth is known
+stopifnot(isTRUE(str_detect(vs, '^s')))
+suffix <- paste(vs, vp, vm, sep = '-')
 test_run <- FALSE
 if(test_run) suffix <- 'test_run'
 # created in
@@ -49,7 +57,7 @@ m1 <- readRDS(p_fit)
 p_truth <- file.path(
   paths$large,
   'Data_processed/BiomassQuantityData/simulated',
-  paste0('simBiomass_', opt$vs, '.rds')
+  paste0('simBiomass_', vs, '.rds')
 )
 truth <- readRDS(p_truth)
 
@@ -64,7 +72,7 @@ config <- m1$config
 
 ```{r print-config}
 cat("Model version:", vm, "\n")
-cat("Data version:", opt$vs, "\n")
+cat("Data version:", vs, "\n")
 cat("Formula:", deparse(config$model$formula), "\n")
 cat("Selected lambda:", cv$selected$lambda, "\n")
 cat("Selection rule:", config$cv$select_rule, "\n")
@@ -235,13 +243,7 @@ truth_by_lambda <- path_par |>
       metric_rmse(mu_true, mu_hat)
     })),
     B_rmse = mean(purrr::map_dbl(par, function(p) {
-      aligned_i <- align_B_matrices(truth$par$B,
-                                     {
-                                       B_i <- p$B
-                                       rownames(B_i) <- spec$x_cols %||% rownames(truth$par$B)
-                                       colnames(B_i) <- spec$cover_cols
-                                       B_i
-                                     })
+      aligned_i <- align_B_matrices(truth$par$B, p$B)
       metric_rmse(as.numeric(aligned_i$true), as.numeric(aligned_i$fit))
     })),
     .groups = "drop"

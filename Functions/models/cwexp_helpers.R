@@ -247,7 +247,7 @@ cwexp_mu_by_group <- function(alpha, B, X, C, weighted = TRUE) {
 #' @return N x G matrix of per-group mu values.
 #' @export
 predict_by_group <- function(object, newdata = NULL, weighted = TRUE) {
-  if (inherits(object, "cwexp_dummy" || inherits(object, "cwexp_sim")) 
+  if ((inherits(object, "cwexp_dummy") || inherits(object, "cwexp_sim"))
       && is.null(newdata)) {
     newdata <- object$data
   }

@@ -28,6 +28,18 @@ sigma_pft <- 0.2    # per-PFT linear predictor noise, multiplicative
 sigma_obs <- 0.4     # log-scale observation noise on totalBio, noise is proportional
 sigma_region <- 0.4  # region-level correlated bias on linear predictor, multiplicative
 
+# s01 was part of earlier code and can't be recreated without
+# going back to an older commit
+trim_tree_cov <- NULL
+if(vs == 's02') {
+  intercepts <- c(20, 148, 148, 12, 7, 4) # s02 intercepts
+} else if (vs == 's03') {
+  intercepts <- c(2, 148, 148, 1.2, 0.7, 0.4) # s03 intercepts
+} else if (vs == 's04') {
+  intercepts <- c(2, 148, 148, 1.2, 0.7, 0.4) 
+  trim_tree_cov <- 0.01 # small tree covers become zero
+}
+
 # read in data ------------------------------------------------------------
 
 # file output by
@@ -63,7 +75,7 @@ inter <- purrr::keep(inter, \(x) !is.null(x))
 pred_vars2 <- c(as.list(pred_vars1), inter)
 n <- length(pfts)
 
-intercepts <- c(20, 148, 148, 12, 7, 4)
+
 sd <- intercepts*0.2 # making climate effects proportional to intercept
 
 rcoef <- function() {
@@ -78,7 +90,6 @@ coefs1 <- map(pred_vars2, function(var) {
        coef = coef)
 })
 
-intercepts <- c(20, 148, 148, 12, 7, 4)
 names(intercepts) <- const$pfts
 
 # simulated data -----------------------------------------------------------

@@ -17,17 +17,23 @@ library(future.apply)
 test_run <- FALSE
 pfts <- const$pfts
 cover_cols <- paste0(pfts, "Cov")
+vp <- opt$vp # 'p01'
+vm <- opt$vm # 'm02'
 
 # predictor variables (main effects only for now)
 # vpd and tmean are highly correlated so having both 
 # causes convergence issues
-pred_vars <- c("tmean_CLIM",
-               "precip_CLIM",
-               "PrecipTempCorr_CLIM",
-               "sand")
+model_spec <- model_specs[[vm]]
+stopifnot(vm %in% names(model_specs))
+pred_vars <- model_spec$pred_vars
 
-inter <- list(c("tmean_CLIM", "precip_CLIM"))
-inter <- NULL
+inter <- model_spec$inter
+
+stopifnot(vp %in% names(purer_specs))
+p_spec <- purer_specs[[vp]]
+
+# create formula ---------------------------------------------------------
+
 
 inter_terms <- purrr::map_chr(inter, ~ paste(.x, collapse = ":"))
 all_terms <- c(pred_vars, inter_terms)
@@ -37,7 +43,7 @@ formula_full <- as.formula(
 
 # --- config: all tunable settings in one place ----------------------------
 config <- list(
-  vm = 'm01',
+  vm = vm,
   # model specification
   model = list(
     formula = formula_full,
@@ -46,10 +52,10 @@ config <- list(
   ),
   # purer pixel selection
   purer = list(
-    vp = 'p01', # version of purer selection
+    vp = vp, # version of purer selection
     region_col = "region",
-    q = 0.9,
-    min_raw_cover = 0.05,
+    q = p_spec$q,
+    min_raw_cover = p_spec$min_raw_cover,
     max_n_per_region = NULL,  # NULL = no cap
     seed = 42
   ),
@@ -123,8 +129,7 @@ if(FALSE) {
   # convergence gets harder with more variables
   test_fit <- cwexp_fit_tmb(
     data = dat_train,
-    formula = totalBio ~ tmean_CLIM + precip_CLIM + VPD_mean + PrecipTempCorr_CLIM +
-      sand + tmean_CLIM:precip_CLIM,
+    formula = formula_full,
     cover_cols = config$model$cover_cols,
     dll = dll_en,
     penalty = "elastic_net",
