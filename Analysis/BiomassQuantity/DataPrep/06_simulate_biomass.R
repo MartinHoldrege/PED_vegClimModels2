@@ -38,6 +38,11 @@ if(vs == 's02') {
 } else if (vs == 's04') {
   intercepts <- c(2, 148, 148, 1.2, 0.7, 0.4) 
   trim_tree_cov <- 0.01 # small tree covers become zero
+} else if (vs == 's05') {
+  intercepts <- c(2, 148, 148, 1.2, 0.7, 0.4) 
+  trim_tree_cov <- 0.1 # small tree covers become zero
+} else {
+  stop('simulation version not recognized')
 }
 
 # read in data ------------------------------------------------------------

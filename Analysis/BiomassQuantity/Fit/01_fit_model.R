@@ -71,7 +71,7 @@ config <- list(
   cv = list(
     n_folds = 4,
     en_alpha = 0.5,
-    n_lambda = 15,
+    n_lambda = 10,
     include_zero = TRUE,
     select_rule = "1se",
     select_metric = "mae_log1p",

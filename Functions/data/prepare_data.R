@@ -17,24 +17,10 @@ prepare_d01 <- function(data, cover_suffix, pfts, trim_tree_cov = NULL) {
     filter(!is.na(biomass_MgPerHect)) %>% 
     rename(totalBio = biomass_MgPerHect)
   
-  # set.seed(12)
-  # dat2 <- sample_n(dat2, size = n_sample)
-  if(!is.null(trim_tree_cov)) {
 
-    tree_cols <- c("totalTreeCov", "needleLeavedTreeCov", "broadLeavedTreeCov")
-    stopifnot(trim_tree_cov >=0,
-              trim_tree_cov <= 1,
-              tree_cols %in% names(dat2))
-    for(col in tree_cols) {
-      # make small "noise' values 0
-      dat2[[col]][dat2[[col]] < trim_tree_cov] <- 0
-    }
-    
-  }
-  
   dat3 <- dat2
   # make cover sum to 1 -----------------------------------------------------
-  
+  # fix shouldn't be needed on 'final' data
   cov_cols <- c(paste0(pfts, "Cov"), "bareGroundCov")
   
 
@@ -43,6 +29,24 @@ prepare_d01 <- function(data, cover_suffix, pfts, trim_tree_cov = NULL) {
     mutate(.cov_total = rowSums(across(all_of(cov_cols)), na.rm = TRUE)) %>%
     mutate(across(all_of(cov_cols), ~ .x / .cov_total)) %>%
     select(-.cov_total)
+  
+  if(!'totalTreeCov' %in% cov_cols) {
+    dat4$totalTreeCov <- dat4$needleLeavedTreeCov + dat4$broadLeavedTreeCov
+  }
+  
+  
+  # set.seed(12)
+  # dat2 <- sample_n(dat2, size = n_sample)
+  if(!is.null(trim_tree_cov)) {
+    
+    tree_cols <- c("totalTreeCov", "needleLeavedTreeCov", "broadLeavedTreeCov")
+    stopifnot(trim_tree_cov >=0,
+              trim_tree_cov <= 1,
+              tree_cols %in% names(dat3))
+    
+    # make small "noise' values 0
+    dat4[dat4[["totalTreeCov"]] < trim_tree_cov, tree_cols] <- 0
+  }
   
   
   # normalize potential predictor variables ---------------------------------

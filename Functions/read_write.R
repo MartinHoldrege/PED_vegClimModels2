@@ -33,6 +33,8 @@ read_analysis_ready <- function(opt = NULL, vd = NULL, root = paths$large) {
     data <- read_prepare_d01(root = root)$data
   } else if(v == 'd02') {
     data <- read_prepare_d01(root = root, trim_tree_cov = 0.01)$data
+  } else if(v == 'd03') {
+    data <- read_prepare_d01(root = root, trim_tree_cov = 0.1)$data
   } else{
     p <- file.path(paths$large, 
                    'Data_processed/BiomassQuantityData/analysis_ready', 
@@ -42,7 +44,6 @@ read_analysis_ready <- function(opt = NULL, vd = NULL, root = paths$large) {
   
   data
 }
-
 
 read_prepare_d01 <- function(root = paths$large,
                              trim_tree_cov = NULL) {

@@ -133,3 +133,20 @@ plot_cv_scores <- function(score_summary,
   
   g
 }
+
+# how estimates of alpha change across lambda
+plot_alpha_vs_lambda <- function(path_par) {
+  path_par |> 
+    mutate(alphas = map(par, \(x) {
+      tibble(alpha = x$alpha,
+             pft = names(x$alpha))
+    })) |> 
+    unnest(cols = "alphas")  |> 
+    mutate(fold_id = factor(fold_id)) |> 
+    ggplot(aes(lambda, alpha, color = fold_id)) +
+    geom_point() +
+    geom_line(aes(group = fold_id)) +
+    facet_wrap(~pft,
+               scales = 'free_y') +
+    labs(subtitle = 'Estimates of alphas (intercepts) across lambda')
+}
