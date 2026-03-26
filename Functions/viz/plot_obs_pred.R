@@ -12,10 +12,10 @@ plot_obs_vs_pred <- function(data, observed = 'observed', predicted = 'predicted
     geom_abline(slope = 1, intercept = 0, color = 'red')
   
   g2 <- g1 +
-    scale_y_continuous(trans='log10') +
-    scale_x_continuous(trans = 'log10') +
-    labs(x = 'log10(Observed)',
-         y = 'log10(Predicted)')
+    scale_y_continuous(transform='log1p') +
+    scale_x_continuous(transform ='log1p') +
+    labs(x = 'Observed (log scale)',
+         y = 'Predicted (log scale)')
   
   g1b <- g1 +
     labs(x = 'Observed', y = 'Predicted')
@@ -30,7 +30,7 @@ plot_residual <- function(data, observed = 'observed', predicted = 'predicted',
   size <- if(!is.null(size) && size < nrow(data)) size else nrow(data)
   
   data2 <- data
-  data2$residual <- log10(data2[[observed]]) - log10(data2[[predicted]])
+  data2$residual <- log1p(data2[[observed]]) - log1p(data2[[predicted]])
   data3 <- dplyr::sample_n(data2, size = size)
   g1 <- ggplot(data3, aes(.data[[predicted]],
                           .data$residual))+
@@ -38,14 +38,14 @@ plot_residual <- function(data, observed = 'observed', predicted = 'predicted',
     geom_smooth(se = FALSE) +
     geom_abline(slope = 0, intercept = 0, color = 'red',
                 linetype = 2) +
-    labs(x = 'log10(Predicted)',
-         y = 'residual (log10 scale)',
+    labs(x = 'Predicted',
+         y = 'residual (log1pscale)',
          subtitle = 'Residual vs predicted')
   
   # using full sized data set for histogram (not sampled) 
   g2 <- ggplot(data2, aes(.data$residual))+
     geom_histogram(bins = 100)+
-    labs(x = 'residual (log10 scale)',
+    labs(x = 'residual (log1p scale)',
          subtitle = 'Residual distribution')
   
   g1 + g2

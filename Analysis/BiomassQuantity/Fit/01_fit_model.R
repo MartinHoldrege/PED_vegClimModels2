@@ -17,8 +17,8 @@ library(future.apply)
 test_run <- FALSE
 pfts <- const$pfts
 cover_cols <- paste0(pfts, "Cov")
-vp <- opt$vp # 'p01'
-vm <- opt$vm # 'm02'
+vp <- opt$vp # 
+vm <-  opt$vm #
 
 # predictor variables (main effects only for now)
 # vpd and tmean are highly correlated so having both 
@@ -48,7 +48,8 @@ config <- list(
   model = list(
     formula = formula_full,
     cover_cols = cover_cols,
-    pred_vars = pred_vars
+    pred_vars = pred_vars,
+    dll_path = model_spec$dll_path
   ),
   # purer pixel selection
   purer = list(
@@ -67,14 +68,13 @@ config <- list(
     seed = 1
   ),
   # cross-validation
-  
   cv = list(
     n_folds = 4,
     en_alpha = 0.5,
     n_lambda = 15,
     include_zero = TRUE,
     select_rule = "1se",
-    select_metric = "mae_log",
+    select_metric = "mae_log1p",
     fold_seed = 1
   ),
   # data
@@ -96,8 +96,7 @@ if(test_run) {
 }
 # compile TMB model -------------------------------------------------------
 
-dll_path <- "src/cwexp_lognormal_en_tmb.cpp"
-dll_en <- cwexp_tmb_compile(dll_path, quiet = TRUE)
+dll_en <- cwexp_tmb_compile(config$model$dll_path, quiet = TRUE)
 
 # find purer pixels -------------------------------------------------------
 
@@ -134,7 +133,7 @@ if(FALSE) {
     dll = dll_en,
     penalty = "elastic_net",
     en_alpha = config$cv$en_alpha,
-    lambda = 0.1,
+    lambda = 0.01,
     start = NULL,
     include_report = TRUE,
     control = list(iter.max = 500, eval.max = 5000)
@@ -199,7 +198,7 @@ inner_cv <- run_inner_cv(
   ),
   keep_fold_results = TRUE,
   parallel = TRUE,
-  dll_path = dll_path
+  dll_path = config$model$dll_path
 )
 
 plan(sequential)

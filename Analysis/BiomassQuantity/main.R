@@ -8,12 +8,12 @@ run_model_diagnostics <- TRUE
 run_model_diagnostics_sim <- FALSE
 
 opts_l <- list(
-  vm = 'm02', # version model, m01 matches the formula for simulated data
+  vm = 'm03', # version model, m01 & m03 matches the formula for simulated data
   vs = 's04', # version simulated data
   vd = 'd02', # version data # version d02 has tree cover trimmed at 1%
-  vp = 'p02', # p01 more appropriate for the simulated data, 
+  vp = 'p01', # p01 more appropriate for the simulated data, 
   # p02 better for real (due to size)
-  use_simulated = FALSE # use simulated data
+  use_simulated = TRUE # use simulated data
 )
 
 print(opts_l)
@@ -66,9 +66,8 @@ prms_model_diagnostics <- list(
 
 # *data -------------------------------------------------------------------
 
-if(run_sim) {
-  stopifnot(isTRUE(opts_l$use_simulated))
-  
+if(run_sim & isTRUE(opts_l$use_simulated)) {
+
   callr::rscript("Analysis/BiomassQuantity/DataPrep/06_simulate_biomass.R", 
                  cmdargs = cmdargs)
 }
@@ -87,9 +86,8 @@ if(run_model_diagnostics) {
   render_model_diagnostics(prms = prms_model_diagnostics)
 }
 
-if(run_model_diagnostics_sim) {
-  stopifnot(isTRUE(opts_l$use_simulated))
-  
+if(run_model_diagnostics_sim & isTRUE(opts_l$use_simulated)) {
+
   rmarkdown::render(
     "Analysis/BiomassQuantity/Evaluate/01_evaluate_model_sim-data.Rmd",
     knit_root_dir = knit_root_dir,

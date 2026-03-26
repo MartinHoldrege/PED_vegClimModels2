@@ -1,21 +1,42 @@
 # purpose: create specifications for various model types
 
 # build list as new model version are developed
+
+dll_path1 <- "src/cwexp_lognormal_en_tmb.cpp"
+
+# version that used log1p() in likelihood
+dll_path2 <- "src/cwexp_lognormal_en_tmb2.cpp"
+
 model_specs <- list(
   'm01' = list(
     pred_vars = c("tmean_CLIM",
                   "precip_CLIM",
                   "PrecipTempCorr_CLIM",
                   "sand"),
-    
-    inter = NULL
+    inter = NULL,
+    dll_path = dll_path1
   ),
     'm02' = list(
     pred_vars = c("tmean_CLIM",
                    "precip_CLIM",
                    "PrecipTempCorr_CLIM"),
-    
-    inter = NULL
+    inter = NULL,
+    dll_path = dll_path1
+  ),
+  'm03' = list(
+    pred_vars = c("tmean_CLIM",
+                  "precip_CLIM",
+                  "PrecipTempCorr_CLIM",
+                  "sand"),
+    inter = NULL,
+    dll_path = dll_path2
+  ),
+  'm04' = list(
+    pred_vars = c("tmean_CLIM",
+                  "precip_CLIM",
+                  "PrecipTempCorr_CLIM"),
+    inter = NULL,
+    dll_path = dll_path2
   )
 )
 
