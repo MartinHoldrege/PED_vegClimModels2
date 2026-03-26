@@ -52,5 +52,5 @@ read_prepare_d01 <- function(root = paths$large,
   
   dat1 <- read_csv(p)
   prepare_d01(dat1, cover_suffix = "Cover_rel",pfts = const$pfts,
-              trim_tree_cov = NULL)
+              trim_tree_cov = trim_tree_cov)
 } 

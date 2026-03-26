@@ -16,7 +16,7 @@ source_functions()
 
 # params ------------------------------------------------------------------
 
-pfts <- const$pfts
+pfts <- opt$pfts
 # version of simulation (this script can be expanded 
 # to be able to create multiple versions)
 vs <- opt$vs
@@ -95,7 +95,7 @@ coefs1 <- map(pred_vars2, function(var) {
        coef = coef)
 })
 
-names(intercepts) <- const$pfts
+names(intercepts) <- opt$pfts
 
 # simulated data -----------------------------------------------------------
 # right now biomass of each group perfectly sums to the total model biomass

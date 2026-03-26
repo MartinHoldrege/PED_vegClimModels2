@@ -20,7 +20,11 @@ option_list <- list(
   optparse::make_option("--vm", type = "character", 
                         default = "m01"),
   optparse::make_option("--use_simulated", type = "logical", 
-                        default = FALSE)
+                        default = FALSE),
+  optparse::make_option("--pfts", type = "character", 
+                        default = c("shrub", "needleLeavedTree", 
+                                    "broadLeavedTree", "C3Gram", "C4Gram", 
+                                    "Forb"))
   
 )
 

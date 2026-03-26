@@ -15,7 +15,7 @@ var2factor_factory <- function(levels) {
   }
 }
 
-pft2factor <- var2factor_factory(levels = const$pfts)
+pft2factor <- var2factor_factory(levels = opt$pfts)
 
 
 

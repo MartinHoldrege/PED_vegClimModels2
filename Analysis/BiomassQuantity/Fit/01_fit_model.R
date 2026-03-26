@@ -15,7 +15,7 @@ library(future.apply)
 # params ------------------------------------------------------------------
 
 test_run <- FALSE
-pfts <- const$pfts
+pfts <- opt$pfts
 cover_cols <- paste0(pfts, "Cov")
 vp <- opt$vp # 
 vm <-  opt$vm #

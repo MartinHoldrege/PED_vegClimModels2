@@ -12,7 +12,7 @@ library(patchwork)
 # params ------------------------------------------------------------------
 
 vs <- opt$vs # version of simulated data
-pfts <- const$pfts
+pfts <- opt$pfts
 
 # read in data ------------------------------------------------------------
 

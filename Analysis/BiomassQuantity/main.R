@@ -2,17 +2,17 @@
 
 
 # params ------------------------------------------------------------------
-run_sim <- FALSE # simulate data
+run_sim <- TRUE # simulate data
 run_fit_model <- TRUE
 run_model_diagnostics <- TRUE
-run_model_diagnostics_sim <- FALSE
+run_model_diagnostics_sim <- TRUE
 
 opts_l <- list(
-  vm = 'm04', # version model, m01 & m03 matches the formula for simulated data
+  vm = 'm03', # version model, m01 & m03 matches the formula for simulated data
   vs = 's04', # version simulated data
-  vd = 'd03', # version data # version d02 has tree cover trimmed at 1%
+  vd = 'd02', # version data # version d02 has tree cover trimmed at 1%
   # d03 trimmed at 10%
-  vp = 'p02', # p01 more appropriate for the simulated data, 
+  vp = 'p01', # p01 more appropriate for the simulated data, 
   # p02 better for real (due to size)
   use_simulated = FALSE # use simulated data
 )
