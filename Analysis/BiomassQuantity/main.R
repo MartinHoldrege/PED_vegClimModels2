@@ -2,48 +2,29 @@
 
 source('Functions/constants.R') # for pfts
 source('Functions/models/model_specs.R')
+source('Functions/general.R')
 # params ------------------------------------------------------------------
 run_sim <- FALSE # simulate data
-run_fit_model <- FALSE
-run_model_diagnostics <- FALSE
+run_fit_model <- TRUE
+run_model_diagnostics <- TRUE
 run_model_diagnostics_sim <- TRUE
 
-opts_l <- list(
-  vm = 'm03', # version model, m01 & m03 matches the formula for simulated data
-  vs = 's05', # version simulated data
-  vd = 'd03', # version data # version d02 has tree cover trimmed at 1%
-  # d03 trimmed at 10%
-  vp = 'p01', # p01 more appropriate for the simulated data, 
-  # p02 better for real (due to size)
-  use_simulated = TRUE # use simulated data
-)
 
+# [vs]: data version (s for simulated, d- for real data), 
+#       
+# p for purer version (sampling purer pixels)
+#     p01 more appropriate for the simulated data, (p02 for real data)
+# m for model version
+#     m01 & m03 matches the formula for simulated data
 
-opts_l$pfts <- model_specs[[opts_l$vm]]$pfts
+suffix <- 's06-p01-m03'
+
 # for rmd's
 output_dir <- "Reports/BiomassQuantity/"
 knit_root_dir <- getwd()
 
 # functions ---------------------------------------------------------------
 
-make_suffix <- function(params) {
-  paste(params$data_version, params$purer_version, params$model_version,
-        sep = '-')
-}
-
-create_cmdargs <- function(x) {
-  x <- lapply(x, as.character)
-  list(
-    paste0('--vs=', x$vs),
-    paste0('--vd=', x$vd),
-    paste0('--vp=', x$vp),
-    paste0('--vm=', x$vm),
-    paste0('--use_simulated=', x$use_simulated),
-    paste0('--pfts=', paste(x$pfts, collapse = ","))
-  )
-}
-
-create_cmdargs(opts_l)
 
 render_model_diagnostics <- function(prms) {
   rmarkdown::render(
@@ -55,9 +36,9 @@ render_model_diagnostics <- function(prms) {
   )
 }
 
-
 # setup -----------------------------------------------------------------
 
+opts_l <- create_opts_l(suffix)
 cmdargs <- create_cmdargs(opts_l)
 
 
@@ -77,7 +58,7 @@ if(run_sim & isTRUE(opts_l$use_simulated)) {
                  cmdargs = cmdargs)
 }
 
-# callr::rscript("Analysis/test.R", 
+# callr::rscript("Analysis/test.R",
 #                cmdargs = cmdargs)
 
 # * Fit -------------------------------------------------------------------

@@ -15,7 +15,6 @@ library(future.apply)
 # params ------------------------------------------------------------------
 
 test_run <- FALSE
-cover_cols <- paste0(pfts, "Cov")
 vp <- opt$vp # 
 vm <-  opt$vm #
 vd <- if(opt$use_simulated) opt$vs else opt$vd
@@ -27,10 +26,9 @@ use_simulated <- opt$use_simulated
 model_spec <- model_specs[[vm]]
 stopifnot(vm %in% names(model_specs))
 pred_vars <- model_spec$pred_vars
-
 pfts <- model_spec$pfts
 stopifnot(pfts == opt$pfts)
-
+cover_cols <- paste0(pfts, "Cov")
 inter <- model_spec$inter
 
 stopifnot(vp %in% names(purer_specs))
@@ -93,7 +91,7 @@ control = list(iter.max =  1000, eval.max = 1000) # for optimization
 # read in data ------------------------------------------------------------
 
 # reading output from DataPrep/07_make_analysis_ready.R
-dat1 <- read_analysis_ready(vd)
+dat1 <- read_analysis_ready(vd = vd)
 
 if(test_run) {
   dat1 <- dplyr::sample_n(dat1, 3000)

@@ -54,6 +54,15 @@ model_specs <- list(
     inter = NULL,
     dll_path = dll_path2,
     pfts = pfts2
+  ),
+  'm06' = list(
+    pred_vars = c("tmean_CLIM",
+                  "precip_CLIM",
+                  "PrecipTempCorr_CLIM"),
+    inter = NULL,
+    # testing version that limits alpha to >=0
+    dll_path = "src/cwexp_lognormal_en_tmb3.cpp",
+    pfts = pfts2
   )
 )
 

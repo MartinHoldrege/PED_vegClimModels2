@@ -41,6 +41,15 @@ if(vs == 's02') {
 } else if (vs == 's05') {
   intercepts <- c(2, 148, 148, 1.2, 0.7, 0.4) 
   trim_tree_cov <- 0.1 # small tree covers become zero
+} else if (vs == 's06') {
+  intercepts <- c(2, 148, 148, 1.2, 0.7, 0.4) 
+  trim_tree_cov <- 0.1 # small tree covers become zero
+  # testing version of model that is not 'mis specified'
+  # not sigma by the fited model for s05 was estimated as 0.47
+  # so trying to keep 'total' error similar
+  sigma_pft <- 0    
+  sigma_obs <- 0.5     # log-scale observation noise on totalBio, noise is proportional
+  sigma_region <- 0
 } else {
   stop('simulation version not recognized')
 }

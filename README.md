@@ -16,8 +16,9 @@ s05 100x range, and trees cutoff < 10%
 
 ### Real data
 
-#### Initial version using for testing
+#### Initial version used for testing
 
 d01--no trimming of tree cover
 d02--tree cutoff <1%
 d03--tree cutoff < 10%
+

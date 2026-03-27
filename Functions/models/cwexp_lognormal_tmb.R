@@ -154,6 +154,14 @@ cwexp_fit_tmb <- function(data,
   est <- obj$env$parList(opt$par)
   est$sigma <- exp(est$log_sigma)
   
+  # in this model actually optimizing for
+  # sqrt(sigma)--this is a bit of a hack
+  # to keep estimates >=0
+  if(dll == 'cwexp_lognormal_tmb3') {
+    est$alpha <- est$alpha^2
+  }
+  
+  
   names(est$alpha) <- cover_cols
   rownames(est$B) <- prep$x_cols
   colnames(est$B) <- cover_cols
