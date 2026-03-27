@@ -1,24 +1,25 @@
 # For running other scripts and rendering .rmd docs
 
-
+source('Functions/constants.R') # for pfts
+source('Functions/models/model_specs.R')
 # params ------------------------------------------------------------------
-run_sim <- TRUE # simulate data
-run_fit_model <- TRUE
-run_model_diagnostics <- TRUE
+run_sim <- FALSE # simulate data
+run_fit_model <- FALSE
+run_model_diagnostics <- FALSE
 run_model_diagnostics_sim <- TRUE
 
 opts_l <- list(
   vm = 'm03', # version model, m01 & m03 matches the formula for simulated data
-  vs = 's04', # version simulated data
-  vd = 'd02', # version data # version d02 has tree cover trimmed at 1%
+  vs = 's05', # version simulated data
+  vd = 'd03', # version data # version d02 has tree cover trimmed at 1%
   # d03 trimmed at 10%
   vp = 'p01', # p01 more appropriate for the simulated data, 
   # p02 better for real (due to size)
-  use_simulated = FALSE # use simulated data
+  use_simulated = TRUE # use simulated data
 )
 
-print(opts_l)
 
+opts_l$pfts <- model_specs[[opts_l$vm]]$pfts
 # for rmd's
 output_dir <- "Reports/BiomassQuantity/"
 knit_root_dir <- getwd()
@@ -37,9 +38,12 @@ create_cmdargs <- function(x) {
     paste0('--vd=', x$vd),
     paste0('--vp=', x$vp),
     paste0('--vm=', x$vm),
-    paste0('--use_simulated=', x$use_simulated)
+    paste0('--use_simulated=', x$use_simulated),
+    paste0('--pfts=', paste(x$pfts, collapse = ","))
   )
 }
+
+create_cmdargs(opts_l)
 
 render_model_diagnostics <- function(prms) {
   rmarkdown::render(
@@ -72,6 +76,9 @@ if(run_sim & isTRUE(opts_l$use_simulated)) {
   callr::rscript("Analysis/BiomassQuantity/DataPrep/06_simulate_biomass.R", 
                  cmdargs = cmdargs)
 }
+
+# callr::rscript("Analysis/test.R", 
+#                cmdargs = cmdargs)
 
 # * Fit -------------------------------------------------------------------
 

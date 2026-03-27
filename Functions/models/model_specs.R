@@ -7,6 +7,11 @@ dll_path1 <- "src/cwexp_lognormal_en_tmb.cpp"
 # version that used log1p() in likelihood
 dll_path2 <- "src/cwexp_lognormal_en_tmb2.cpp"
 
+pfts1 <- c("shrub", "needleLeavedTree", "broadLeavedTree", "C3Gram", "C4Gram", 
+           "Forb")
+
+pfts2 <- c("shrub", 'totalTree', 'totalHerbaceous')
+
 model_specs <- list(
   'm01' = list(
     pred_vars = c("tmean_CLIM",
@@ -14,14 +19,16 @@ model_specs <- list(
                   "PrecipTempCorr_CLIM",
                   "sand"),
     inter = NULL,
-    dll_path = dll_path1
+    dll_path = dll_path1,
+    pfts = pfts1
   ),
     'm02' = list(
     pred_vars = c("tmean_CLIM",
                    "precip_CLIM",
                    "PrecipTempCorr_CLIM"),
     inter = NULL,
-    dll_path = dll_path1
+    dll_path = dll_path1,
+    pfts = pfts1
   ),
   'm03' = list(
     pred_vars = c("tmean_CLIM",
@@ -29,14 +36,24 @@ model_specs <- list(
                   "PrecipTempCorr_CLIM",
                   "sand"),
     inter = NULL,
-    dll_path = dll_path2
+    dll_path = dll_path2,
+    pfts = pfts1
   ),
   'm04' = list(
     pred_vars = c("tmean_CLIM",
                   "precip_CLIM",
                   "PrecipTempCorr_CLIM"),
     inter = NULL,
-    dll_path = dll_path2
+    dll_path = dll_path2,
+    pfts = pfts1
+  ),
+  'm05' = list(
+    pred_vars = c("tmean_CLIM",
+                  "precip_CLIM",
+                  "PrecipTempCorr_CLIM"),
+    inter = NULL,
+    dll_path = dll_path2,
+    pfts = pfts2
   )
 )
 

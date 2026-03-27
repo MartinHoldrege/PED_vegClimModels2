@@ -30,8 +30,13 @@ prepare_d01 <- function(data, cover_suffix, pfts, trim_tree_cov = NULL) {
     mutate(across(all_of(cov_cols), ~ .x / .cov_total)) %>%
     select(-.cov_total)
   
+  # correcting the totals
   if(!'totalTreeCov' %in% cov_cols) {
     dat4$totalTreeCov <- dat4$needleLeavedTreeCov + dat4$broadLeavedTreeCov
+  }
+  
+  if(!'totalHerbaceousCov' %in% cov_cols) {
+    dat4$totalHerbaceousCov <- with(dat4, C3GramCov + C4GramCov + ForbCov)
   }
   
   

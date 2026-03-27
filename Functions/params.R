@@ -22,11 +22,12 @@ option_list <- list(
   optparse::make_option("--use_simulated", type = "logical", 
                         default = FALSE),
   optparse::make_option("--pfts", type = "character", 
-                        default = c("shrub", "needleLeavedTree", 
+                        default = paste(c("shrub", "needleLeavedTree", 
                                     "broadLeavedTree", "C3Gram", "C4Gram", 
-                                    "Forb"))
+                                    "Forb"), collapse = ","))
   
 )
 
 opt_parser <-optparse::OptionParser(option_list = option_list)
 opt <- optparse::parse_args(opt_parser)
+opt$pfts <- strsplit(opt$pfts, ",")[[1]]
