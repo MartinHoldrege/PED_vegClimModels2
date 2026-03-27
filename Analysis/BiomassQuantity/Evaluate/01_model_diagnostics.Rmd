@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 params:
   data_version: "d03"
   purer_version: 'p02'
-  model_version: "m04"
+  model_version: "m05"
   # climate vars to bin by in quantile plots (sections 4-5)
   quantile_vars: !r c("tmean_CLIM", "precip_CLIM", "PrecipTempCorr_CLIM")
 output:
@@ -60,6 +60,7 @@ dat_full <- read_analysis_ready(vd = vd)
 mu_hat <- predict(fit, dat_full, type = "mu")
 dat_full$predicted <- mu_hat
 dat_full$observed <- dat_full$totalBio
+set.seed(123)
 ```
 
 ```{r print-config}
@@ -67,8 +68,9 @@ cat("Model version:", vm, "\n")
 cat("Data version:", vd, "\n")
 cat("Sampling (purer) version:", vp, '\n')
 cat("Formula:", deparse(config$model$formula), "\n")
+cat("Cover variables:", deparse(config$model$cover_cols), "\n")
 cat("EN alpha:", config$cv$en_alpha, "\n")
-cat("Selected lambda:", round(cv$selected$lambda, 5), "\n")
+cat("Selected lambda:", signif(cv$selected$lambda, 3), "\n")
 cat("Selection rule:", config$cv$select_rule, "\n")
 cat("N training (purer pixels):", m1$purer$n_selected, "\n")
 cat("N full data:", nrow(dat_full), "\n")
@@ -151,6 +153,12 @@ plot_residual(dat_full)
 
 ```
 
+
+```{r residual-ll, fig.width=10, fig.height=4.5}
+plot_loglik(dat_full, fit, log1p_x = FALSE, size = 1e5)
+plot_loglik(dat_full, fit, log1p_x = TRUE, size = 1e5)
+
+```
 ## 4. Total Biomass Across Climate (Quantile Plots)
 
 Mean observed and predicted total biomass within percentile bins of each

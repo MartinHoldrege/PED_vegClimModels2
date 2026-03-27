@@ -12,13 +12,13 @@ option_list <- list(
                         default = "s03"),
   # version of the real data ('vd' = version Data)
   optparse::make_option("--vd", type = "character", 
-                        default = "d01"),
+                        default = "d03"),
   # purer selection version 
   optparse::make_option("--vp", type = "character", 
-                        default = "p01"),
+                        default = "p02"),
   # model version
   optparse::make_option("--vm", type = "character", 
-                        default = "m01"),
+                        default = "m04"),
   optparse::make_option("--use_simulated", type = "logical", 
                         default = FALSE),
   optparse::make_option("--pfts", type = "character", 

@@ -15,10 +15,11 @@ library(future.apply)
 # params ------------------------------------------------------------------
 
 test_run <- FALSE
-pfts <- opt$pfts
 cover_cols <- paste0(pfts, "Cov")
 vp <- opt$vp # 
 vm <-  opt$vm #
+vd <- if(opt$use_simulated) opt$vs else opt$vd
+use_simulated <- opt$use_simulated
 
 # predictor variables (main effects only for now)
 # vpd and tmean are highly correlated so having both 
@@ -26,6 +27,9 @@ vm <-  opt$vm #
 model_spec <- model_specs[[vm]]
 stopifnot(vm %in% names(model_specs))
 pred_vars <- model_spec$pred_vars
+
+pfts <- model_spec$pfts
+stopifnot(pfts == opt$pfts)
 
 inter <- model_spec$inter
 
@@ -79,8 +83,8 @@ config <- list(
   ),
   # data
   data = list(
-    version = if(opt$use_simulated) opt$vs else opt$vd,
-    use_simulated = opt$use_simulated
+    version = vd,
+    use_simulated = use_simulated
   )
 )
 
@@ -89,7 +93,7 @@ control = list(iter.max =  1000, eval.max = 1000) # for optimization
 # read in data ------------------------------------------------------------
 
 # reading output from DataPrep/07_make_analysis_ready.R
-dat1 <- read_analysis_ready(opt)
+dat1 <- read_analysis_ready(vd)
 
 if(test_run) {
   dat1 <- dplyr::sample_n(dat1, 3000)
@@ -133,7 +137,7 @@ if(FALSE) {
     dll = dll_en,
     penalty = "elastic_net",
     en_alpha = config$cv$en_alpha,
-    lambda = 0.01,
+    lambda = 1.300821e-05,
     start = NULL,
     include_report = TRUE,
     control = list(iter.max = 500, eval.max = 5000)

@@ -267,3 +267,45 @@ predict_by_group <- function(object, newdata = NULL, weighted = TRUE) {
     weighted = weighted
   )
 }
+
+
+#' Compute per-observation log-likelihood for a cwexp model
+#'
+#' Computes the log-likelihood contribution of each observation under the
+#' lognormal model. Supports both the standard `log(y) ~ Normal(log(mu), sigma^2)`
+#' and the shifted `log(y+1) ~ Normal(log(mu+1), sigma^2)` formulations.
+#'
+#' @param fit Fitted cwexp model object (class `cwexp_tmb_fit`).
+#' @param data Data frame with predictor, cover, and response columns.
+#' @param response Character; name of the observed response column.
+#'   Default, determined from fit by default
+#' @param shift Numeric; value added before taking log. Default 1 for the
+#'   `log(y+1)` formulation. Use 0 for the standard `log(y)` formulation.
+#'
+#' @return A numeric vector of per-observation log-likelihood values (length N).
+#' @examples
+#' # dll_en <- cwexp_tmb_compile("src/cwexp_lognormal_en_tmb.cpp", quiet = TRUE)
+#' # dummy <- cwexp_make_dummy_data(n = 500)
+#' # fit <- cwexp_fit_tmb(dummy$data, dummy$spec$formula,
+#' #                      dummy$spec$cover_cols, dll = dll_en,
+#' #                      penalty = "elastic_net", en_alpha = 0.5, lambda = 0)
+#' # ll <- cwexp_loglik(fit, dummy$data)
+#' # plot(predict(fit, dummy$data), ll)
+#' @export
+cwexp_loglik <- function(fit, data, response = NULL, shift = NULL) {
+  
+  if (is.null(response)) {
+    stopifnot(length(fit$spec$formula) == 3)
+    response <-  fit$spec$formula[2] |> as.character()
+  }
+  stopifnot(response %in% names(data))
+  
+  y <- data[[response]]
+  mu <- predict(fit, data, type = "mu")
+  sigma <- fit$par$sigma
+  
+  log_y  <- log(y + shift)
+  log_mu <- log(mu + shift)
+  
+  dnorm(log_y, mean = log_mu, sd = sigma, log = TRUE)
+}
