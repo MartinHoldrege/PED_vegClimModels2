@@ -78,22 +78,22 @@ model_specs <- list(
       exclude_cols = c('totalTreeCov', 'shrubCov'),
       max_cover = c(0.1, 0.1)  # threshold for "absent"
     )),
-    'm08' = list(
-      pred_vars = c("tmean_CLIM",
-                    "precip_CLIM",
-                    "PrecipTempCorr_CLIM",
-                    "sand"),
-      inter = NULL,
-      # testing version that limits alpha to >=0
-      dll_path = dll_path2,
-      pfts = pfts1,
-      fix_alpha_pfts = c("C3Gram", "C4Gram", "Forb"),
-      fix_alpha_filter = list(
-        # columns to require near-zero for the subset
-        exclude_cols = c('totalTreeCov', 'shrubCov'),
-        # usually fit to data where cover is pre-trimmed
-        max_cover = c(0.01, 0.01)  # threshold for "absent"
-    ))
+  'm08' = list(
+    pred_vars = c("tmean_CLIM",
+                  "precip_CLIM",
+                  "PrecipTempCorr_CLIM",
+                  "sand"),
+    inter = NULL,
+    # testing version that limits alpha to >=0
+    dll_path = dll_path2,
+    pfts = pfts1,
+    fix_alpha_pfts = c("C3Gram", "C4Gram", "Forb"),
+    fix_alpha_filter = list(
+      # columns to require near-zero for the subset
+      exclude_cols = c('totalTreeCov', 'shrubCov'),
+      # usually fit to data where cover is pre-trimmed
+      max_cover = c(0.1, 0.1)  # threshold for "absent"
+  ))
 )
 
 # for sampling purer pixels

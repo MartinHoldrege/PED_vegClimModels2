@@ -1,0 +1,367 @@
+---
+title: "Data Exploration & Purer Sample Diagnostics"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  data_version: "d02"
+  purer_version: "p02"
+  filter_vars: !r c("precip_CLIM", "tmean_CLIM")
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.width = 10, fig.height = 6)
+```
+
+## Purpose
+
+Explore the input data and evaluate the effect of purer pixel selection.
+Raw data sections are cached to avoid redundant computation when only the
+purer selection changes.
+
+## Setup
+
+```{r source-and-load}
+source("Functions/init.R")
+source_functions()
+
+vd <- params$data_version
+vp <- params$purer_version
+
+pfts <- opt$pfts
+cover_cols <- paste0(pfts, "Cov")
+pft_labels <- pfts
+
+# --- load full data ---
+dat_full <- read_analysis_ready(vd = vd)
+
+cat("Data version:", vd, "\n")
+cat("N rows:", nrow(dat_full), "\n")
+cat("Cover columns:", paste(cover_cols, collapse = ", "), "\n")
+```
+
+# Part 1: Raw Data {.tabset}
+
+## 1.1 Cover Distributions
+
+```{r cover-histograms, fig.height=8, cache=TRUE}
+cover_long <- dat_full |>
+  select(all_of(cover_cols)) |>
+  pivot_longer(everything(), names_to = "PFT", values_to = "cover") |>
+  mutate(PFT = stringr::str_remove(PFT, "Cov$"),
+         PFT = factor(PFT, levels = pft_labels))
+
+ggplot(cover_long, aes(x = cover)) +
+  geom_histogram(bins = 50, fill = "steelblue", color = "white") +
+  facet_wrap(~ PFT, scales = "free_y") +
+  labs(x = "Cover fraction", y = "Count",
+       title = "Cover distribution per PFT")
+```
+
+```{r cover-near-zero, cache=TRUE}
+# fraction of pixels with very low cover per PFT
+thresholds <- c(0.01, 0.05, 0.10)
+near_zero <- expand.grid(PFT = pft_labels, threshold = thresholds) |>
+  rowwise() |>
+  mutate(
+    frac_below = mean(dat_full[[paste0(PFT, "Cov")]] < threshold)
+  ) |>
+  ungroup() |>
+  pivot_wider(names_from = threshold, values_from = frac_below,
+              names_prefix = "below_")
+
+knitr::kable(near_zero, digits = 3,
+             caption = "Fraction of pixels with cover below threshold")
+```
+
+## 1.2 PFT Dominance
+
+```{r pft-dominance, cache=TRUE}
+# which PFT has highest cover in each pixel?
+cover_mat <- as.matrix(dat_full[, cover_cols])
+colnames(cover_mat) <- pft_labels
+dominant <- pft_labels[apply(cover_mat, 1, which.max)]
+
+dom_df <- tibble(dominant_PFT = factor(dominant, levels = pft_labels))
+
+ggplot(dom_df, aes(x = dominant_PFT)) +
+  geom_bar(fill = "steelblue") +
+  labs(x = "Dominant PFT", y = "Count",
+       title = "Which PFT has the highest cover in each pixel?") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+## 1.3 Tree Cover vs Other PFTs
+
+```{r tree-vs-others, fig.height=8, cache=TRUE}
+tree_cols <- cover_cols[grepl("Tree", cover_cols)]
+non_tree_cols <- setdiff(cover_cols, tree_cols)
+
+# total tree cover
+dat_full$total_tree_cover <- rowSums(dat_full[, tree_cols])
+
+tree_vs_other <- dat_full |>
+  select(total_tree_cover, all_of(non_tree_cols)) |>
+  pivot_longer(-total_tree_cover, names_to = "PFT", values_to = "cover") |>
+  mutate(PFT = stringr::str_remove(PFT, "Cov$"))
+
+ggplot(tree_vs_other, aes(x = total_tree_cover, y = cover)) +
+  geom_hex(bins = 50) +
+  scale_fill_viridis_c(trans = "log10") +
+  facet_wrap(~ PFT, scales = "free_y") +
+  labs(x = "Total tree cover", y = "Cover of other PFT",
+       title = "Tree cover vs other PFT cover")
+```
+
+## 1.3 Tree Cover vs Other PFTs
+
+```{r shrub-vs-others, fig.height=8, cache=TRUE}
+shrub_cols <- 'shrubCov'
+non_shrub_cols <- setdiff(cover_cols, shrub_cols)
+
+# total shrub cover
+dat_full$total_shrub_cover <- rowSums(dat_full[, shrub_cols])
+
+shrub_vs_other <- dat_full |>
+  select(total_shrub_cover, all_of(non_shrub_cols)) |>
+  pivot_longer(-total_shrub_cover, names_to = "PFT", values_to = "cover") |>
+  mutate(PFT = stringr::str_remove(PFT, "Cov$"))
+
+ggplot(shrub_vs_other, aes(x = total_shrub_cover, y = cover)) +
+  geom_hex(bins = 50) +
+  scale_fill_viridis_c(trans = "log10") +
+  facet_wrap(~ PFT, scales = "free_y") +
+  labs(x = "Total shrub cover", y = "Cover of other PFT",
+       title = "shrub cover vs other PFT cover")
+```
+
+## 1.4 Total Biomass vs Cover
+
+```{r bio-vs-cover, fig.height=8, cache=TRUE}
+bio_cover <- dat_full |>
+  select(totalBio, all_of(cover_cols)) |>
+  pivot_longer(-totalBio, names_to = "PFT", values_to = "cover") |>
+  mutate(PFT = stringr::str_remove(PFT, "Cov$"),
+         PFT = factor(PFT, levels = pft_labels))
+
+ggplot(bio_cover, aes(x = cover, y = totalBio)) +
+  geom_hex(bins = 50) +
+  scale_fill_viridis_c(trans = "log10") +
+  facet_wrap(~ PFT, scales = "free") +
+  labs(x = "Cover fraction", y = "Total Biomass (Mg/ha)",
+       title = "Total biomass vs PFT cover")
+```
+
+## 1.5 Biomass Across Climate (Quantile Plots)
+
+```{r bio-quantiles, fig.width=10, fig.height=6, cache=TRUE}
+pred_vars_explore <- c("tmean_CLIM", "precip_CLIM", "PrecipTempCorr_CLIM", "sand")
+
+quant_bio <- predvars2deciles(
+  df = dat_full,
+  response_vars = "totalBio",
+  pred_vars = pred_vars_explore
+)
+
+decile_dotplot(
+  yvar = "totalBio",
+  df = quant_bio,
+  add_predicted = FALSE,
+  ylab = "Total Biomass (Mg/ha)",
+  title = "Observed total biomass across climate (raw data)"
+)
+```
+
+## 1.6 Biomass Across Climate — Filtered
+
+Observed biomass vs climate, split by wet/dry (or other filter variables).
+
+```{r bio-quantiles-filtered, fig.width=10, fig.height=8, cache=TRUE}
+filter_vars <- params$filter_vars
+
+# plot biomass vs each climate var, filtered by each filter var
+for (fv in filter_vars) {
+  pred_vars_filt <- setdiff(pred_vars_explore, fv)
+  
+  quant_filt <- predvars2deciles(
+    df = dat_full,
+    response_vars = "totalBio",
+    pred_vars = pred_vars_filt,
+    filter_var = TRUE,
+    filter_vars = fv
+  )
+  
+  # simple filtered plot
+  g <- ggplot(quant_filt, aes(x = mean_value, y = totalBio,
+                               color = percentile_category)) +
+    geom_point(size = 0.5) +
+    facet_wrap(~ name, scales = "free_x") +
+    labs(x = "Mean of climate quantile",
+         y = "Total Biomass (Mg/ha)",
+         title = paste("Total biomass across climate, filtered by", fv),
+         color = paste(fv, "percentile")) +
+    theme(legend.position = "top")
+  
+  print(g)
+}
+```
+
+# Part 2: Purer Sample Diagnostics {.tabset}
+
+```{r load-purer}
+# load the fitted model object which contains purer info
+# (or re-run purer selection here if you want to test new settings)
+# For now, re-run purer selection with stored config
+
+p_spec <- purer_specs[[vp]]
+purer <- select_purer_by_region(
+  dat = dat_full,
+  cover_vars = cover_cols,
+  region_col = "region",
+  q = p_spec$q,
+  min_raw_cover = p_spec$min_raw_cover,
+  seed = 42
+)
+
+dat_purer <- purer$data
+
+cat("Purer version:", vp, "\n")
+cat("N selected:", nrow(dat_purer), "\n")
+cat("N full:", nrow(dat_full), "\n")
+cat("Selection rate:", round(nrow(dat_purer) / nrow(dat_full), 3), "\n")
+```
+
+## 2.1 Selection Summary
+
+```{r purer-summary}
+cat("Thresholds per PFT per region:\n")
+print(purer$thresholds)
+
+# n selected per PFT
+if ("selected_for" %in% names(dat_purer)) {
+  purer_by_pft <- dat_purer |>
+    count(selected_for) |>
+    mutate(frac = n / sum(n))
+  
+  knitr::kable(purer_by_pft, caption = "Pixels selected per PFT")
+}
+```
+
+## 2.2 Cover Distributions: Purer vs Full
+
+```{r cover-purer-vs-full, fig.height=8}
+cover_purer_long <- dat_purer |>
+  select(all_of(cover_cols)) |>
+  pivot_longer(everything(), names_to = "PFT", values_to = "cover") |>
+  mutate(source = "Purer",
+         PFT = stringr::str_remove(PFT, "Cov$"),
+         PFT = factor(PFT, levels = pft_labels))
+
+cover_full_long <- cover_long |>
+  mutate(source = "Full")
+
+cover_compare <- bind_rows(cover_full_long, cover_purer_long)
+
+ggplot(cover_compare, aes(x = cover, fill = source)) +
+  geom_histogram(bins = 50, position = "identity", alpha = 0.5) +
+  facet_wrap(~ PFT, scales = "free_y") +
+  scale_fill_manual(values = c("Full" = "grey60", "Purer" = "steelblue")) +
+  labs(x = "Cover fraction", y = "Count",
+       title = "Cover distributions: full data vs purer sample",
+       fill = "Dataset")
+```
+
+## 2.3 Non-Focal PFT Cover in Purer Subsets
+
+For each PFT's purer subset: how much cover of other PFTs remains?
+This is the key diagnostic for identifiability.
+
+```{r nonfocal-cover, fig.height=10}
+if ("selected_for" %in% names(dat_purer)) {
+  
+  nonfocal_list <- lapply(cover_cols, function(focal_col) {
+    focal_label <- stringr::str_remove(focal_col, "Cov$")
+    subset_rows <- dat_purer$selected_for == focal_col |
+      dat_purer$selected_for == focal_label
+    
+    if (sum(subset_rows, na.rm = TRUE) == 0) return(NULL)
+    
+    other_cols <- setdiff(cover_cols, focal_col)
+    
+    dat_purer[subset_rows, other_cols, drop = FALSE] |>
+      pivot_longer(everything(), names_to = "other_PFT",
+                   values_to = "cover") |>
+      mutate(focal_PFT = focal_label,
+             other_PFT = stringr::str_remove(other_PFT, "Cov$"))
+  })
+  
+  nonfocal_df <- bind_rows(nonfocal_list) |>
+    mutate(focal_PFT = factor(focal_PFT, levels = pft_labels),
+           other_PFT = factor(other_PFT, levels = pft_labels))
+  
+  ggplot(nonfocal_df, aes(x = other_PFT, y = cover)) +
+    geom_boxplot(fill = "steelblue", alpha = 0.5, outlier.size = 0.3) +
+    facet_wrap(~ focal_PFT, labeller = label_both) +
+    labs(x = "Other PFT", y = "Cover in focal PFT's purer subset",
+         title = "Non-focal PFT cover within each purer subset") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+## 2.4 Climate Coverage: Purer vs Full
+
+```{r climate-purer-vs-full, fig.height=6}
+clim_vars <- c("tmean_CLIM", "precip_CLIM", "PrecipTempCorr_CLIM", "sand")
+clim_vars <- clim_vars[clim_vars %in% names(dat_full)]
+
+clim_full <- dat_full |>
+  select(all_of(clim_vars)) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "value") |>
+  mutate(source = "Full")
+
+clim_purer <- dat_purer |>
+  select(all_of(clim_vars)) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "value") |>
+  mutate(source = "Purer")
+
+clim_compare <- bind_rows(clim_full, clim_purer)
+
+ggplot(clim_compare, aes(x = value, fill = source)) +
+  geom_density(alpha = 0.4) +
+  facet_wrap(~ variable, scales = "free") +
+  scale_fill_manual(values = c("Full" = "grey60", "Purer" = "steelblue")) +
+  labs(x = "Value", y = "Density",
+       title = "Climate coverage: full data vs purer sample",
+       fill = "Dataset")
+```
+
+## 2.5 Biomass Distribution: Purer vs Full
+
+```{r bio-purer-vs-full}
+bio_compare <- bind_rows(
+  tibble(totalBio = dat_full$totalBio, source = "Full"),
+  tibble(totalBio = dat_purer$totalBio, source = "Purer")
+)
+
+ggplot(bio_compare, aes(x = log(totalBio), fill = source)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("Full" = "grey60", "Purer" = "steelblue")) +
+  labs(x = "log(Total Biomass)", y = "Density",
+       title = "Biomass distribution: full data vs purer sample",
+       fill = "Dataset")
+```
+
+## Session Info
+
+```{r session-info}
+cat("Data version:", vd, "\n")
+cat("Purer version:", vp, "\n")
+cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+```

@@ -15,12 +15,20 @@ source_functions()
 
 vd <- 's07'
 vp <- 'p01'
-vm <- 'm03'
+vm <- 'm08'
 
 m_spec <- model_specs[[vm]]
 p_spec <- purer_specs[[vp]]
 
 n_reps <- 20
+
+# whether to pre-estimate and fix alphas (mirrors 01_fit_model.R)
+fix_alpha_pfts <- m_spec$fix_alpha_pfts       # NULL if not applicable
+fix_alpha_filter <- m_spec$fix_alpha_filter   # NULL if not applicable
+
+use_lambda = TRUE
+
+suffix <- paste(vd, vp, vm, sep = '-')
 # setup -------------------------------------------------------------------
 
 
@@ -33,6 +41,23 @@ pred_vars <- d$spec$pred_vars
 cover_cols <- d$spec$cover_cols
 formula_full <- d$spec$formula
 dat_base <- d$data
+
+if (use_lambda) {
+  p_mod <- file.path(paths$large,
+                     'Data_processed/BiomassQuantityData/Fit',
+                     paste0('fitted_model_', suffix, '.rds')
+  )
+  mod <- readRDS(p_mod)
+  lambda <- mod$fit$spec$lambda
+  en_alpha <- mod$fit$spec$en_alpha
+  if(lambda == 0) {
+    warning('selected lambda is 0, no need to seperately run for the
+            selected lambda')
+  }
+} else {
+  lambda = 0
+  en_alph = 0.5
+}
 
 # making sure that if we label output
 # w/ the model version, that is correct (i.e)
@@ -64,7 +89,7 @@ dll <- cwexp_tmb_compile(m_spec$dll_path, quiet = TRUE)
 results <- vector("list", n_reps)
 
 for (i in seq_len(n_reps)) {
-  cat("Rep", i, "of", n_reps, "...")
+  cat("Rep", i, "of", n_reps, "...\n")
 
   # generate new data with different noise (same X, C, true params)
   set.seed(i * 100)
@@ -90,15 +115,42 @@ for (i in seq_len(n_reps)) {
     seed = 123 # same seed so same purer selection
   )
   
+  # pre-estimate fixed alphas if configured
+  fixed_alpha_i <- NULL
+  if (!is.null(fix_alpha_pfts)) {
+    dat_alpha_i <- filter_for_alpha(
+      data = dat_i,
+      exclude_cols = fix_alpha_filter$exclude_cols,
+      max_cover = fix_alpha_filter$max_cover
+    )
+    
+    fix_cover_cols <- paste0(fix_alpha_pfts, "Cov")
+    
+    alpha_prefit_i <- cwexp_fit_tmb(
+      data = dat_alpha_i,
+      formula = totalBio ~ 1,
+      cover_cols = fix_cover_cols,
+      dll = dll,
+      penalty = "elastic_net",
+      en_alpha = 0.5,
+      lambda = 0,
+      include_report = FALSE,
+      control = list(iter.max = 1000, eval.max = 1000)
+    )
+    
+    fixed_alpha_i <- alpha_prefit_i$par$alpha
+  }
+  
   # fit at lambda = 0 (pure MLE)
   fit_i <- cwexp_fit_tmb(
       data = data_i_purer$data,
       formula = formula_full,
       cover_cols = cover_cols,
       dll = dll,
+      fixed_alpha = fixed_alpha_i,
       penalty = "elastic_net",
-      en_alpha = 0.5,
-      lambda = 0,
+      en_alpha = en_alpha,
+      lambda = lambda,
       include_report = FALSE,
       control = list(iter.max = 1000, eval.max = 1000)
     )
@@ -120,10 +172,21 @@ res_df <- dplyr::bind_rows(results)
 
 # save --------------------------------------------------------------------
 
+lambda_string <- if(use_lambda) {
+  '_reg' 
+} else {
+  ''
+}
+
+p_out <- file.path(paths$large,
+                   "Data_processed/BiomassQuantityData/Fit",
+                   paste0("param_bias_experiment_", suffix,
+                          lambda_string, ".rds"))
+
 saveRDS(list(results = res_df,
              true_par = d$par, 
-             spec = d$spec),
-        file.path(paths$large,
-                  "Data_processed/BiomassQuantityData/Fit",
-                  paste0("param_bias_experiment_", vd, '-', vp, '-',
-                         vm, ".rds")))
+             spec = c(d$spec, list(lambda = lambda, en_alpha = en_alpha)),
+             fix_alpha_pfts = fix_alpha_pfts,
+             fix_alpha_filter = fix_alpha_filter),
+        file = p_out
+        )
