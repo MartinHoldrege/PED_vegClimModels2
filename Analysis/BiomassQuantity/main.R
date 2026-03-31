@@ -4,7 +4,7 @@ source('Functions/constants.R') # for pfts
 source('Functions/models/model_specs.R')
 source('Functions/general.R')
 # params ------------------------------------------------------------------
-run_sim <- FALSE # simulate data
+run_sim <- TRUE # simulate data
 run_fit_model <- TRUE
 run_model_diagnostics <- TRUE
 run_model_diagnostics_sim <- TRUE
@@ -17,7 +17,7 @@ run_model_diagnostics_sim <- TRUE
 # m for model version
 #     m01 & m03 matches the formula for simulated data
 
-suffix <- 's06-p01-m03'
+suffix <- 'd04-p02-m07' # 's07-p01-m03' # 's07-p01-m08'# 'd03-p02-m06' # 's06-p01-m03'
 
 # for rmd's
 output_dir <- "Reports/BiomassQuantity/"

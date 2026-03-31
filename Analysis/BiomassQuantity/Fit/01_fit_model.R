@@ -51,7 +51,9 @@ config <- list(
     formula = formula_full,
     cover_cols = cover_cols,
     pred_vars = pred_vars,
-    dll_path = model_spec$dll_path
+    dll_path = model_spec$dll_path,
+    fix_alpha_pfts = model_spec$fix_alpha_pfts,      
+    fix_alpha_filter = model_spec$fix_alpha_filter     
   ),
   # purer pixel selection
   purer = list(
@@ -123,6 +125,36 @@ cat("\n")
 
 print(check_collinearity(data = dat_train, formula = config$model$formula))
 
+# pre-estimate fixed alphas -----------------------------------------------
+
+if (!is.null(config$model$fix_alpha_pfts)) {
+  dat_alpha <- filter_for_alpha(
+    data = dat1,
+    exclude_cols = config$model$fix_alpha_filter$exclude_cols,
+    max_cover = config$model$fix_alpha_filter$max_cover
+  )
+  
+  fix_cover_cols <- paste0(config$model$fix_alpha_pfts, "Cov")
+  
+  alpha_prefit <- cwexp_fit_tmb(
+    data = dat_alpha,
+    formula = totalBio ~ 1,
+    cover_cols = fix_cover_cols,
+    dll = dll_en,
+    penalty = "elastic_net",
+    en_alpha = 0.5,
+    lambda = 0,
+    control = control
+  )
+  
+  fixed_alpha <- alpha_prefit$par$alpha
+  cat("Fixed alphas:\n")
+  print(fixed_alpha)
+} else {
+  dat_alpha <- NULL
+  fixed_alpha <- NULL
+}
+
 # testing convergence -----------------------------------------------------
 
 if(FALSE) {
@@ -137,10 +169,12 @@ if(FALSE) {
     en_alpha = config$cv$en_alpha,
     lambda = 1.300821e-05,
     start = NULL,
+    fixed_alpha = fixed_alpha,
     include_report = TRUE,
     control = list(iter.max = 500, eval.max = 5000)
   )
   test_fit$tmb$opt$convergence
+  test_fit$par
 }
 
 # create environmental clusters and CV folds ------------------------------
@@ -190,6 +224,7 @@ inner_cv <- run_inner_cv(
   fit_path_args = list(
     formula = config$model$formula,
     cover_cols = config$model$cover_cols,
+    fixed_alpha = fixed_alpha,              
     dll = dll_en,
     include_report = FALSE,
     control = list(iter.max = 500, eval.max = 500)
@@ -228,6 +263,7 @@ global_fit <- cwexp_fit_tmb(
   en_alpha = config$cv$en_alpha,
   lambda = selected_lambda,
   start = start,
+  fixed_alpha = fixed_alpha,
   include_report = FALSE,
   control = list(iter.max = 1000, eval.max = 500)
 )
@@ -248,12 +284,16 @@ out <- list(
     selection_summary = purer$selection_summary,
     n_selected = nrow(dat_train)
   ),
+  alpha_prefit = if (!is.null(fixed_alpha)) list(
+    fixed_alpha = fixed_alpha,
+    n_pixels = nrow(dat_alpha),
+    convergence = alpha_prefit$tmb$opt$convergence
+  ) else NULL,
   clustering = list(
     k = config$clustering$k,
     vars = config$clustering$vars
   )
 )
-
 
 suffix <- if(test_run) {
   'test_run'

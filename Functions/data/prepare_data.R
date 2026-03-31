@@ -9,7 +9,8 @@
 # trim_tree_cov--provide a proportional cover of trees below it's considered
 # 0 (i.e. none zero tree predictions are leaking into areas
 # where there probably aren't trees)
-prepare_d01 <- function(data, cover_suffix, pfts, trim_tree_cov = NULL) {
+prepare_d01 <- function(data, cover_suffix, pfts, trim_tree_cov = NULL,
+                        trim_shrub_cov = NULL) {
   dat2 <- data %>% 
     # for consistent downstream naming
     rename_with(.fn = \(x) str_replace(x, cover_suffix, 'Cov'),
@@ -53,6 +54,10 @@ prepare_d01 <- function(data, cover_suffix, pfts, trim_tree_cov = NULL) {
     dat4[dat4[["totalTreeCov"]] < trim_tree_cov, tree_cols] <- 0
   }
   
+  if(!is.null(trim_shrub_cov)) {
+    # make small "noise' values 0
+    dat4$shrubCov[dat4$shrubCov < trim_shrub_cov] <- 0
+  }
   
   # normalize potential predictor variables ---------------------------------
   

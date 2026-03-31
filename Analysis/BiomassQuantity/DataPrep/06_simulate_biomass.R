@@ -31,6 +31,7 @@ sigma_region <- 0.4  # region-level correlated bias on linear predictor, multipl
 # s01 was part of earlier code and can't be recreated without
 # going back to an older commit
 trim_tree_cov <- NULL
+trim_shrub_cov <- NULL
 if(vs == 's02') {
   intercepts <- c(20, 148, 148, 12, 7, 4) # s02 intercepts
 } else if (vs == 's03') {
@@ -50,7 +51,17 @@ if(vs == 's02') {
   sigma_pft <- 0    
   sigma_obs <- 0.5     # log-scale observation noise on totalBio, noise is proportional
   sigma_region <- 0
-} else {
+}  else if (vs == 's07') {
+  intercepts <- c(2, 148, 148, 1.2, 0.7, 0.4) 
+  trim_tree_cov <- 0.1 # small tree covers become zero
+  trim_shrub_cov <- 0.1
+  # testing version of model that is not 'mis specified'
+  # not sigma by the fited model for s05 was estimated as 0.47
+  # so trying to keep 'total' error similar
+  sigma_pft <- 0    
+  sigma_obs <- 0.5     # log-scale observation noise on totalBio, noise is proportional
+  sigma_region <- 0 
+  }else {
   stop('simulation version not recognized')
 }
 
@@ -66,7 +77,8 @@ dat1 <- read_csv(p)
 # prep dataframe ----------------------------------------------------------
 
 dat4_l <- prepare_d01(data = dat1, cover_suffix = cover_suffix, pfts = pfts,
-                      trim_tree_cov = trim_tree_cov)
+                      trim_tree_cov = trim_tree_cov, 
+                      trim_shrub_cov = trim_shrub_cov)
 
 dat4 <- dat4_l$data
 nrow(dat4)

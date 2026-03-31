@@ -88,7 +88,7 @@ select_purer_by_region <- function(dat,
     all(cover_vars %in% names(dat)),
     all(grepl("Cov", cover_vars)),
     region_col %in% names(dat),
-    is.numeric(q), length(q) == 1, q > 0, q < 1,
+    is.numeric(q), length(q) == 1, q >= 0, q < 1,
     is.numeric(min_raw_cover), length(min_raw_cover) == 1,
     min_raw_cover >= 0, min_raw_cover <= 1
   )
@@ -100,6 +100,11 @@ select_purer_by_region <- function(dat,
   }
   
   dat <- dplyr::as_tibble(dat)
+  
+  # i.e. no 'filtering'
+  if(q == 0) {
+    return(dat)
+  }
   
   # --- row IDs -------------------------------------------------------------
   if (is.null(id_col)) {
@@ -208,4 +213,62 @@ select_purer_by_region <- function(dat,
 }
 
 
+#' Filter data for alpha pre-estimation
+#'
+#' Identifies pixels where specified cover variables are below a threshold
+#' (e.g., tree-free pixels for estimating herbaceous alphas).
+#'
+#' @param data Data frame with cover columns.
+#' @param exclude_cols Character vector of cover column names that should
+#'   be near-zero in the output subset.
+#' @param max_cover Numeric; either length 1 (same threshold for all
+#'   exclude_cols) or same length as exclude_cols (per-column thresholds).
+#'
+#' @return A filtered data frame containing only rows where all excluded
+#'   cover columns are at or below their threshold.
+#' @examples
+#' # pixels with essentially no trees
+#' herb_pixels <- filter_for_alpha(
+#'   data = dat_train,
+#'   exclude_cols = c("needleLeavedTreeCov", "broadLeavedTreeCov"),
+#'   max_cover = 0.01
+#' )
+#'
+#' # different thresholds per column
+#' herb_pixels <- filter_for_alpha(
+#'   data = dat_train,
+#'   exclude_cols = c("needleLeavedTreeCov", "broadLeavedTreeCov", "shrubCov"),
+#'   max_cover = c(0.01, 0.01, 0.05)
+#' )
+#' @export
+filter_for_alpha <- function(data, exclude_cols, max_cover,
+                             verbose = FALSE) {
+  stopifnot(is.data.frame(data),
+            all(exclude_cols %in% names(data)))
+  
+  if (length(max_cover) == 1) {
+    max_cover <- rep(max_cover, length(exclude_cols))
+  }
+  stopifnot(length(max_cover) == length(exclude_cols))
+  
+  mask <- rep(TRUE, nrow(data))
+  for (j in seq_along(exclude_cols)) {
+    mask <- mask & data[[exclude_cols[j]]] <= max_cover[j]
+  }
+  
+  out <- data[mask, , drop = FALSE]
+  
+  if (nrow(out) == 0) {
+    stop("No pixels remain after filtering. Consider relaxing max_cover.")
+  }
+  
+  if(verbose) {
+    cat("filter_for_alpha:\n")
+    cat("  Filters:", paste(exclude_cols, "<=", max_cover, collapse = ", "), "\n")
+    cat("  N input:", nrow(data), "\n")
+    cat("  N output:", nrow(out), "\n")
+  }
 
+  
+  out
+}

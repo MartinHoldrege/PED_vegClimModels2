@@ -81,6 +81,7 @@ cwexp_fit_tmb <- function(data,
                           cover_cols,
                           dll = 'cwexp_lognormal_tmb',
                           start = NULL,
+                          fixed_alpha = NULL,
                           eps_mu = 1e-12,
                           control = list(iter.max = 200, eval.max = 200),
                           include_gradient = TRUE,
@@ -131,10 +132,30 @@ cwexp_fit_tmb <- function(data,
     data_tmb$l1_eps   <- as.numeric(l1_eps)
   } 
   
+  # dealing with fixed alphas (when previously estimated on a different/subset 
+  # of the data)
+  # ----- fix selected alphas if requested -----
+  map <- list()
+  if (!is.null(fixed_alpha)) {
+    stopifnot(is.numeric(fixed_alpha),
+              !is.null(names(fixed_alpha)),
+              all(names(fixed_alpha) %in% cover_cols))
+    
+    fix_idx <- match(names(fixed_alpha), cover_cols)
+    parameters$alpha[fix_idx] <- fixed_alpha
+    
+    map_vec <- rep(NA_integer_, length(cover_cols))
+    free_idx <- setdiff(seq_along(cover_cols), fix_idx)
+    map_vec[free_idx] <- seq_along(free_idx)
+    map$alpha <- factor(map_vec)
+  }
+  
+  
   # ----- build AD object -----
   obj <- TMB::MakeADFun(
     data = data_tmb,
     parameters = parameters,
+    map = map, # (empty list when nothing is fixed)
     DLL = dll,
     silent = TRUE
   )
@@ -185,7 +206,8 @@ cwexp_fit_tmb <- function(data,
       penalty = penalty,
       en_alpha = if (penalty == "elastic_net") en_alpha else NULL,
       lambda   = if (penalty == "elastic_net") lambda else NULL,
-      l1_eps   = if (penalty == "elastic_net") l1_eps else NULL
+      l1_eps   = if (penalty == "elastic_net") l1_eps else NULL,
+      fixed_alpha = fixed_alpha
     ),
     prep = list(x_cols = prep$x_cols, outcome = prep$outcome, terms = prep$terms),
     par  = list(alpha = est$alpha, B = est$B, sigma = est$sigma),
@@ -353,6 +375,15 @@ if (FALSE) {
     control = list(iter.max = 200, eval.max = 200)
   )
   
+  fit_intercept_only <- cwexp_fit_tmb(
+    data = dat,
+    formula = totalBio ~ 1,
+    cover_cols = cover_cols,
+    dll = dll,
+    control = list(iter.max = 200, eval.max = 200)
+  )
+  
+  plot(fit$par$alpha, fit_intercept_only$par$alpha)
   fit$par$sigma
   
   # 3) predict

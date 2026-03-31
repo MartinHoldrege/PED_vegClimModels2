@@ -63,7 +63,37 @@ model_specs <- list(
     # testing version that limits alpha to >=0
     dll_path = "src/cwexp_lognormal_en_tmb3.cpp",
     pfts = pfts2
-  )
+  ),
+  'm07' = list(
+    pred_vars = c("tmean_CLIM",
+                  "precip_CLIM",
+                  "PrecipTempCorr_CLIM"),
+    inter = NULL,
+    # testing version that limits alpha to >=0
+    dll_path = dll_path2,
+    pfts = pfts2,
+    fix_alpha_pfts = c('totalHerbaceous'),
+    fix_alpha_filter = list(
+      # columns to require near-zero for the subset
+      exclude_cols = c('totalTreeCov', 'shrubCov'),
+      max_cover = c(0.1, 0.1)  # threshold for "absent"
+    )),
+    'm08' = list(
+      pred_vars = c("tmean_CLIM",
+                    "precip_CLIM",
+                    "PrecipTempCorr_CLIM",
+                    "sand"),
+      inter = NULL,
+      # testing version that limits alpha to >=0
+      dll_path = dll_path2,
+      pfts = pfts1,
+      fix_alpha_pfts = c("C3Gram", "C4Gram", "Forb"),
+      fix_alpha_filter = list(
+        # columns to require near-zero for the subset
+        exclude_cols = c('totalTreeCov', 'shrubCov'),
+        # usually fit to data where cover is pre-trimmed
+        max_cover = c(0.01, 0.01)  # threshold for "absent"
+    ))
 )
 
 # for sampling purer pixels
@@ -75,6 +105,10 @@ purer_specs = list(
   ),
   'p02' = list(
     q = 0.98,
+    min_raw_cover = 0.05
+  ),
+  'p03' = list(
+    q = 0,
     min_raw_cover = 0.05
   )
 )

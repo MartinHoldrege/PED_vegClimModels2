@@ -13,9 +13,9 @@ source_functions()
 
 # params ------------------------------------------------------------------
 
-vd <- 's06'
+vd <- 's07'
 vp <- 'p01'
-vm <- 'm01'
+vm <- 'm03'
 
 m_spec <- model_specs[[vm]]
 p_spec <- purer_specs[[vp]]

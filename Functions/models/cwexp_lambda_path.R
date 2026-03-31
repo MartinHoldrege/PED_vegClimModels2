@@ -175,6 +175,7 @@ cwexp_fit_lambda_path_tmb <- function(data,
                                       lambda_seq,
                                       start = NULL,
                                       l1_eps = 1e-8,
+                                      fixed_alpha = NULL,
                                       control = list(iter.max = 200, eval.max = 200),
                                       include_report = TRUE) {
   
@@ -204,6 +205,7 @@ cwexp_fit_lambda_path_tmb <- function(data,
       cover_cols = cover_cols,
       dll = dll,
       start = current_start,
+      fixed_alpha = fixed_alpha,
       penalty = "elastic_net",
       en_alpha = en_alpha,
       lambda = lam,
@@ -239,7 +241,8 @@ cwexp_fit_lambda_path_tmb <- function(data,
       dll = dll,
       en_alpha = en_alpha,
       lambda_seq = lambda_seq,
-      l1_eps = l1_eps
+      l1_eps = l1_eps,
+      fixed_alpha = fixed_alpha
     ),
     summary = summary_df,
     fits = fits
