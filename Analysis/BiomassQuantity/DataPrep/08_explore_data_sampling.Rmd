@@ -69,14 +69,14 @@ thresholds <- c(0.01, 0.05, 0.10)
 near_zero <- expand.grid(PFT = pft_labels, threshold = thresholds) |>
   rowwise() |>
   mutate(
-    frac_below = mean(dat_full[[paste0(PFT, "Cov")]] < threshold)
+    frac_below = mean(dat_full[[paste0(PFT, "Cov")]] < threshold)*100
   ) |>
   ungroup() |>
   pivot_wider(names_from = threshold, values_from = frac_below,
               names_prefix = "below_")
 
 knitr::kable(near_zero, digits = 3,
-             caption = "Fraction of pixels with cover below threshold")
+             caption = "%of pixels with cover below threshold")
 ```
 
 ## 1.2 PFT Dominance

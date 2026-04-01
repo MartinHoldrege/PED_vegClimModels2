@@ -284,13 +284,13 @@ predict_by_group <- function(object, newdata = NULL, weighted = TRUE) {
 #'
 #' @return A numeric vector of per-observation log-likelihood values (length N).
 #' @examples
-#' # dll_en <- cwexp_tmb_compile("src/cwexp_lognormal_en_tmb.cpp", quiet = TRUE)
-#' # dummy <- cwexp_make_dummy_data(n = 500)
-#' # fit <- cwexp_fit_tmb(dummy$data, dummy$spec$formula,
-#' #                      dummy$spec$cover_cols, dll = dll_en,
-#' #                      penalty = "elastic_net", en_alpha = 0.5, lambda = 0)
-#' # ll <- cwexp_loglik(fit, dummy$data)
-#' # plot(predict(fit, dummy$data), ll)
+#' dll_en <- cwexp_tmb_compile("src/cwexp_lognormal_en_tmb.cpp", quiet = TRUE)
+#' dummy <- cwexp_make_dummy_data(n = 500)
+#' fit <- cwexp_fit_tmb(dummy$data, dummy$spec$formula,
+#'                      dummy$spec$cover_cols, dll = dll_en,
+#'                      penalty = "elastic_net", en_alpha = 0.5, lambda = 0)
+#' ll <- cwexp_loglik(fit, dummy$data)
+#' plot(predict(fit, dummy$data), ll)
 #' @export
 cwexp_loglik <- function(fit, data, response = NULL, shift = NULL) {
   
@@ -308,4 +308,103 @@ cwexp_loglik <- function(fit, data, response = NULL, shift = NULL) {
   log_mu <- log(mu + shift)
   
   dnorm(log_y, mean = log_mu, sd = sigma, log = TRUE)
+}
+
+
+# predict using raster input ----------------------------------------------
+
+#' Predict total biomass from a cwexp model onto a raster
+#'
+#' Computes `mu = sum_g(C_g * softplus(alpha_g + X * beta_g))` using raster
+#' math. The input raster must have named layers matching the predictor
+#' variables and cover columns in the fitted model. Predictor layers should
+#' be pre-standardized to match the training data scale.
+#'
+#' @param fit Fitted cwexp model object (`cwexp_tmb_fit`).
+#' @param rast A `SpatRaster` (terra) with named layers including all
+#'   predictor variables (from `fit$prep$x_cols`) and all cover columns
+#'   (from `fit$spec$cover_cols`).
+#' @param type Character; `"total"` (default) returns a single-layer
+#'   SpatRaster of total predicted biomass. `"by_group"` returns a
+#'   multi-layer SpatRaster with one layer per PFT (cover-weighted).
+#'   `"potential"` returns a multi-layer SpatRaster of per-PFT biomass
+#'   at 100% cover (softplus(eta) without cover weighting).
+#'
+#' @return A `SpatRaster`.
+#' @examples
+#' dummy <- cwexp_make_dummy_data(n = 500)
+#' dll <- cwexp_tmb_compile("src/cwexp_lognormal_en_tmb2.cpp", quiet = TRUE)
+#' fit <- cwexp_fit_tmb(dummy$data, dummy$spec$formula,
+#'                      dummy$spec$cover_cols, dll = dll,
+#'                      penalty = "elastic_net", en_alpha = 0.5, lambda = 0)
+#' rast <- create_dummy_raster(fit)
+#' type = "total"
+#' pred <- predict_raster(fit, rast, type = type)
+#' terra::plot(pred)
+#' @export
+predict_raster <- function(fit, rast,
+                           type = c("total", "by_group", "potential")) {
+  
+  type <- match.arg(type)
+  
+  stopifnot(inherits(rast, "SpatRaster"),
+            str_detect(class(fit), 'cwexp'))
+  
+  x_cols <- fit$prep$x_cols
+  cover_cols <- fit$spec$cover_cols
+  alpha <- fit$par$alpha
+  B <- fit$par$B
+  
+  required_layers <- c(x_cols, cover_cols)
+  missing <- setdiff(required_layers, names(rast))
+  if (length(missing) > 0) {
+    stop("Missing layers in raster: ", paste(missing, collapse = ", "))
+  }
+  
+  G <- length(cover_cols)
+  P <- length(x_cols)
+  
+  # compute eta_g = alpha_g + sum_p(X_p * B_pg) for each group
+  # then softplus(eta_g), then optionally multiply by cover_g
+  
+  # helper: safe softplus for rasters
+  r_softplus <- function(r) {
+    terra::ifel(r > 20, r, log1p(exp(r)))
+  }
+  
+  # compute per-group contributions
+  group_layers <- vector("list", G)
+  for (g in seq_len(G)) {
+    # start with alpha_g
+    eta_g <- terra::rast(rast[[1]])  # template
+    terra::values(eta_g) <- alpha[g]
+    
+    # add predictor contributions
+    for (p in seq_len(P)) {
+      eta_g <- eta_g + rast[[x_cols[p]]] * B[p, g]
+    }
+    
+    sp_g <- r_softplus(eta_g)
+    
+    if (type == "potential") {
+      group_layers[[g]] <- sp_g
+    } else {
+      group_layers[[g]] <- rast[[cover_cols[g]]] * sp_g
+    }
+  }
+  
+  names(group_layers) <- cover_cols
+  group_layers <- terra::rast(group_layers)
+  if (type == "total") {
+    # sum across groups
+    out2 <- terra::app(group_layers, fun = 'sum')
+    names(out) <- paste('predicted', fit$prep$outcome, sep = "_")
+    return(out)
+  }
+  
+  # by_group or potential: stack into multi-layer raster
+  out <- group_layers
+  pft_labels <- stringr::str_remove(cover_cols, "Cov$")
+  names(out) <- pft_labels
+  out
 }

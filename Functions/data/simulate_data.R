@@ -393,4 +393,62 @@ cwexp_make_dummy_data <- function(n = 500,
 
 # 
 #
-
+#' Create a dummy multi-layer SpatRaster for testing
+#'
+#' Generates a small raster with named layers matching the predictor and
+#' cover columns of a fitted cwexp model (or `cwexp_dummy` object). Predictor
+#' values are drawn from N(0,1) (matching standardized training data); cover
+#' values are drawn from Exp(rate=8) then normalized so total cover <= 1,
+#' matching the distribution used by `cwexp_make_dummy_data()`.
+#'
+#' @param fit Fitted cwexp model object, or a `cwexp_dummy`/`cwexp_sim` object.
+#'   Used to determine layer names.
+#' @param nrow Integer; number of rows in the raster.
+#' @param ncol Integer; number of columns in the raster.
+#' @param seed Integer; random seed.
+#'
+#' @return A `SpatRaster` with layers for all predictors and cover columns.
+#' @examples
+#' dummy <- cwexp_make_dummy_data(n = 500)
+#' r <- create_dummy_raster(dummy)
+#' @export
+create_dummy_raster <- function(fit, nrow = 50, ncol = 100, seed = 42) {
+  
+  stopifnot(requireNamespace("terra", quietly = TRUE))
+  
+  set.seed(seed)
+  
+  x_cols <- fit$prep$x_cols
+  cover_cols <- fit$spec$cover_cols
+  n_cells <- nrow * ncol
+  G <- length(cover_cols)
+  
+  # template raster
+  make_layer <- function() {
+    terra::rast(nrows = nrow, ncols = ncol,
+                xmin = 0, xmax = ncol, ymin = 0, ymax = nrow)
+  }
+  
+  layers <- list()
+  
+  # predictor layers: standardized (mean 0, sd 1)
+  for (col in x_cols) {
+    r <- make_layer()
+    terra::values(r) <- rnorm(n_cells)
+    layers[[col]] <- r
+  }
+  
+  # cover layers: rexp(rate=8), normalized so total <= 1
+  # matches cwexp_make_dummy_data() distribution
+  cover_mat <- matrix(rexp(n_cells * G, rate = 8),
+                      nrow = n_cells, ncol = G)
+  tot <- rowSums(cover_mat)
+  cover_mat <- cover_mat / ifelse(tot > 1, tot, 1)
+  
+  for (g in seq_len(G)) {
+    r <- make_layer()
+    terra::values(r) <- cover_mat[, g]
+    layers[[cover_cols[g]]] <- r
+  }
+  terra::rast(layers)
+}
