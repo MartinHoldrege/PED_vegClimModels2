@@ -9,7 +9,8 @@
 #'
 #' @returns
 #' dataframe
-read_analysis_ready <- function(opt = NULL, vd = NULL, root = paths$large) {
+read_analysis_ready <- function(opt = NULL, vd = NULL, root = paths$large,
+                                only_dataframe = TRUE) {
   stopifnot(is.list(opt) | is.character(vd),
             is.null(opt) | c('use_simulated', 'vs', 'vd') %in% names(opt),
             dir.exists(root),
@@ -28,24 +29,24 @@ read_analysis_ready <- function(opt = NULL, vd = NULL, root = paths$large) {
     
     p <- file.path(paths$large, 'Data_processed/BiomassQuantityData/simulated',
                     paste0('simBiomass_', v, '.rds'))
-    data <- readRDS(p)$data
+    obj <- readRDS(p) 
   } else if(v == 'd01') {
-    data <- read_prepare_d01(root = root)$data
+    obj <- read_prepare_d01(root = root) 
   } else if(v == 'd02') {
-    data <- read_prepare_d01(root = root, trim_tree_cov = 0.01)$data
+    obj <- read_prepare_d01(root = root, trim_tree_cov = 0.01) 
   } else if(v == 'd03') {
-    data <- read_prepare_d01(root = root, trim_tree_cov = 0.1)$data
+    obj <- read_prepare_d01(root = root, trim_tree_cov = 0.1) 
   } else if(v == 'd04') {
-    data <- read_prepare_d01(root = root, trim_tree_cov = 0.1,
-                             trim_shrub_cov = 0.1)$data
+    obj <- read_prepare_d01(root = root, trim_tree_cov = 0.1,
+                             trim_shrub_cov = 0.1) 
   } else{
-    p <- file.path(paths$large, 
-                   'Data_processed/BiomassQuantityData/analysis_ready', 
-                   paste0('biomass_', v, '.rds'))
-    data <- readRDS(p)
+    stop('function not updated to read in provided data version')
   }
   
-  data
+  if(only_dataframe) {
+    return(obj$data)
+  }
+  obj
 }
 
 read_prepare_d01 <- function(root = paths$large,

@@ -115,3 +115,96 @@ prepare_d01 <- function(data, cover_suffix, pfts, trim_tree_cov = NULL,
   list(data = dat4,
        scale = scale_df)
 }
+
+
+#' Convert standardized (z-score) variables back to original scale
+#'
+#' @param data Data frame containing standardized columns.
+#' @param scale_df Data frame with columns `variable`, `mean`, `sd` — the
+#'   standardization parameters used to create the z-scores.
+#' @param vars Character vector of column names to back-convert. Default:
+#'   all variables present in both `data` and `scale_df`.
+#'
+#' @return The input data frame with specified columns back on their
+#'   original scale.
+#' @examples
+#' df <- data.frame(tmean = c(-1, 0, 1), precip = c(0.5, -0.5, 0))
+#' scale_df <- data.frame(
+#'   variable = c("tmean", "precip"),
+#'   mean = c(10, 500),
+#'   sd = c(5, 200)
+#' )
+#' unstandardize(df, scale_df)
+#' @export
+unstandardize <- function(data, scale_df, vars = NULL) {
+  stopifnot(all(c("variable", "mean", "sd") %in% names(scale_df)))
+  
+  if (is.null(vars)) {
+    vars <- intersect(names(data), scale_df$variable)
+  }
+  stopifnot(all(vars %in% names(data)),
+            all(vars %in% scale_df$variable))
+  
+  for (v in vars) {
+    row <- scale_df[scale_df$variable == v, ]
+    data[[v]] <- data[[v]] * row$sd + row$mean
+  }
+  
+  data
+}
+
+
+#' Back-transform z-scored values in long format
+#'
+#' Reverse z-score standardization for a long-format data frame where
+#' variable names are stored in a column rather than as separate columns.
+#' Rows with variable names not found in `scale_df` are dropped with a
+#' warning.
+#'
+#' @param data Data frame with a column of variable names and a column of
+#'   standardized values.
+#' @param scale_df Data frame with columns `variable`, `mean`, `sd`.
+#' @param name_col Character; column in `data` containing variable names.
+#'   Default `"name"`.
+#' @param value_col Character; column in `data` containing z-scored values.
+#'   Default `"mean_value"`.
+#'
+#' @return The input data frame with `value_col` back on the original scale.
+#'   Rows with variable names absent from `scale_df` are excluded.
+#' @examples
+#' df <- data.frame(
+#'   name = c("tmean", "tmean", "precip", "precip"),
+#'   mean_value = c(-1, 1, -0.5, 0.5)
+#' )
+#' scale_df <- data.frame(
+#'   variable = c("tmean", "precip"),
+#'   mean = c(10, 500),
+#'   sd = c(5, 200)
+#' )
+#' unstandardize_long(df, scale_df)
+#' @export
+unstandardize_long <- function(data, scale_df,
+                               name_col = "name",
+                               value_col = "mean_value") {
+  stopifnot(
+    all(c("variable", "mean", "sd") %in% names(scale_df)),
+    name_col %in% names(data),
+    value_col %in% names(data)
+  )
+  
+  unmatched <- setdiff(unique(data[[name_col]]), scale_df$variable)
+  if (length(unmatched) > 0) {
+    warning("Dropping rows with variables not in scale_df: ",
+            paste(unmatched, collapse = ", "))
+    data <- data[!data[[name_col]] %in% unmatched, ]
+  }
+  
+  data <- dplyr::left_join(data, scale_df, by = setNames("variable", name_col))
+  
+  data[[value_col]] <- data[[value_col]] * data[["sd"]] + data[["mean"]]
+  
+  data[["mean"]] <- NULL
+  data[["sd"]] <- NULL
+  
+  data
+}

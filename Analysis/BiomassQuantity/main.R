@@ -6,10 +6,10 @@ source('Functions/general.R')
 # params ------------------------------------------------------------------
 run_sim <- FALSE # simulate data
 run_fit_model <- FALSE
-run_model_diagnostics <- FALSE
+run_model_diagnostics <- TRUE
 run_model_diagnostics_sim <- FALSE
 
-run_explore_dat_samp <- TRUE
+run_explore_dat_samp <- FALSE
 
 # [vs]: data version (s for simulated, d- for real data), 
 #       
@@ -18,8 +18,9 @@ run_explore_dat_samp <- TRUE
 # m for model version
 #     m01 & m03 matches the formula for simulated data
 
-suffix <- 's07-p01-m08' # 'd04-p02-m05'
+# 's07-p01-m08' # 'd04-p02-m05'
 #'d04-p02-m07' # 's07-p01-m03' # 'd03-p02-m06' # 's06-p01-m03'
+suffixes <- c('d04-p02-m07', 'd04-p02-m05')
 
 # for exploring data sampling
 suffixes_data <- c('d02-p02', 'd04-p02') # for plots looking input data
@@ -41,6 +42,7 @@ render_model_diagnostics <- function(prms) {
   )
 }
 
+for (suffix in suffixes) {
 # setup -----------------------------------------------------------------
 
 opts_l <- create_opts_l(suffix)
@@ -93,7 +95,7 @@ if(run_model_diagnostics_sim & isTRUE(opts_l$use_simulated)) {
   )
 }
 
-
+}
 # data prep exploration -------------------------------------------------------
 
 if(run_explore_dat_samp) {

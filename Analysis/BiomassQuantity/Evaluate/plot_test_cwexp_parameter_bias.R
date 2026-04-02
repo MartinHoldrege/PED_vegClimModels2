@@ -8,7 +8,7 @@ vd <- 's07'
 vp <- 'p01'
 vm <- 'm08'
 
-use_lambda <- TRUE 
+use_lambda <- TRUE
 # reading in data ---------------------------------------------------------
 
 suffix <- paste0(vd, '-', vp, '-',vm)
@@ -55,10 +55,10 @@ results_B <- results |>
 # alpha recovery
 g <- plot_alpha_recovery(obj$results) +
   labs(caption = paste0('Models fit w/ lambda =', signif(lambda, digits = 2),
-                        '\n', suffix2))
+                        '\n', suffix))
 
 p_out <- paste0("Figures/BiomassQuantity/simulated/alpha_recovery_", 
-                suffix, '.png')
+                suffix2, '.png')
 ggsave(filename = p_out,
        plot = g,
        height = 7, width = 5)
@@ -70,9 +70,9 @@ g2 <- ggplot(results_B, aes(B_true, B_est, group = B_true)) +
   geom_abline(slope = 1) +
   labs(subtitle = 'Beta recovery across replicate simulations of data',
        caption = paste0('Models fit w/ lambda =', signif(lambda, digits = 2),
-                       '\n', suffix2))
+                       '\n', suffix))
 p_out2 <- paste0("Figures/BiomassQuantity/simulated/beta_recovery_", 
-                suffix, '.png')
+                suffix2, '.png')
 ggsave(filename = p_out2,
        plot = g2,
        height = 4, width = 5)

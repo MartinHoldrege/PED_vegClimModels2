@@ -16,7 +16,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+knitr::opts_chunk$set(echo = TRUE, message = FALSE,
                       fig.width = 8, fig.height = 5)
 ```
 
@@ -54,14 +54,21 @@ cv <- m1$cv
 config <- m1$config
 
 # --- load full dataset ---
-dat_full <- read_analysis_ready(vd = vd)
-
+obj <- read_analysis_ready(vd = vd, only_dataframe = FALSE)
+dat_full <- obj$data
+scale_df <- obj$scale
 # --- predictions on full data ---
 mu_hat <- predict(fit, dat_full, type = "mu")
 dat_full$predicted <- mu_hat
 dat_full$observed <- dat_full$totalBio
 set.seed(123)
 ```
+
+```{r}
+# creat version back transformed from z-scores
+dat_full_orig <- unstandardize(dat_full, scale_df)
+```
+
 
 ```{r print-config}
 cat("Model version:", vm, "\n")
@@ -168,7 +175,7 @@ predictor variable.
 quantile_vars <- params$quantile_vars
 
 # decile functions expect yvar and yvar_pred naming convention
-dat_quant <- dat_full |>
+dat_quant <- dat_full_orig |>
   dplyr::rename(totalBio_pred = predicted)
 ```
 
@@ -212,7 +219,10 @@ quant_weighted <- pft_quantile_summary(
   summary_fun = 'median'
 )
 
-plot_pft_quantiles(quant_weighted,
+quant_weighted_orig <- unstandardize_long(data = quant_weighted, scale_df = scale_df,
+                                          name_col = 'name', value_col = 'mean_value')
+  
+plot_pft_quantiles(quant_weighted_orig,
                    title = "Per-PFT biomass across climate (cover-weighted)")
 
 ```
@@ -226,11 +236,13 @@ quant_potential <- pft_quantile_summary(
   cover_cols = config$model$cover_cols,
   pred_vars = params$quantile_vars,
   weighted = FALSE
-)
+) |> 
+  unstandardize_long(scale_df = scale_df)
 
 plot_pft_quantiles(quant_potential,
                    title = "Per-PFT potential biomass across climate (if cover = 100%)",
                    ylab = "Potential biomass (if cover = 100%)")
+
 ```
 
 ## Cofficients
@@ -251,7 +263,9 @@ lapply(fit$par, round, 2)
 pdp_total <- cwexp_pdp(
   fit = fit, data = dat_full,
   type = "total"
-)
+) |> 
+  unstandardize_long(scale_df, name_col = 'variable',
+                     value_col = 'x_value')
 
 plot_cwexp_pdp(pdp_total,
                title = "Partial dependence: total biomass")
@@ -263,7 +277,9 @@ pdp_weighted <- cwexp_pdp(
   fit = fit, data = dat_full,
   type = "by_group",
   weighted = TRUE
-)
+)|> 
+  unstandardize_long(scale_df, name_col = 'variable',
+                     value_col = 'x_value')
 
 plot_cwexp_pdp(pdp_weighted,
                title = "Partial dependence: per-PFT biomass (cover-weighted)")
@@ -276,7 +292,9 @@ pdp_potential <- cwexp_pdp(
   fit = fit, data = dat_full,
   type = "by_group",
   weighted = FALSE
-)
+)|> 
+  unstandardize_long(scale_df, name_col = 'variable',
+                     value_col = 'x_value')
 
 plot_cwexp_pdp(pdp_potential,
                title = "Partial dependence: per-PFT potential biomass (cover = 100%)",
