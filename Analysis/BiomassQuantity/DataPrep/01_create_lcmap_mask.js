@@ -51,11 +51,12 @@ var fracKeep = mask
   })
   .reproject({
     crs: fg.crs,
-    scale: fg.resolution
+    crsTransform: fg.crsTransform,
   });
 
 var fracKeep = fracKeep.rename('fracKeep');
-Map.addLayer(fracKeep, {min: 0, max: 1, palette: ['red', 'white', 'green']}, 'fraction keep');
+// Map.addLayer(fracKeep, {min: 0, max: 1, palette: ['red', 'white', 'green']}, 'fraction keep');
+
 
 Export.image.toAsset({
   image: fracKeep,
