@@ -47,7 +47,8 @@ var mask = lcmap2021.remap(
 var fracKeep = mask
   .reduceResolution({
     reducer: ee.Reducer.mean(),
-    maxPixels: 2048
+    bestEffort: true,
+    maxPixels: 1e4
   })
   .reproject({
     crs: fg.crs,
