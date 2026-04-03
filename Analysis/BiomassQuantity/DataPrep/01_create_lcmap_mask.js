@@ -48,7 +48,7 @@ var fracKeep = mask
   .reduceResolution({
     reducer: ee.Reducer.mean(),
     bestEffort: true,
-    maxPixels: 1e4
+    maxPixels: 1e3
   })
   .reproject({
     crs: fg.crs,
@@ -58,6 +58,7 @@ var fracKeep = mask
 var fracKeep = fracKeep.rename('fracKeep');
 // Map.addLayer(fracKeep, {min: 0, max: 1, palette: ['red', 'white', 'green']}, 'fraction keep');
 
+Map.addLayer(fracKeep.geometry(), {}, '')
 
 Export.image.toAsset({
   image: fracKeep,
