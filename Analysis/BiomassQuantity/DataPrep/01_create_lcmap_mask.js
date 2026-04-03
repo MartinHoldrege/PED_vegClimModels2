@@ -62,7 +62,7 @@ Export.image.toAsset({
   description: 'LCMAP_fracKeep_daymet',
   assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/LCMAP_fracKeep_daymet',
   crs: fg.crs,
-  scale: fg.resolution,
+  crsTransform: fg.crsTransform,
   region: fracKeep.geometry(), // or define a CONUS geometry
   maxPixels: 1e12
 });
