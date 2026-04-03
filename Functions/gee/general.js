@@ -9,7 +9,6 @@ var projection = ee.ImageCollection('NASA/ORNL/DAYMET_V4')
                   .first()
                   .projection();
 
-exports.crs = projection.wkt().getInfo()
-exports.crsTransform = projection.transform().getInfo()
-
+exports.crs = "PROJCS[\"unnamed\",    GEOGCS[\"NAD83\",      DATUM[\"WGS_1984\",        SPHEROID[\"WGS 84\", 6378137.0, 298.257223563, AUTHORITY[\"EPSG\",\"7030\"]],        AUTHORITY[\"EPSG\",\"6326\"]],      PRIMEM[\"Greenwich\", 0.0],      UNIT[\"degree\", 0.017453292519943295],      AXIS[\"Longitude\", EAST],      AXIS[\"Latitude\", NORTH]],    PROJECTION[\"Lambert_Conformal_Conic_2SP\"],    PARAMETER[\"central_meridian\", -100.0],    PARAMETER[\"latitude_of_origin\", 42.5],    PARAMETER[\"standard_parallel_1\", 60.0],    PARAMETER[\"false_easting\", 0.0],    PARAMETER[\"false_northing\", 0.0],    PARAMETER[\"scale_factor\", 1.0],    PARAMETER[\"standard_parallel_2\", 25.0],    UNIT[\"m\", 1.0],    AXIS[\"x\", EAST],    AXIS[\"y\", NORTH]]";
+exports.crsTransform = [1000, 0, -5802750, 0, -1000, 4984500];
      
