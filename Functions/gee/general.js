@@ -5,9 +5,11 @@
 
 exports.resolution = 1000; // resolution of daymet data
 
-exports.crs = ee.ImageCollection('NASA/ORNL/DAYMET_V4')
+var projection = ee.ImageCollection('NASA/ORNL/DAYMET_V4')
                   .first()
-                  .projection()
-                  .wkt();
+                  .projection();
 
-                  
+exports.crs = projection.wkt().getInfo()
+exports.crsTransform = projection.transform().getInfo()
+
+     
