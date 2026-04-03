@@ -60,9 +60,9 @@ Map.addLayer(fracKeep, {min: 0, max: 1, palette: ['red', 'white', 'green']}, 'fr
 Export.image.toAsset({
   image: fracKeep,
   description: 'LCMAP_fracKeep_daymet',
-  assetId: 'users/MartinHoldrege/PED_vegClimModels2/LCMAP_fracKeep_daymet',
-  crs: daymetCRS,
-  scale: 1000,
+  assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/LCMAP_fracKeep_daymet',
+  crs: fg.crs,
+  scale: fg.resolution,
   region: fracKeep.geometry(), // or define a CONUS geometry
-  maxPixels: 1e10
+  maxPixels: 1e12
 });
