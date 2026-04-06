@@ -10,11 +10,13 @@ Started: April 6, 2026
 var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.js');
 
 // params -------------------------------------------
-// var yearStart = 2019; // years corresponding to GEDI dataset
-// var yearEnd = 2023;
+var yearStart = 2019; // years corresponding to GEDI dataset
+var yearEnd = 2023;
 
+/*
 var yearStart = 2010; // years corresponding to spawn dataset
 var yearEnd = 2010;
+*/
 
 // read in data -------------------------------------
 var rap = ee.ImageCollection('projects/rangeland-analysis-platform/vegetation-cover-v3')
