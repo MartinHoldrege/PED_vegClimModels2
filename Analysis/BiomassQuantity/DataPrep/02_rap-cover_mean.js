@@ -21,32 +21,36 @@ var rap = ee.ImageCollection('projects/rangeland-analysis-platform/vegetation-co
   .filter(ee.Filter.calendarRange(yearStart, yearEnd, 'year'));
 
 // process ------------------------------------------
-var rapMean = rap
+
+var rapDaymet = rap
   .select(['TRE', 'SHR', 'AFG', 'PFG'])
-  .mean()
-  .setDefaultProjection(rap.first().projection());
+  .map(function(img) {
+    return img
+      .setDefaultProjection(rap.first().projection())
+      .reduceResolution({
+        reducer: ee.Reducer.mean(),
+        bestEffort: true,
+        maxPixels: 2e3
+      })
+      .reproject({
+        crs: fg.crs,
+        crsTransform: fg.crsTransform
+      });
+  });
+
+var rapMean = rapDaymet.mean();
 
 var coverStack = rapMean.select('TRE').rename('totalTreeCov')
   .addBands(rapMean.select('SHR').rename('totalShrubCov'))
   .addBands(rapMean.select('AFG').add(rapMean.select('PFG')).rename('totalHerbaceousCov'));
 
-var coverDaymet = coverStack
-  .reduceResolution({
-    reducer: ee.Reducer.mean(),
-    bestEffort: true,
-    maxPixels: 2e3
-  })
-  .reproject({
-    crs: fg.crs,
-    crsTransform: fg.crsTransform
-  });
 
 // export -------------------------------------------
 
 var fileName = 'RAP_v3_cover_' + yearStart + '-' + yearEnd + fg.resLabel;
 
 Export.image.toAsset({
-  image: coverDaymet,
+  image: coverStack,
   description: fileName,
   assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/rap/' + fileName,
   crs: fg.crs,
