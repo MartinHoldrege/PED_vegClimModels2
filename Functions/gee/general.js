@@ -18,4 +18,4 @@ exports.region = ee.ImageCollection("projects/sat-io/open-datasets/LCMAP/LCPRI")
   .geometry();
   
 var scale = Math.abs(fg.crsTransform[0]);
-exports.resLabel = scale + 'm';  // '1000m'
+exports.resLabel = '_' + scale + 'm';  // '1000m'
