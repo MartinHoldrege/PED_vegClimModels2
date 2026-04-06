@@ -16,3 +16,6 @@ exports.crsTransform = [1000, 0, -5802750, 0, -1000, 4984500];
 exports.region = ee.ImageCollection("projects/sat-io/open-datasets/LCMAP/LCPRI")
   .first()
   .geometry();
+  
+var scale = Math.abs(fg.crsTransform[0]);
+exports.resLabel = scale + 'm';  // '1000m'
