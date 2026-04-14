@@ -67,3 +67,8 @@ exports.rapHerbBiomass = function(yearStart, yearEnd) {
   
   return npp.map(nppToBiomass).select('herbaceousAGB').mean();
 };
+
+
+
+
+
