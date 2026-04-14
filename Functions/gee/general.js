@@ -42,7 +42,6 @@ var nppToBiomass = function(image) {
   // fANPP: fraction aboveground
   // 2.1276: C to biomass
   // 10: kg/m2 to Mg/ha
-  image = ee.Image(image);
   var agb = image.multiply(0.0001)
                .multiply(fANPP)
                .multiply(2.1276)
@@ -50,7 +49,7 @@ var nppToBiomass = function(image) {
                .rename(['afgAGB', 'pfgAGB'])
                .copyProperties(image, ['system:time_start'])
                .set('year', year);
-  
+  agb = ee.Image(agb);
   var herbaceous = agb.select('afgAGB').add(agb.select('pfgAGB')).rename('herbaceousAGB');
   return agb.addBands(herbaceous);
 };
