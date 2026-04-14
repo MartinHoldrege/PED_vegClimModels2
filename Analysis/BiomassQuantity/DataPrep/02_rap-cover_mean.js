@@ -14,8 +14,8 @@ var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.
 // var yearEnd = 2023;
 
 
-var yearStart = 2010; // years corresponding to spawn dataset
-var yearEnd = 2010;
+var yearStart = 2000; // years corresponding to cover model training data
+var yearEnd = 2023;
 
 
 // read in data -------------------------------------
