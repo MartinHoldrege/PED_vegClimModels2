@@ -70,5 +70,15 @@ exports.rapHerbBiomass = function(yearStart, yearEnd) {
 
 
 
-
+/**
+ * NBCD aboveground biomass converted to Mg/ha.
+ * Raw asset is in total Mg per 240m cell; divide by 5.76 ha/cell.
+ * Mean pyramiding preserves this conversion at coarser scales.
+ * @returns {ee.Image} Single band: AGB (Mg/ha)
+ */
+exports.nbcdAGB = function() {
+  return ee.Image('projects/ee-martinholdrege/assets/PED_vegClimModels2/biomass/NBCD_countrywide_biomass_mosaic')
+    .divide(5.76)
+    .rename('AGB');
+};
 
