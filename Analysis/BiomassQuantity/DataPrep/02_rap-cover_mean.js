@@ -6,16 +6,19 @@ Author: Martin Holdrege
 Started: April 6, 2026
 */
 
-// dependencies -------------------------------------
-var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.js');
-
 // params -------------------------------------------
 // var yearStart = 2019; // years corresponding to GEDI dataset
 // var yearEnd = 2023;
 
+var exportCov = false;
+var exportBio = true; 
 
 var yearStart = 2000; // years corresponding to cover model training data
 var yearEnd = 2023;
+
+// dependencies -------------------------------------
+var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.js');
+
 
 
 // read in data -------------------------------------
@@ -30,16 +33,35 @@ var rapMean = rap
 var coverStack = rapMean.select('TRE').rename('totalTreeCov')
   .addBands(rapMean.select('SHR').rename('totalShrubCov'))
   .addBands(rapMean.select('AFG').add(rapMean.select('PFG')).rename('totalHerbaceousCov'));
+  
+// herbaceous biomass (Mg/ha)
+var herbBiomass = fg.rapHerbBiomass(yearStart, yearEnd);
 
 // export -------------------------------------------
 var fileName = 'RAP_v3_cover_' + yearStart + '-' + yearEnd  + fg.resLabel;
 
-Export.image.toAsset({
-  image: coverStack,
-  description: fileName,
-  assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/rap/' + fileName,
-  crs: fg.crs,
-  crsTransform: fg.crsTransform,
-  region: fg.region,
-  maxPixels: 1e12
-});
+if(exportCov) {
+  Export.image.toAsset({
+    image: coverStack,
+    description: fileName,
+    assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/rap/' + fileName,
+    crs: fg.crs,
+    crsTransform: fg.crsTransform,
+    region: fg.region,
+    maxPixels: 1e12
+  });
+}
+
+if(exportBio) {
+  var biomassFileName = 'RAP_v3_herbaceousAGB_' + yearStart + '-' + yearEnd + fg.resLabel;
+  Export.image.toAsset({
+    image: herbBiomass,
+    description: biomassFileName,
+    assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/rap/' + biomassFileName,
+    crs: fg.crs,
+    crsTransform: fg.crsTransform,
+    region: fg.region,
+    maxPixels: 1e12
+  });
+}
+
