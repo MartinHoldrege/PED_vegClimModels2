@@ -20,3 +20,50 @@ exports.region = ee.ImageCollection("projects/sat-io/open-datasets/LCMAP/LCPRI")
   
 var scale = Math.abs(crsTransform[0]);
 exports.resLabel = '_' + scale + 'm';  // '1000m'
+
+
+// biomass related functions -------------------------------------
+
+// rap biomass code adapted from: 
+// https://code.earthengine.google.com/d172689436c5d4a1bc6bd5e64f52784a
+
+/**
+ * Convert a single RAP NPP image to aboveground herbaceous biomass (Mg/ha).
+ * @param {ee.Image} image - Two-band image (afgNPP, pfgNPP)
+ * @returns {ee.Image} Three bands: afgAGB, pfgAGB, herbaceousAGB (Mg/ha)
+ */
+var nppToBiomass = function(image) {
+  var mat = ee.ImageCollection('projects/rap-data-365417/assets/gridmet-MAT');
+  var year = ee.Date(image.get('system:time_start')).format('YYYY');
+  var matYear = mat.filterDate(year).first();
+  var fANPP = matYear.multiply(0.0129).add(0.171).rename('fANPP');
+  
+  // 0.0001: NPP scalar -> kg C/m2
+  // fANPP: fraction aboveground
+  // 2.1276: C to biomass
+  // 10: kg/m2 to Mg/ha
+  var agb = image.multiply(0.0001)
+               .multiply(fANPP)
+               .multiply(2.1276)
+               .multiply(10)
+               .rename(['afgAGB', 'pfgAGB'])
+               .copyProperties(image, ['system:time_start'])
+               .set('year', year);
+  
+  var herbaceous = agb.reduce(ee.Reducer.sum()).rename('herbaceousAGB');
+  return agb.addBands(herbaceous);
+};
+
+/**
+ * Mean RAP herbaceous aboveground biomass (Mg/ha) over a year range.
+ * @param {number} yearStart - First year (inclusive)
+ * @param {number} yearEnd - Last year (inclusive)
+ * @returns {ee.Image} Single band: herbaceousAGB (Mg/ha)
+ */
+exports.rapHerbBiomass = function(yearStart, yearEnd) {
+  var npp = ee.ImageCollection('projects/rap-data-365417/assets/npp-partitioned-v3')
+    .select(['afgNPP', 'pfgNPP'])
+    .filter(ee.Filter.calendarRange(yearStart, yearEnd, 'year'));
+  
+  return npp.map(nppToBiomass).select('herbaceousAGB').mean();
+};
