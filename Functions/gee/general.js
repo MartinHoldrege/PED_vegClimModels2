@@ -50,7 +50,7 @@ var nppToBiomass = function(image) {
                .copyProperties(image, ['system:time_start'])
                .set('year', year);
   
-  var herbaceous = agb.reduce(ee.Reducer.sum()).rename('herbaceousAGB');
+  var herbaceous = agb.select('afgAGB').add(agb.select('pfgAGB')).rename('herbaceousAGB');
   return agb.addBands(herbaceous);
 };
 
