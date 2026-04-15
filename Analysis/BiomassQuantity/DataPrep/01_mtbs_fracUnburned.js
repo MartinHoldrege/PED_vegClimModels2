@@ -1,5 +1,6 @@
 /*
-Compute fraction of each daymet cell unburned (MTBS 2000-2023).
+determeine whether a grid cell burned in MTBS 2000-2023, at daymet resolution.
+this is an intermediate needed for not getting reprojection issues
 Author: Martin Holdrege
 Started: April 2026
 */
@@ -32,39 +33,20 @@ var burned = mtbs.map(function(img) {
     .copyProperties(img, ['system:time_start']);
 });
 
-// sum across years, then collapse to binary (ever burned = 1)
-var everBurned = burned.sum().gte(1);
+var everBurned = burned.max(); // 1 if burned in any year
 
-// fraction unburned = 1 - everBurned
-var unburned = everBurned.not()
-  .setDefaultProjection(mtbs.first().select('Severity').projection());
+var mtbsProj = mtbs.first().projection();
 
-// aggregate to daymet grid
-var fracUnburned = unburned
-  .reduceResolution({
-    reducer: ee.Reducer.mean(),
-    bestEffort: true,
-    maxPixels: 2e3
-  })
-  .reproject({
-    crs: fg.crs,
-    crsTransform: fg.crsTransform
-  })
-  .rename('fracUnburned');
-
-// visualize ----------------------------------------
-// Map.addLayer(fracUnburned, {min: 0, max: 1, palette: ['red', 'white', 'green']}, 'fraction unburned');
-// Map.addLayer(fracUnburned.gte(0.9).selfMask(), {palette: ['blue']}, '>=90% unburned', false);
-
-// export -------------------------------------------
-var fileName = 'MTBS_fracUnburned_' + yearStart + '-' + yearEnd + fg.resLabel;
+Map.addLayer(everBurned.selfMask(), {min: 0, max: 1, palette: ['white', 'black']}, 'ever burned', false);
 
 Export.image.toAsset({
-  image: fracUnburned,
-  description: fileName,
-  assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/' + fileName,
-  crs: fg.crs,
-  crsTransform: fg.crsTransform,
+  image: everBurned.rename('everBurned'),
+  description: 'MTBS_everBurned_30m_' + yearStart + '-' + yearEnd,
+  assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/fire/MTBS_everBurned_30m_' + yearStart + '-' + yearEnd,
+  crs: mtbsProj,
+  scale: mtbsProj.nominalScale(),
   region: fg.region,
   maxPixels: 1e12
 });
+
+
