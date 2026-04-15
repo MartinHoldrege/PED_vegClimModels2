@@ -22,7 +22,7 @@ var cover = ee.Image('projects/ee-martinholdrege/assets/PED_vegClimModels2/rap/'
 var bioFileName = 'RAP_v3_herbaceousAGB_' + rapBioYearStart + '-' + rapBioYearEnd + fg.resLabel;
 var rapHerbAGB = ee.Image('projects/ee-martinholdrege/assets/PED_vegClimModels2/rap/' + bioFileName);
 
-var gedi = ee.Image('LARSE/GEDI/GEDI04_B_002').select('MU');
+var gedi = ee.Image('projects/ee-martinholdrege/assets/PED_vegClimModels2/biomass/GEDI_L4B_v21_biomassRaster_onDayMetGrid');
 var nbcd = fg.nbcdAGB();
 var fracKeep = ee.Image('projects/ee-martinholdrege/assets/PED_vegClimModels2/LCMAP_fracKeep_daymet');
 
