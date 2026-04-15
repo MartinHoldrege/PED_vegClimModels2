@@ -43,8 +43,8 @@ Export.image.toAsset({
   image: everBurned.rename('everBurned'),
   description: 'MTBS_everBurned_30m_' + yearStart + '-' + yearEnd,
   assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/fire/MTBS_everBurned_30m_' + yearStart + '-' + yearEnd,
-  crs: mtbsProj,
-  scale: mtbsProj.nominalScale(),
+  crs: mtbsProj.crs().getInfo(),
+  scale: 30,
   region: fg.region,
   maxPixels: 1e12
 });
