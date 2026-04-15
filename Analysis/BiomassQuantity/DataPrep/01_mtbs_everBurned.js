@@ -40,7 +40,7 @@ var mtbsProj = mtbs.first().projection();
 Map.addLayer(everBurned.selfMask(), {min: 0, max: 1, palette: ['white', 'black']}, 'ever burned', false);
 
 Export.image.toAsset({
-  image: everBurned.rename('everBurned'),
+  image: everBurned.rename('everBurned').toByte(),
   description: 'MTBS_everBurned_30m_' + yearStart + '-' + yearEnd,
   assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/fire/MTBS_everBurned_30m_' + yearStart + '-' + yearEnd,
   crs: mtbsProj.crs().getInfo(),
