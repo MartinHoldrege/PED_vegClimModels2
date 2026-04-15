@@ -14,25 +14,29 @@ var yearEnd = 2023;
 
 // created in 01_mtbs_everburned.js
 var everBurned = ee.Image('projects/ee-martinholdrege/assets/PED_vegClimModels2/fire/MTBS_everBurned_30m_' + yearStart + '-' + yearEnd);
-Map.addLayer(everBurned.selfMask(), {});
+Map.addLayer(everBurned.eq(ee.Image(1)).selfMask(), {palette: 'black'});
 
 //  proces -----
 
 var pixelArea = ee.Image.pixelArea()
-  .setDefaultProjection(everBurned.projection());
-  
-var areaBurned = everBurned.selfMask().multiply(pixelArea)
+  .setDefaultProjection(everBurned.projection().atScale(120));
+
+var areaBurned = everBurned
+  // working higher up the 'pyramid' to reduce the reprojection output too large error
+  .setDefaultProjection(everBurned.projection().atScale(120))
+  .selfMask()
+  .multiply(pixelArea)
   .reduceResolution({
     reducer: ee.Reducer.sum(),
     bestEffort: true,
-    maxPixels: 3e3
+    maxPixels: 200
   })
   .reproject({
     crs: fg.crs,
     crsTransform: fg.crsTransform
   })
   .rename('areaBurned');
-  
+
 var pixelArea1km = ee.Image.pixelArea()
   .reproject({
     crs: fg.crs,
