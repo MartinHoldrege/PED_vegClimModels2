@@ -13,11 +13,19 @@ var yearEnd = 2023;
 
 // read in data -------------------------------------
 var mtbs = ee.ImageCollection('USFS/GTAC/MTBS/annual_burn_severity_mosaics/v1')
-  .filter(ee.Filter.calendarRange(yearStart, yearEnd, 'year'));
+  .filter(ee.Filter.stringContains('system:index', 'CONUS'))
+  .filter(ee.Filter.calendarRange(yearStart, yearEnd, 'year'))
+  .map(function(img) {
+    // in some cases band is 'Burn_Severity' 
+    return img.select([0]).rename('Severity');
+  });
 
 // process ------------------------------------------
+var bandNames = mtbs.map(function(img) {
+  return img.set('bands', img.bandNames());
+});
 
-// for each year: 1 = burned (classes 2-5), 0 = unburned (0, 1, 6)
+// for each year: 1 = burned (classes 2-5), 0 = unburned (or low) (0, 1, 6)
 var burned = mtbs.map(function(img) {
   var severity = img.select('Severity');
   return severity.gte(2).and(severity.lte(5))
@@ -45,8 +53,8 @@ var fracUnburned = unburned
   .rename('fracUnburned');
 
 // visualize ----------------------------------------
-Map.addLayer(fracUnburned, {min: 0, max: 1, palette: ['red', 'white', 'green']}, 'fraction unburned');
-Map.addLayer(fracUnburned.gte(0.9).selfMask(), {palette: ['blue']}, '>=90% unburned', false);
+// Map.addLayer(fracUnburned, {min: 0, max: 1, palette: ['red', 'white', 'green']}, 'fraction unburned');
+// Map.addLayer(fracUnburned.gte(0.9).selfMask(), {palette: ['blue']}, '>=90% unburned', false);
 
 // export -------------------------------------------
 var fileName = 'MTBS_fracUnburned_' + yearStart + '-' + yearEnd + fg.resLabel;
