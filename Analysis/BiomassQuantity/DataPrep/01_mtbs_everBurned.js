@@ -40,13 +40,15 @@ var mtbsProj = mtbs.first().projection();
 Map.addLayer(everBurned.selfMask(), {min: 0, max: 1, palette: ['white', 'black']}, 'ever burned', false);
 
 Export.image.toAsset({
-  image: everBurned.rename('everBurned').toByte(),
+  image: everBurned.rename('everBurned').toFloat(),
   description: 'MTBS_everBurned_30m_' + yearStart + '-' + yearEnd,
   assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/fire/MTBS_everBurned_30m_' + yearStart + '-' + yearEnd,
   crs: mtbsProj.crs().getInfo(),
   scale: 30,
   region: fg.region,
-  maxPixels: 1e12
+  maxPixels: 1e12,
+  // higher pyramid levels should be the burned proportion
+  pyramidingPolicy: {'everBurned': 'mean'}
 });
 
 
