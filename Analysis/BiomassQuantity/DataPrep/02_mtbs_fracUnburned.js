@@ -51,8 +51,6 @@ Map.addLayer(pixelArea, {}, '120 m', false)
 Map.addLayer(fracBurned, {min:0, max: 1, palette: ['white', 'black']}, 'fracburned', false)
 Map.addLayer(fracUnburned, {min:0, max: 1, palette: ['white', 'black']}, 'fracunburned', false)
 
-
-
 // export -------------------------------------------
 
 var fileName = 'MTBS_fracUnburned_' + yearStart + '-' + yearEnd + fg.resLabel;
