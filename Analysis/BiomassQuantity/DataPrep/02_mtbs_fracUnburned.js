@@ -21,7 +21,8 @@ var areaBurned = everBurned.multiply(ee.Image.pixelArea()).unmask(0);
 var fracBurned = areaBurned.divide(ee.Image.pixelArea());
 var fracUnburned = ee.Image(1).subtract(fracBurned).rename('fracUnburned');
 
-Map.addLayer(fracUnburned, {min:0, max: 1, palette: ['black', 'white']})
+Map.addLayer(fracUnburned, {min:0, max: 1, palette: ['black', 'white']});
+
 // export -------------------------------------------
 
 var fileName = 'MTBS_fracUnburned_' + yearStart + '-' + yearEnd + fg.resLabel;
