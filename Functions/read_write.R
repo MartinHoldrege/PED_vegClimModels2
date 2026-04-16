@@ -62,8 +62,18 @@ read_prepare_d01 <- function(root = paths$large,
               trim_shrub_cov = trim_shrub_cov)
 } 
 
+# renames layers to shorter names
+read_climate_raster <- function(
+    path = file.path(paths$large, "Data_processed/BiomassQuantityData/", "
+                     DayMetData_allCONUS_2023ClimateValues_raster.tif")
+    ) {
+  r <- terra::rast(path)
+  names(r) <- climate_name_lookup(names(r))
+  r
+}
 
-# downloading files
+
+# downloading files -----------------------------------------
 
 #' Download a file from Drive if it is newer than the local copy
 #'
