@@ -62,3 +62,28 @@ read_prepare_d01 <- function(root = paths$large,
               trim_shrub_cov = trim_shrub_cov)
 } 
 
+
+# downloading files
+
+#' Download a file from Drive if it is newer than the local copy
+#'
+#' @param drive_row One-row tibble from drive_ls with modifiedTime column.
+#' @param local_dir Local directory to save to.
+#' @return Invisible path to local file, or NULL if skipped.
+download_if_newer <- function(drive_row, local_dir) {
+  local_path <- file.path(local_dir, drive_row$name)
+  
+  if (file.exists(local_path)) {
+    local_mtime <- file.mtime(local_path)
+    drive_mtime <- as.POSIXct(drive_row$modifiedTime, format = "%Y-%m-%dT%H:%M:%OS", tz = "UTC")
+    if (!is.na(local_mtime) && local_mtime >= drive_mtime) {
+      message("Skipping (local is current): ", drive_row$name)
+      return(invisible(NULL))
+    }
+  }
+  
+  message("Downloading: ", drive_row$name)
+  drive_download(file = drive_row$id, path = local_path, overwrite = TRUE)
+  invisible(local_path)
+}
+
