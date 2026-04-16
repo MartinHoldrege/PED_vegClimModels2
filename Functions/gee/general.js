@@ -13,11 +13,14 @@ exports.crs = "PROJCS[\"unnamed\",    GEOGCS[\"NAD83\",      DATUM[\"WGS_1984\",
 var crsTransform = [1000, 0, -5802750, 0, -1000, 4984500];
 exports.crsTransform = crsTransform;
      
-     
-exports.region = ee.ImageCollection("projects/sat-io/open-datasets/LCMAP/LCPRI")
-  .first()
-  .geometry();
+// conus extent to match extent of Alice's workflow     
+exports.region = ee.Geometry.Rectangle({
+  coords: [-1950750, -1785500, 2428250, 945500],
+  proj: exports.crs,
+  geodesic: false
+});
   
+
 var scale = Math.abs(crsTransform[0]);
 exports.resLabel = '_' + scale + 'm';  // '1000m'
 
