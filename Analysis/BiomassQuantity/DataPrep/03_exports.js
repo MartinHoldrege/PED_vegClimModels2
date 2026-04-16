@@ -1,12 +1,15 @@
 /*
+Export GeoTIFFs of cover, biomass, and mask assets created in upstream scripts
+to Google Drive for downstream use in R modeling pipeline.
 
-get rap cover, for the years of the biomass datasets, so can
-filter pure herbceous pixels for fitting the intercepts to those data
+Input assets created in:
+  - LCMAP fracKeep: 01_create_lcmap_mask.js
+  - MTBS fracUnburned: 01_mtbs_everBurned.js, 02_mtbs_fracUnburned.js
+  - RAP cover: 02_rap_mean.js
+  - RAP herbaceous biomass: 02_rap_mean.js
 
 Author: Martin Holdrege
-
-Started: April 6, 2026
-
+Started: April 2026
 */
 
 // dependencies -------------------------------------
@@ -14,64 +17,108 @@ Started: April 6, 2026
 var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.js');
 
 // params -------------------------------------------
-var yearStart = 2019; // GEDI v2.1 data collected from 2019--2023
+
+var yearStart = 2000;
 var yearEnd = 2023;
-var fracKeepThreshold = 0.9;
+var maskCutoffLcmap = 0.9;
+var maskCutoffFire = 0.9;
+var driveFolder = 'PED_vegClimModels2';
 
-// read in data -------------------------------------
+// export toggles
+var exportLcmapMask = true;
+var exportFireMask = true;
+var exportRapCover = true;
+var exportRapBiomass = true;
 
-var fileName = 'RAP_v3_cover_' + yearStart + '-' + yearEnd  + fg.resLabel;
-var cover = ee.Image('projects/ee-martinholdrege/assets/PED_vegClimModels2/rap/' + fileName);
+// LCMAP mask (fracKeep + binary) -------------------
 
-// created in 01_create_lcmap_mask
-var fracKeep = ee.Image('projects/ee-martinholdrege/assets/PED_vegClimModels2/LCMAP_fracKeep_daymet');
+  // created in 01_create_lcmap_mask.js
+  var fracKeep = ee.Image(fg.pathAsset + 'LCMAP_fracKeep_daymet')
+    .rename('fracKeep');
+  var fracKeepBinary = fracKeep
+    .gte(maskCutoffLcmap)
+    .selfMask()
+    .rename('fracKeep_gte' + maskCutoffLcmap*100);
+    
+  var lcmapStack = fracKeep.addBands(fracKeepBinary);
+if (exportLcmapMask) {
+  var lcmapFileName = 'LCMAP_fracKeep' + fg.resLabel;
+  Export.image.toDrive({
+    image: lcmapStack,
+    description: lcmapFileName,
+    folder: driveFolder,
+    fileNamePrefix: lcmapFileName,
+    crs: fg.crs,
+    crsTransform: fg.crsTransform,
+    region: fg.region,
+    maxPixels: 1e12,
+    fileFormat: 'GeoTIFF'
+  });
+}
 
-// process ------------------------------------------
+// Fire mask (fracUnburned + binary) ----------------
+if (exportFireMask) {
+  // created in 01_mtbs_everBurned.js, 02_mtbs_fracUnburned.js
+  var fracUnburned = ee.Image(fg.pathAsset + 'fire/MTBS_fracUnburned_' +
+    yearStart + '-' + yearEnd + fg.resLabel)
+    .rename('fracUnburned');
+  var fracUnburnedBinary = fracUnburned
+    .gte(maskCutoffFire)
+    .selfMask()
+    .rename('fracUnburned_gte' + maskCutoffFire*100);
+  var fireStack = fracUnburned.addBands(fracUnburnedBinary);
 
+  var fireFileName = 'MTBS_fracUnburned_' + yearStart + '-' + yearEnd + fg.resLabel;
+  Export.image.toDrive({
+    image: fireStack,
+    description: fireFileName,
+    folder: driveFolder,
+    fileNamePrefix: fireFileName,
+    crs: fg.crs,
+    crsTransform: fg.crsTransform,
+    region: fg.region,
+    maxPixels: 1e12,
+    fileFormat: 'GeoTIFF'
+  });
+}
 
-// apply LCMAP mask
-var mask = fracKeep.gte(fracKeepThreshold);
-var coverMasked = cover.updateMask(mask);
+// RAP cover ----------------------------------------
+if (exportRapCover) {
+  // created in 02_rap-cover_mean.js
+  var rapCoverFileName = 'RAP_v3_cover_' + yearStart + '-' + yearEnd + fg.resLabel;
+  var rapCover = ee.Image(fg.pathAsset + 'rap/' + rapCoverFileName);
 
+  Export.image.toDrive({
+    image: rapCover,
+    description: rapCoverFileName,
+    folder: driveFolder,
+    fileNamePrefix: rapCoverFileName,
+    crs: fg.crs,
+    crsTransform: fg.crsTransform,
+    region: fg.region,
+    maxPixels: 1e12,
+    fileFormat: 'GeoTIFF'
+  });
+}
 
-// visualize ----------------------------------------
- 
-// for speed 
-Map.addLayer(fracKeep.gte(fracKeepThreshold), {min: 0, max: 1, palette: ['white', 'black']},
-  'mask, ' + fracKeepThreshold, false);
-Map.addLayer(coverMasked.select('totalTreeCov'), {min: 0, max: 60, palette: ['white', 'darkgreen']},
-  'tree cover', false);
-Map.addLayer(coverMasked.select('totalShrubCov'), {min: 0, max: 60, palette: ['white', 'brown']},
-  'shrub cover', false);
-Map.addLayer(coverMasked.select('totalHerbaceousCov'), {min: 0, max: 60, palette: ['white', 'gold']},
-  'herbaceous cover', false);
+// RAP herbaceous biomass ---------------------------
+if (exportRapBiomass) {
+  // created in 02_rap-cover_mean.js
+  var rapBioAssetName = 'RAP_v3_herbaceousAGB_' + yearStart + '-' + yearEnd + fg.resLabel;
+  var rapBioFileName = 'RAP_v3_herbaceousAGB_mask-Lcmap' + maskCutoffLcmap * 100 + '_' +
+      yearStart + '-' + yearEnd + fg.resLabel;
+  var rapBio = ee.Image(fg.pathAsset + 'rap/' + rapBioAssetName)
+      .updateMask(fracKeepBinary);
 
-// exploration --------------------------------------
-
-var herbThreshold = 10;
-var treeCutoff = 2;
-var shrubCutoff = 5;
-
-var herbDominant = coverMasked.select('totalTreeCov').lt(treeCutoff)
-  .and(coverMasked.select('totalShrubCov').lt(shrubCutoff))
-  .and(coverMasked.select('totalHerbaceousCov').gte(herbThreshold))
-  .selfMask();
-
-Map.addLayer(herbDominant, {palette: ['lime']}, 'herb-dominant pixels');
-
-
-// export -------------------------------------------
-var maskName = 'mask-' + fracKeepThreshold;
-var fileName = 'RAP_v3_cover_' + yearStart + '-' + yearEnd + '_' + maskName + '_daymet';
-
-// Export.image.toDrive({
-//   image: coverDaymet,
-//   description: fileName,
-//   folder: 'PED_vegClimModels2',
-//   fileNamePrefix: fileName,
-//   crs: fg.crs,
-//   crsTransform: fg.crsTransform,
-//   region: fracKeep.geometry(),
-//   maxPixels: 1e12,
-//   fileFormat: 'GeoTIFF'
-// });
+  Export.image.toDrive({
+    image: rapBio,
+    description: rapBioFileName,
+    folder: driveFolder,
+    fileNamePrefix: rapBioFileName,
+    crs: fg.crs,
+    crsTransform: fg.crsTransform,
+    region: fg.region,
+    maxPixels: 1e12,
+    fileFormat: 'GeoTIFF'
+  });
+}
