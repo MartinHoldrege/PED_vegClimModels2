@@ -27,8 +27,8 @@ var driveFolder = 'PED_vegClimModels2';
 // export toggles
 var exportLcmapMask = true;
 var exportFireMask = true;
-var exportRapCover = true;
-var exportRapBiomass = true;
+var exportRapCover = false;
+var exportRapBiomass = false;
 
 // LCMAP mask (fracKeep + binary) -------------------
 
@@ -40,7 +40,7 @@ var exportRapBiomass = true;
     .selfMask()
     .rename('fracKeep_gte' + maskCutoffLcmap*100);
     
-  var lcmapStack = fracKeep.addBands(fracKeepBinary);
+  var lcmapStack = fracKeep.addBands(fracKeepBinary).toFloat();
 if (exportLcmapMask) {
   var lcmapFileName = 'LCMAP_fracKeep' + fg.resLabel;
   Export.image.toDrive({
@@ -66,7 +66,7 @@ if (exportFireMask) {
     .gte(maskCutoffFire)
     .selfMask()
     .rename('fracUnburned_gte' + maskCutoffFire*100);
-  var fireStack = fracUnburned.addBands(fracUnburnedBinary);
+  var fireStack = fracUnburned.addBands(fracUnburnedBinary).toFloat();
 
   var fireFileName = 'MTBS_fracUnburned_' + yearStart + '-' + yearEnd + fg.resLabel;
   Export.image.toDrive({
