@@ -13,44 +13,15 @@ var yearStart = 2000;
 var yearEnd = 2023;
 
 // created in 01_mtbs_everburned.js
-var everBurned = ee.Image('projects/ee-martinholdrege/assets/PED_vegClimModels2/fire/MTBS_everBurned_30m_' + yearStart + '-' + yearEnd);
-Map.addLayer(everBurned.eq(ee.Image(1)).selfMask(), {palette: 'black'});
+var everBurned = ee.Image(fg.pathAsset + 'fire/MTBS_everBurned_30m_' + yearStart + '-' + yearEnd);
 
-//  proces -----
+// everBurned * pixelArea, then unmask to 0 so unburned/unmapped areas contribute 0 area
+var areaBurned = everBurned.multiply(ee.Image.pixelArea()).unmask(0);
 
-var pixelArea = ee.Image.pixelArea()
-  .setDefaultProjection(everBurned.projection().atScale(120));
-
-var areaBurned = everBurned
-  // working higher up the 'pyramid' to reduce the reprojection output too large error
-  .setDefaultProjection(everBurned.projection().atScale(120))
-  .selfMask()
-  .multiply(pixelArea)
-  .reduceResolution({
-    reducer: ee.Reducer.sum(),
-    bestEffort: true,
-    maxPixels: 200
-  })
-  .reproject({
-    crs: fg.crs,
-    crsTransform: fg.crsTransform
-  })
-  .rename('areaBurned');
-
-var pixelArea1km = ee.Image.pixelArea()
-  .reproject({
-    crs: fg.crs,
-    crsTransform: fg.crsTransform
-  });
-
-var fracBurned = areaBurned.divide(pixelArea1km);
+var fracBurned = areaBurned.divide(ee.Image.pixelArea());
 var fracUnburned = ee.Image(1).subtract(fracBurned).rename('fracUnburned');
 
-Map.addLayer(pixelArea1km, {}, '1km', false)
-Map.addLayer(pixelArea, {}, '120 m', false)
-Map.addLayer(fracBurned, {min:0, max: 1, palette: ['white', 'black']}, 'fracburned', false)
-Map.addLayer(fracUnburned, {min:0, max: 1, palette: ['white', 'black']}, 'fracunburned', false)
-
+Map.addLayer(fracUnburned, {min:0, max: 1, palette: ['black', 'white']})
 // export -------------------------------------------
 
 var fileName = 'MTBS_fracUnburned_' + yearStart + '-' + yearEnd + fg.resLabel;
@@ -58,9 +29,11 @@ var fileName = 'MTBS_fracUnburned_' + yearStart + '-' + yearEnd + fg.resLabel;
 Export.image.toAsset({
   image: fracUnburned,
   description: fileName,
-  assetId: 'projects/ee-martinholdrege/assets/PED_vegClimModels2/fire/' + fileName,
+  assetId: fg.pathAsset + 'fire/' + fileName,
   crs: fg.crs,
   crsTransform: fg.crsTransform,
   region: fg.region,
   maxPixels: 1e12
 });
+
+
