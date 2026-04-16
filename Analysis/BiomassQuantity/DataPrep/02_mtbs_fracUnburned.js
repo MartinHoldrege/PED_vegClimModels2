@@ -42,9 +42,16 @@ var pixelArea1km = ee.Image.pixelArea()
     crs: fg.crs,
     crsTransform: fg.crsTransform
   });
-  
+
 var fracBurned = areaBurned.divide(pixelArea1km);
 var fracUnburned = ee.Image(1).subtract(fracBurned).rename('fracUnburned');
+
+Map.addLayer(pixelArea1km, {}, '1km', false)
+Map.addLayer(pixelArea, {}, '120 m', false)
+Map.addLayer(fracBurned, {min:0, max: 1, palette: ['white', 'black']}, 'fracburned', false)
+Map.addLayer(fracUnburned, {min:0, max: 1, palette: ['white', 'black']}, 'fracunburned', false)
+
+
 
 // export -------------------------------------------
 
