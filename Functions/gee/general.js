@@ -24,6 +24,9 @@ exports.region = ee.Geometry.Rectangle({
 var scale = Math.abs(crsTransform[0]);
 exports.resLabel = '_' + scale + 'm';  // '1000m'
 
+// constants ---
+
+exports.pathAsset = 'projects/ee-martinholdrege/assets/PED_vegClimModels2/';
 
 // biomass related functions -------------------------------------
 
