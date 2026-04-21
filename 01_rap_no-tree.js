@@ -1,14 +1,11 @@
 /*
-Get RAP v3 cover on the daymet grid, for the years of the biomass datasets.
-Unmasked asset for flexible downstream use.
+determine which pixels have no or close to no tree cover (based on RAP)
 
 Author: Martin Holdrege
 Started: April 6, 2026
 */
 
 // params -------------------------------------------
-// var yearStart = 2019; // years corresponding to GEDI dataset
-// var yearEnd = 2023;
 
 var exportCov = false;
 var exportBio = false; 
