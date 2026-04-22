@@ -73,3 +73,51 @@ check_collinearity <- function(data, formula = NULL, pred_vars = NULL,
 }
 
 safe_softplus <- function(x) ifelse(x > 20, x, log1p(exp(x)))
+
+# where sub_spec is a list of model specifications
+make_model_formula <- function(sub_spec) {
+  pred_vars <- sub_spec$pred_vars
+  inter <- sub_spec$inter
+  
+  inter_terms <- if (!is.null(inter)) {
+    purrr::map_chr(inter, ~ paste(.x, collapse = ":"))
+  } else {
+    character(0)
+  }
+  all_terms <- c(pred_vars, inter_terms)
+  as.formula(paste("totalBio ~", paste(all_terms, collapse = " + ")))
+}
+
+
+# helper: build config from sub-spec and settings
+# for 01_fit_model_hw.R
+build_config <- function(vm, sub_spec, formula,
+                         cv_settings, clustering_settings, vd, vp,
+                         p_spec,
+                         model_type) {
+  list(
+    vm = vm,
+    model = list(
+      formula = formula,
+      cover_cols = sub_spec$cover_cols,
+      pred_vars = sub_spec$pred_vars,
+      dll_path = sub_spec$dll_path,
+      fix_alpha_pfts = sub_spec$fix_alpha_pfts,
+      fix_alpha_filter = sub_spec$fix_alpha_filter,
+      type = model_type
+    ),
+    # purer pixel selection
+    purer = list(
+      vp = vp, # version of purer selection
+      region_col = "region",
+      q = p_spec$q,
+      min_raw_cover = p_spec$min_raw_cover,
+      n_sample = p_spec$n_sample,
+      max_n_per_region = NULL,  # NULL = no cap
+      seed = 42
+    ),
+    cv = cv_settings,
+    clustering = clustering_settings,
+    data = list(version = vd, type = model_type)
+  )
+}

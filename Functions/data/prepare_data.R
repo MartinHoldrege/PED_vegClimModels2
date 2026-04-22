@@ -413,3 +413,20 @@ climate_name_lookup <- function(x, to_short = TRUE) {
   
   unname(lookup[x])
 }
+
+
+
+# misc --------------------------------------------------------------------
+
+# useful for model's that don't allow zero values
+replace_zero <- function(x) {
+  stopifnot(all(x >=0))
+  
+  small <- min(x[x>0])
+  
+  if(any(x == 0) & small > 1 ) {
+    warning('min non zero value > 1, consider other approach for replace 0s')
+  }
+  x[x == 0] <- small/2
+  x
+}

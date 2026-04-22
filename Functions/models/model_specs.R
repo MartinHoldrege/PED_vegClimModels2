@@ -93,7 +93,25 @@ model_specs <- list(
       exclude_cols = c('totalTreeCov', 'shrubCov'),
       # usually fit to data where cover is pre-trimmed
       max_cover = c(0.1, 0.1)  # threshold for "absent"
-  ))
+  )),
+  'm09' = list(
+    herb = list(
+      pred_vars = c("MAT", "MAP", "PrecipTempCorr"),
+      inter = NULL,
+      dll_path = dll_path2,
+      cover_cols = "totalHerbaceousCov",
+      fix_alpha_pfts = NULL,
+      fix_alpha_filter = NULL
+    ),
+    woody = list(
+      pred_vars = c("MAT", "MAP", "PrecipTempCorr"),
+      inter = NULL,
+      dll_path = dll_path2,
+      cover_cols = c("totalTreeCov", "totalShrubCov"),
+      fix_alpha_pfts = NULL,
+      fix_alpha_filter = NULL
+    )
+  )
 )
 
 # for sampling purer pixels
@@ -110,5 +128,13 @@ purer_specs = list(
   'p03' = list(
     q = 0,
     min_raw_cover = 0.05
+  ),
+  'p04' = list(
+    woody = list(
+      q = 0.98, min_raw_cover = 0.05
+    ),
+    herb = list(
+      q = NULL, n_sample = 3e4
+    )
   )
 )

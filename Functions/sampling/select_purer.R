@@ -272,3 +272,56 @@ filter_for_alpha <- function(data, exclude_cols, max_cover,
   
   out
 }
+
+#' Select training pixels — purer selection or random subsample (i.e. a wrapper)
+#'
+#' Dispatches to `select_purer_by_region()` when `q` is provided,
+#' or performs a simple random subsample when `n_sample` is provided.
+#'
+#' @param dat Data frame of candidate pixels.
+#' @param cover_vars Character vector of cover column names.
+#' @param purer_spec List with either purer params (`q`, `min_raw_cover`)
+#'   or subsample params (`n_sample`). If `q` is NULL, subsampling is used.
+#' @param region_col Character; column name for regions (used by purer).
+#' @param seed Integer; random seed.
+#'
+#' @return A list with `$data` (selected data frame) and metadata.
+#' @export
+select_training_pixels <- function(dat, cover_vars = NULL, purer_spec,
+                                   region_col = "region",
+                                   seed = 42) {
+  
+  q <- purer_spec$q
+  
+  if (is.null(q)) {
+    # simple random subsample
+    n_sample <- purer_spec$n_sample
+    stopifnot(!is.null(n_sample), n_sample > 0)
+    
+    n <- min(n_sample, nrow(dat))
+    set.seed(seed)
+    idx <- sample.int(nrow(dat), n)
+    
+    list(
+      data = dat[idx, , drop = FALSE],
+      thresholds = NULL,
+      selection_summary = NULL,
+      method = "subsample",
+      n_selected = n
+    )
+  } else {
+    # purer selection
+    purer <- select_purer_by_region(
+      dat = dat,
+      cover_vars = cover_vars,
+      region_col = region_col,
+      q = q,
+      min_raw_cover = purer_spec$min_raw_cover,
+      seed = seed
+    )
+    
+    purer$method <- "purer"
+    purer$n_selected <- nrow(purer$data)
+    purer
+  }
+}

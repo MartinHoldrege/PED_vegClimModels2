@@ -597,6 +597,10 @@ run_inner_cv <- function(data,
   
   spec_norm <- lapply(spec_list, function(x) {
     x$lambda <- NULL
+    if (inherits(x$formula, "formula")) {
+      # to environment differences in testing (which don't matter here)
+      x$formula <- deparse(x$formula) 
+    }
     x
   })
   

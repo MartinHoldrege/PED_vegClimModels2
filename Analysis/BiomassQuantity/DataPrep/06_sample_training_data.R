@@ -25,7 +25,7 @@ pred_vars_herb <- c("MAT", "MAP", "PrecipTempCorr", "WD_mean", "VPD_mean",
 pred_vars_woody <- pred_vars_herb
 
 # output version tag
-vd <- "d05"
+vd <- "d05" # uses RAP cover, for code development/testing
 
 # file paths --------------------------------------------------------------
 
@@ -69,8 +69,6 @@ p_gedi <- file.path(
 
 # load rasters (lazy — no data in memory) ---------------------------------
 
-cat("Loading rasters...\n")
-
 r_climate <- read_climate_raster(p_climate)
 
 r_lcmap <- terra::rast(p_lcmap)
@@ -79,10 +77,10 @@ r_fire <- terra::rast(p_fire)
 r_cover <- terra::rast(p_cover)
 
 r_herb_bio <- terra::rast(p_herb_bio)
-names(r_herb_bio) <- "herbaceousAGB"
+names(r_herb_bio) <- "totalHerbaceousBio"
 
 r_gedi <- terra::rast(p_gedi)
-names(r_gedi) <- "woodyAGB"
+names(r_gedi) <- "totalWoodyBio"
 
 
 # align rasters -----------------------------------------------------------
@@ -136,12 +134,8 @@ scale_df <- compute_scale_df(rast = r_climate_subset,
                  source_path = p_climate,
                  force = FALSE)
 
-cat("  Scale parameters:\n")
-print(scale_df)
 
 # === HERBACEOUS training data =============================================
-
-cat("\n--- Herbaceous training data ---\n")
 
 # stack: response + cover + climate
 r_herb_stack <- c(
@@ -154,7 +148,6 @@ r_herb_stack <- c(
 r_herb_stack <- terra::mask(r_herb_stack, mask_lcmap, maskvalues = 0)
 
 # sample
-cat("  Sampling", n_sample, "pixels...\n")
 set.seed(seed)
 df_herb <- terra::spatSample(
   r_herb_stack,
@@ -164,10 +157,9 @@ df_herb <- terra::spatSample(
   xy = TRUE
 )
 
-cat("  Sampled:", nrow(df_herb), "pixels\n")
-
 # rename response for model compatibility
-df_herb <- dplyr::rename(df_herb, totalBio = herbaceousAGB)
+df_herb <- dplyr::rename(df_herb, totalBio = totalHerbaceousBio) |> 
+  mutate(totalBio = replace_zero(totalBio))
 
 # standardize climate predictors using CONUS-wide scale_df
 herb_std <- standardize(df_herb, vars = pred_vars_herb, scale_df = scale_df)
@@ -175,12 +167,8 @@ df_herb <- herb_std$data
 
 cat("  Final herbaceous dataset:", nrow(df_herb), "rows,",
     ncol(df_herb), "cols\n")
-cat("  Summary of response:\n")
-print(summary(df_herb$totalBio))
 
 # === WOODY training data ==================================================
-
-cat("\n--- Woody training data ---\n")
 
 # stack: response + covers + climate
 r_woody_stack <- c(
@@ -205,12 +193,34 @@ df_woody <- terra::spatSample(
 )
 
 # rename response
-df_woody <- dplyr::rename(df_woody, totalBio = woodyAGB)
+df_woody <- dplyr::rename(df_woody, totalBio = totalWoodyBio) |> 
+  mutate(totalBio = replace_zero(totalBio))
 
 # standardize climate predictors using same CONUS-wide scale_df
 woody_std <- standardize(df_woody, vars = pred_vars_woody, scale_df = scale_df)
 df_woody <- woody_std$data
 
+
+# add regions -------------------------------------------------------------
+# artificial regions for sampling purer cells
+
+region_vars <- c('x', 'y', 'MAT', 'MAP')
+
+df_woody$region <- suppressWarnings(make_region_kmeans(
+  dat = df_woody,
+  vars = region_vars,
+  nstart = 5,
+  k = 20,
+  max_iter = 10000
+))$data
+
+df_herb$region <- suppressWarnings(make_region_kmeans(
+  dat = df_herb,
+  vars = region_vars,
+  nstart = 5,
+  k = 20,
+  max_iter = 10000
+))$data
 
 # save outputs -------------------------------------------------------------
 
@@ -221,7 +231,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 # herbaceous
 herb_out <- list(
   data = df_herb,
-  scale_df = scale_df,
+  scale = scale_df,
   pred_vars = pred_vars_herb,
   cover_cols = "totalHerbaceousCov",
   response = "totalBio",
@@ -231,24 +241,25 @@ herb_out <- list(
   type = "herbaceous"
 )
 
-p_herb_out <- file.path(out_dir, paste0("training_herb_", vd, ".rds"))
+p_herb_out <- file.path(out_dir, paste0("biomass_herb_sample_", vd, ".rds"))
 saveRDS(herb_out, p_herb_out)
 cat("  Saved herbaceous:", p_herb_out, "\n")
 
 # woody
 woody_out <- list(
   data = df_woody,
-  scale_df = scale_df,
+  scale = scale_df,
   pred_vars = pred_vars_woody,
   cover_cols = c("totalTreeCov", "totalShrubCov"),
   response = "totalBio",
   n_sample = n_sample,
   seed = seed + 1,
   lcmap_threshold = lcmap_threshold,
+  fire_threshold = fire_threshold,
   type = "woody"
 )
 
-p_woody_out <- file.path(out_dir, paste0("training_woody_", vd, ".rds"))
+p_woody_out <- file.path(out_dir, paste0("biomass_woody_sample_", vd, ".rds"))
 saveRDS(woody_out, p_woody_out)
 cat("  Saved woody:", p_woody_out, "\n")
 
