@@ -88,3 +88,17 @@ exports.nbcdAGB = function() {
     .rename('AGB');
 };
 
+// lcmap mask
+
+var lcmap2021 = ee.ImageCollection('projects/sat-io/open-datasets/LCMAP/LCPRI')
+  .filterDate('2021-01-01', '2021-12-31')
+  .first();
+
+// process ------------------------------------------
+
+// LCMAP mask: 1 = keep (grass/shrub, tree, wetlands, ice/snow, barren)
+// 0 = remove (developed, cropland, water)
+exports.lcmapMask = lcmap2021.remap(
+  [1, 2, 3, 4, 5, 6, 7, 8],
+  [0, 0, 1, 1, 0, 1, 1, 1]
+);
