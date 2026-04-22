@@ -36,7 +36,7 @@ Map.addLayer(fracNotForest, {min: 0, max: 1, palette: ['white', 'black']},
   'frac not forest (unburned, natural land)', false);
 
 // export -------------------------------------------
-var fileName = 'RAP_v3_fracNotForest_masked_' +
+var fileName = 'RAP_v3_fracNotForest_' +
   yearStartRap + '-' + yearEndRap + fg.resLabel;
 
 Export.image.toAsset({
