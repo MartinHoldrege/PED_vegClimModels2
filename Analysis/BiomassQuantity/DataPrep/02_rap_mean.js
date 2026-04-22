@@ -22,7 +22,7 @@ var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.
 
 
 // read in data -------------------------------------
-var rap = ee.ImageCollection('projects/rangeland-analysis-platform/vegetation-cover-v3')
+var rap = ee.ImageCollection('projects/rap-data-365417/assets/vegetation-cover-v3')
   .filter(ee.Filter.calendarRange(yearStart, yearEnd, 'year'));
 
 // process ------------------------------------------
