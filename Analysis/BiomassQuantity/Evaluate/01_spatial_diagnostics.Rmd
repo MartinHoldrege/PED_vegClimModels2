@@ -1,0 +1,238 @@
+---
+title: "Spatial Diagnostics: Predicted Biomass Maps"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  model_type: "herb"
+  data_version: "d05"
+  purer_version: "p04"
+  model_version: "m09"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+# dynamic figure dimensions based on model type
+is_woody <- params$model_type == "woody"
+fig_height_pft <- if (is_woody) 10 else 6
+```
+```
+
+## Purpose
+
+Wall-to-wall CONUS maps of observed and predicted biomass for the
+`r params$model_type` model. Includes per-PFT decomposition for
+woody models (cover-weighted and potential).
+
+## Setup
+
+```{r source-and-load}
+source("Functions/init.R")
+library(patchwork)
+source_functions()
+theme_set(theme_bw())
+
+model_type <- params$model_type
+vd <- params$data_version
+vm <- params$model_version
+vp <- params$purer_version
+
+suffix <- paste0(model_type,'_', vd, '-', vp, '-', vm)
+
+# --- load fitted model ---
+p_fit <- file.path(
+  paths$large,
+  "Data_processed/BiomassQuantityData/Fit",
+  paste0("fitted_model_", suffix, ".rds")
+)
+stopifnot(file.exists(p_fit))
+m <- readRDS(p_fit)
+config <- m$config
+scale_df <- m$scale
+cover_cols <- config$model$cover_cols
+```
+
+```{r load-rasters}
+# --- load prediction raster ---
+p_pred <- file.path(
+  paths$large,
+  "Data_processed/BiomassQuantityData/Predictions",
+  paste0("predicted_biomass_", suffix, ".tif")
+)
+stopifnot(file.exists(p_pred))
+r_pred_all <- terra::rast(p_pred)
+
+cat("Prediction layers:", paste(names(r_pred_all), collapse = ", "), "\n")
+
+# --- load CONUS rasters (for observed + masks) ---
+rasters <- load_conus_rasters(pred_vars = scale_df$variable)
+
+# observed biomass raster
+r_observed <- if (model_type == "herb") {
+  rasters$herb_bio
+} else {
+  rasters$gedi
+}
+names(r_observed) <- "observed"
+
+# masks (same as used for training data)
+mask_lcmap <- rasters$mask_lcmap
+mask_fire <- rasters$mask_fire
+```
+
+```{r extract-layers}
+# extract prediction layers
+r_total_pred <- r_pred_all[["predicted_totalBio"]]
+
+# per-group layers (cover-weighted)
+weighted_lyrs <- names(r_pred_all)[!grepl("_potential|predicted_totalBio",
+                                          names(r_pred_all))]
+r_weighted <- if (length(weighted_lyrs) > 0) r_pred_all[[weighted_lyrs]] else NULL
+
+# per-group layers (potential)
+potential_lyrs <- names(r_pred_all)[grepl("_potential", names(r_pred_all))]
+r_potential <- if (length(potential_lyrs) > 0) r_pred_all[[potential_lyrs]] else NULL
+
+# --- mask observed for residual computation ---
+r_obs_masked <- terra::mask(r_observed, mask_lcmap, maskvalues = 0)
+if (model_type == "woody") {
+  r_obs_masked <- terra::mask(r_obs_masked, mask_fire, maskvalues = 0)
+}
+
+# --- residual: observed - predicted (masked to valid area) ---
+r_pred_masked <- terra::mask(r_total_pred, r_obs_masked)
+r_diff <- r_obs_masked - r_pred_masked
+names(r_diff) <- "residual"
+```
+
+```{r compute-limits}
+# shared color limits for observed vs predicted comparison
+obs_range <- terra::global(r_obs_masked, c("min", "max"), na.rm = TRUE)
+pred_range <- terra::global(r_total_pred, c("min", "max"), na.rm = TRUE)
+bio_limits <- c(
+  min(obs_range$min, pred_range$min, na.rm = TRUE),
+  max(obs_range$max, pred_range$max, na.rm = TRUE)
+)
+# cap upper limit at a reasonable percentile to avoid outlier stretching
+bio_upper <- terra::global(
+  c(r_obs_masked, r_total_pred), 
+  fun = function(x) quantile(x, 0.99, na.rm = TRUE)
+)
+bio_limits[2] <- max(bio_upper[[1]])
+
+# symmetric limits for residual
+diff_range <- terra::global(r_diff, c("min", "max"), na.rm = TRUE)
+diff_abs_max <- max(abs(diff_range$min), abs(diff_range$max), na.rm = TRUE)
+diff_q99 <- terra::global(
+  abs(r_diff), 
+  fun = function(x) quantile(x, 0.99, na.rm = TRUE)
+)
+diff_limit <- min(diff_abs_max, diff_q99[[1]])
+```
+
+```{r print-config}
+cat("Model type:", model_type, "\n")
+cat("Model version:", vm, "\n")
+cat("Data version:", vd, "\n")
+cat("Formula:", deparse(config$model$formula), "\n")
+cat("Cover cols:", paste(cover_cols, collapse = ", "), "\n")
+cat("Biomass color limits:", round(bio_limits, 2), "\n")
+cat("Residual limits: ±", round(diff_limit, 2), "\n")
+```
+
+## 1. Observed Biomass
+
+```{r map-observed, fig.width=10, fig.height=6}
+plot_map_conus(
+  r_obs_masked,
+  colorscale = colorscale_biomass(
+    name = "Biomass\n(Mg/ha)",
+    limits = bio_limits
+  ),
+  title = paste0("Observed ", model_type, " biomass")
+)
+```
+
+## 2. Predicted Total Biomass
+
+```{r map-predicted, fig.width=10, fig.height=6}
+plot_map_conus(
+  r_total_pred,
+  colorscale = colorscale_biomass(
+    name = "Biomass\n(Mg/ha)",
+    limits = bio_limits
+  ),
+  title = paste0("Predicted ", model_type, " biomass (wall-to-wall)")
+)
+```
+
+## 3. Residual (Observed − Predicted)
+
+Masked to areas where observed data exists (LCMAP valid pixels
+`r if (model_type == "woody") "and unburned pixels"`).
+
+```{r map-residual, fig.width=10, fig.height=6}
+plot_map_conus(
+  r_diff,
+  colorscale = colorscale_diverging(
+    name = "Obs − Pred\n(Mg/ha)",
+    limits = c(-diff_limit, diff_limit)
+  ),
+  title = paste0("Residual: observed − predicted ", model_type, " biomass")
+)
+```
+
+## 4. Per-PFT Biomass (Cover-Weighted)
+
+```{r pft-weighted-maps, fig.width=10, fig.height=fig_height_pft, eval=!is.null(r_weighted)}
+# individual maps per PFT with independent color scales
+pft_weighted_plots <- lapply(weighted_lyrs, function(lyr) {
+  r <- r_pred_all[[lyr]]
+  lyr_max <- terra::global(r, fun = function(x) quantile(x, 0.99, na.rm = TRUE))
+  
+  plot_map_conus(
+    r,
+    colorscale = colorscale_biomass(
+      name = "Biomass\n(Mg/ha)",
+      limits = c(0, lyr_max[[1]])
+    ),
+    title = lyr
+  )
+})
+
+patchwork::wrap_plots(pft_weighted_plots, ncol = 1)
+```
+
+## 5. Per-PFT Potential Biomass (Cover = 100%)
+
+```{r pft-potential-maps, fig.width=10, fig.height=fig_height_pft, eval=!is.null(r_potential)}
+pft_potential_plots <- lapply(potential_lyrs, function(lyr) {
+  r <- r_pred_all[[lyr]]
+  lyr_max <- terra::global(r, fun = function(x) quantile(x, 0.99, na.rm = TRUE))
+  
+  plot_map_conus(
+    r,
+    colorscale = colorscale_biomass(
+      name = "Potential\n(Mg/ha)",
+      limits = c(0, lyr_max[[1]]),
+      option = "magma"
+    ),
+    title = gsub("_potential$", " (potential, cover=100%)", lyr)
+  )
+})
+
+patchwork::wrap_plots(pft_potential_plots, ncol = 1)
+```
+
+## Session Info
+
+```{r session-info}
+cat("Model file:", p_fit, "\n")
+cat("Prediction raster:", p_pred, "\n")
+cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+```

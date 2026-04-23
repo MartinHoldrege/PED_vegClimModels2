@@ -29,11 +29,11 @@ fit_herbaceous <- TRUE
 fit_woody <- TRUE
 
 # data version (from 08_create_training_data.R output)
-vd <- "d05" # uses RAP cover, for code development/testing
+vd <- opt$vd # uses RAP cover, for code development/testing
 
 # single model version — contains both herb and woody sub-specs
-vm <- "m09"
-vp <- 'p04'
+vm <- opt$vm
+vp <- opt$vp
 
 suffix0 <- paste(vd, vp, vm, sep = "-")
 stopifnot(vm %in% names(model_specs))

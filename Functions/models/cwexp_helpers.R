@@ -397,7 +397,7 @@ predict_raster <- function(fit, rast,
   group_layers <- terra::rast(group_layers)
   if (type == "total") {
     # sum across groups
-    out2 <- terra::app(group_layers, fun = 'sum')
+    out <- terra::app(group_layers, fun = 'sum')
     names(out) <- paste('predicted', fit$prep$outcome, sep = "_")
     return(out)
   }
