@@ -4,12 +4,13 @@ source('Functions/constants.R') # for pfts
 source('Functions/models/model_specs.R')
 source('Functions/general.R')
 # params ------------------------------------------------------------------
+
 run_sim <- FALSE # simulate data
-run_fit_model <- FALSE
+run_fit_model <- TRUE
 run_model_diagnostics <- TRUE
 run_model_diagnostics_sim <- FALSE
 
-run_explore_dat_samp <- FALSE
+run_explore_dat_samp <- FALSE # To do: not updated yet
 
 # [vs]: data version (s for simulated, d- for real data), 
 #       
@@ -18,9 +19,9 @@ run_explore_dat_samp <- FALSE
 # m for model version
 #     m01 & m03 matches the formula for simulated data
 
-# 's07-p01-m08' # 'd04-p02-m05'
-#'d04-p02-m07' # 's07-p01-m03' # 'd03-p02-m06' # 's06-p01-m03'
-suffixes <- c('d04-p02-m07', 'd04-p02-m05')
+# repo updated to only work w/ seperate herb/biomass models
+# meaning: vd >= d05, vp >= p04, and vm >= 0
+suffixes <- c('d05-p04-m09')
 
 # for exploring data sampling
 suffixes_data <- c('d02-p02', 'd04-p02') # for plots looking input data
@@ -32,9 +33,10 @@ knit_root_dir <- getwd()
 # functions ---------------------------------------------------------------
 
 
-render_model_diagnostics <- function(prms) {
+render_model_diagnostics <- function(prms, 
+                                     path = "Analysis/BiomassQuantity/Evaluate/01_model_diagnostics_hw.Rmd") {
   rmarkdown::render(
-    "Analysis/BiomassQuantity/Evaluate/01_model_diagnostics.Rmd",
+    path, 
     knit_root_dir = knit_root_dir,
     params = prms,
     output_dir = file.path(output_dir, 'Evaluate'),
@@ -46,14 +48,24 @@ for (suffix in suffixes) {
   # setup -----------------------------------------------------------------
   
   opts_l <- create_opts_l(suffix)
+  vm <- opts_l$vm
   cmdargs <- create_cmdargs(opts_l)
   print(opts_l)
+  hw_type <- vm >= 'm09' # model types that separately fit models to herb and woody
   
+  if(hw_type) {
+    model_types <- names(model_specs[[opts_l$vm]])
+    stopifnot(length(model_types) == 2) # currently setup for herb & woody  models
+  } else {
+    model_types <- NULL
+  }
+
   # passed to rmd
   prms_model_diagnostics <- list(
     model_version = opts_l$vm,
     data_version = if(opts_l$use_simulated) opts_l$vs else opts_l$vd,
-    purer_version = opts_l$vp)
+    purer_version = opts_l$vp
+    )
   
   # run scripts -------------------------------------------------------------
   
@@ -71,26 +83,39 @@ for (suffix in suffixes) {
   # * Fit -------------------------------------------------------------------
   
   if(run_fit_model) {
-    callr::rscript("Analysis/BiomassQuantity/Fit/01_fit_model.R", 
-                   cmdargs = cmdargs)
+    p <- if(hw_type) {
+      "Analysis/BiomassQuantity/Fit/01_fit_model_hw.R"
+    } else {
+      "Analysis/BiomassQuantity/Fit/01_fit_model.R"
+    }
+    callr::rscript(p, cmdargs = cmdargs)
   }
   
   # Evaluate ----------------------------------------------------------------
   
   if(run_model_diagnostics) {
     #dir.create(file.path(output_dir, 'Evaluate'), recursive = TRUE)
-    render_model_diagnostics(prms = prms_model_diagnostics)
+    if(hw_type) {
+      lapply(model_types, function(model_type) {
+        prms_model_diagnostics$model_type <- model_type
+        render_model_diagnostics(prms = prms_model_diagnostics)
+      })
+    } else {
+      render_model_diagnostics(
+         path = "Analysis/BiomassQuantity/Evaluate/01_model_diagnostics.Rmd",
+         prms = prms_model_diagnostics)
+    }
   }
   
-  if(run_model_diagnostics_sim & isTRUE(opts_l$use_simulated)) {
-  
+  if(run_model_diagnostics_sim & isTRUE(opts_l$use_simulated) & !hw_type) {
+
     rmarkdown::render(
       "Analysis/BiomassQuantity/Evaluate/01_evaluate_model_sim-data.Rmd",
       knit_root_dir = knit_root_dir,
       params = prms_model_diagnostics,
       output_dir = file.path(output_dir, 'Evaluate'),
-      output_file = paste0("01_evaluate_model_sim-data_", 
-                           make_suffix(prms_model_diagnostics), 
+      output_file = paste0("01_evaluate_model_sim-data_",
+                           make_suffix(prms_model_diagnostics),
                            ".html")
     )
   }

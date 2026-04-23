@@ -34,7 +34,8 @@ file_specs <- tribble(
   "^LCMAP",          dest$lcmap,
   "^MTBS",           dest$fire,
   "^RAP_v\\d_cover",   dest$rap_cover,
-  "^RAP_v\\d_herb",    dest$rap_biomass
+  "^RAP_v\\d_herb",    dest$rap_biomass,
+  "^RAP_v\\d_fracNotForest", dest$rap_cover
 )
 
 # list files on Drive -----------------------------------------------------

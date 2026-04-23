@@ -22,8 +22,13 @@ pft2factor <- var2factor_factory(levels = opt$pfts)
 # functions for main.R ----------------------------------------------------
 
 make_suffix <- function(params) {
-  paste(params$data_version, params$purer_version, params$model_version,
+  x <- paste(params$data_version, params$purer_version, params$model_version,
         sep = '-')
+  
+  if(!is.null(params$model_type)) {
+    x <- paste0(params$model_type, "_", x)
+  }
+  x
 }
 
 create_opts_l <- function(suffix) {

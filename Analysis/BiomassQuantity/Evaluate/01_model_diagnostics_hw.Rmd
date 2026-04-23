@@ -3,11 +3,11 @@ title: "Model Diagnostics"
 author: "Martin Holdrege"
 date: "`r Sys.Date()`"
 params:
-  data_version: "d03"
-  purer_version: 'p02'
-  model_version: "m05"
-  # climate vars to bin by in quantile plots (sections 4-5)
-  quantile_vars: !r c("tmean_CLIM", "precip_CLIM", "PrecipTempCorr_CLIM")
+  model_type: "herb"
+  data_version: "d05"
+  purer_version: 'p04'
+  model_version: "m09"
+  quantile_vars: !r c("MAT", "MAP", "PrecipTempCorr")
 output:
   html_document:
     toc: true
@@ -22,9 +22,8 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE,
 
 ## Purpose
 
-Model diagnostics for the cwexp biomass model. This report works for both
-simulated and real data — it evaluates the fitted model without requiring
-knowledge of the true parameters.
+Model diagnostics for the cwexp biomass model. Parameterized by model type
+(`herb` or `woody`), data version, and model version.
 
 ## Setup
 
@@ -37,16 +36,17 @@ theme_set(theme_bw())
 vm <- params$model_version
 vd <- params$data_version
 vp <- params$purer_version
+model_type <- params$model_type
 
 # --- load fitted model ---
-suffix <- paste(vd, vp, vm, sep = '-')
+suffix <- paste0(model_type, "_", paste(vd, vp, vm, sep = "-"))
 
 p_fit <- file.path(
   paths$large,
   "Data_processed/BiomassQuantityData/Fit",
   paste0("fitted_model_", suffix, ".rds")
 )
-stopifnot(isTRUE(file.exists(p_fit)))
+stopifnot(file.exists(p_fit))
 m1 <- readRDS(p_fit)
 
 fit <- m1$fit
@@ -54,34 +54,41 @@ cv <- m1$cv
 config <- m1$config
 
 # --- load full dataset ---
-obj <- read_analysis_ready(vd = vd, only_dataframe = FALSE)
-dat_full <- obj$data
-scale_df <- obj$scale
+p_data <- file.path(
+  paths$large,
+  "Data_processed/BiomassQuantityData/analysis_ready",
+  paste0("biomass_", model_type, "_sample_", vd, ".rds")
+)
+stopifnot(file.exists(p_data))
+data_obj <- readRDS(p_data)
+
+dat_full <- data_obj$data
+scale_df <- data_obj$scale
+
 # --- predictions on full data ---
-mu_hat <- predict(fit, dat_full, type = "mu")
-dat_full$predicted <- mu_hat
+dat_full$predicted <- predict(fit, dat_full, type = "mu")
 dat_full$observed <- dat_full$totalBio
 set.seed(123)
 ```
 
-```{r}
-# creat version back transformed from z-scores
+```{r unstandardize}
 dat_full_orig <- unstandardize(dat_full, scale_df)
 ```
 
-
 ```{r print-config}
+cat("Model type:", model_type, "\n")
 cat("Model version:", vm, "\n")
 cat("Data version:", vd, "\n")
-cat("Sampling (purer) version:", vp, '\n')
+cat("Purer version:", vp, "\n")
 cat("Formula:", deparse(config$model$formula), "\n")
-cat("Cover variables:", deparse(config$model$cover_cols), "\n")
+cat("Cover variables:", paste(config$model$cover_cols, collapse = ", "), "\n")
 cat("EN alpha:", config$cv$en_alpha, "\n")
 cat("Selected lambda:", signif(cv$selected$lambda, 3), "\n")
 cat("Selection rule:", config$cv$select_rule, "\n")
-cat("N training (purer pixels):", m1$purer$n_selected, "\n")
+cat("N training:", m1$n_train, "\n")
 cat("N full data:", nrow(dat_full), "\n")
 ```
+
 
 ## 1. Lambda Selection
 

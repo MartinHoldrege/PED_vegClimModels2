@@ -93,7 +93,7 @@ make_model_formula <- function(sub_spec) {
 # for 01_fit_model_hw.R
 build_config <- function(vm, sub_spec, formula,
                          cv_settings, clustering_settings, vd, vp,
-                         p_spec,
+                         purer_spec,
                          model_type) {
   list(
     vm = vm,
@@ -110,9 +110,9 @@ build_config <- function(vm, sub_spec, formula,
     purer = list(
       vp = vp, # version of purer selection
       region_col = "region",
-      q = p_spec$q,
-      min_raw_cover = p_spec$min_raw_cover,
-      n_sample = p_spec$n_sample,
+      q = purer_spec$q,
+      min_raw_cover = purer_spec$min_raw_cover,
+      n_sample = purer_spec$n_sample,
       max_n_per_region = NULL,  # NULL = no cap
       seed = 42
     ),

@@ -73,6 +73,120 @@ read_climate_raster <- function(
 }
 
 
+#' Load and align CONUS rasters for biomass modeling
+#'
+#' Loads climate, cover, biomass response, and mask rasters, aligns
+#' extents and CRS, and applies masks. All operations are lazy (no data
+#' loaded into memory). The scale_df computation is cached via
+#' `compute_scale_df()`.
+#'
+#' @param pred_vars Character vector of climate variable short names.
+#' @param lcmap_threshold Numeric; LCMAP fraction keep threshold.
+#' @param fire_threshold Numeric; MTBS fraction unburned threshold.
+#' @param root Root path for large files.
+#' @param years Character; year range for time-varying products.
+#' @param force_scale Logical; if TRUE, recompute scale_df even if cached.
+#'
+#' @return A named list with elements: `climate` (subset, unstandardized),
+#'   `cover`, `herb_bio`, `gedi`, `mask_lcmap`, `mask_fire`, `scale_df`,
+#'   `paths`, `params`.
+#' @export
+load_conus_rasters <- function(pred_vars = NULL,
+                               lcmap_threshold = 0.9,
+                               fire_threshold = 0.9,
+                               root = paths$large,
+                               years = "2000-2023",
+                               force_scale = FALSE) {
+  
+  # file paths
+  p_climate <- file.path(root, "Data_processed/BiomassQuantityData",
+                         "DayMetData_allCONUS_2023ClimateValues_raster.tif")
+  p_lcmap <- file.path(root, "Data_processed/masks",
+                       "LCMAP_fracKeep_1000m.tif")
+  p_fire <- file.path(root, "Data_processed/masks",
+                      paste0("MTBS_fracUnburned_", years, "_1000m.tif"))
+  p_cover <- file.path(root, "Data_processed/CoverData/rap",
+                       paste0("RAP_v3_cover_", years, "_1000m.tif"))
+  p_herb_bio <- file.path(root, "Data_processed/BiomassQuantityData/rap",
+                          paste0("RAP_v3_herbaceousAGB_mask-Lcmap",
+                                 lcmap_threshold * 100, "_", years, "_1000m.tif"))
+  p_gedi <- file.path(root, "Data_processed/BiomassQuantityData",
+                      "GEDI_biomassRaster_onDayMetGrid.tif")
+  
+  all_paths <- c(p_climate, p_lcmap, p_fire, p_cover, p_herb_bio, p_gedi)
+  missing <- all_paths[!file.exists(all_paths)]
+  if (length(missing) > 0) {
+    stop("Missing raster files:\n  ", paste(missing, collapse = "\n  "))
+  }
+  
+  cat("Loading CONUS rasters...\n")
+  
+  r_climate <- read_climate_raster(p_climate)
+  r_lcmap <- terra::rast(p_lcmap)
+  r_fire <- terra::rast(p_fire)
+  r_cover <- terra::rast(p_cover)/100 # RAP cover is %
+  
+  r_herb_bio <- terra::rast(p_herb_bio)
+  names(r_herb_bio) <- "totalHerbaceousBio"
+  
+  r_gedi <- terra::rast(p_gedi)
+  names(r_gedi) <- "totalWoodyBio"
+  
+  # align
+  aligned <- align_raster_extents(rast_list = list(
+    climate = r_climate, lcmap = r_lcmap, fire = r_fire,
+    cover = r_cover, herb_bio = r_herb_bio, gedi = r_gedi
+  ))
+  
+  # masks
+  lcmap_lyr <- paste0("fracKeep_gte", lcmap_threshold * 100)
+  mask_lcmap <- if (lcmap_lyr %in% names(aligned$lcmap)) {
+    aligned$lcmap[[lcmap_lyr]]
+  } else {
+    message("LCMAP threshold layer missing, computing...")
+    aligned$lcmap[["fracKeep"]] >= lcmap_threshold
+  }
+  
+  fire_lyr <- paste0("fracUnburned_gte", fire_threshold * 100)
+  mask_fire <- if (fire_lyr %in% names(aligned$fire)) {
+    aligned$fire[[fire_lyr]]
+  } else {
+    message("Fire threshold layer missing, computing...")
+    aligned$fire[["fracUnburned"]] >= fire_threshold
+  }
+  
+  if(is.null(pred_vars)) {
+    pred_vars <- names(aligned$climate)
+  }
+  # climate subset + cached scale_df
+  r_climate_subset <- aligned$climate[[pred_vars]]
+  
+  scale_df <- compute_scale_df(
+    rast = r_climate_subset,
+    vars = pred_vars,
+    source_path = p_climate,
+    force = force_scale
+  )
+  
+  cat("  Done loading CONUS rasters.\n")
+  
+  list(
+    climate = r_climate_subset,
+    cover = aligned$cover,
+    herb_bio = aligned$herb_bio,
+    gedi = aligned$gedi,
+    mask_lcmap = mask_lcmap,
+    mask_fire = mask_fire,
+    scale_df = scale_df,
+    paths = list(climate = p_climate, lcmap = p_lcmap, fire = p_fire,
+                 cover = p_cover, herb_bio = p_herb_bio, gedi = p_gedi),
+    params = list(lcmap_threshold = lcmap_threshold,
+                  fire_threshold = fire_threshold,
+                  pred_vars = pred_vars,
+                  years = years)
+  )
+}
+
 # downloading files -----------------------------------------
 
 #' Download a file from Drive if it is newer than the local copy

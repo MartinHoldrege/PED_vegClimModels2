@@ -27,112 +27,24 @@ pred_vars_woody <- pred_vars_herb
 # output version tag
 vd <- "d05" # uses RAP cover, for code development/testing
 
-# file paths --------------------------------------------------------------
-
-years <- '2000-2023'
-
-p_climate <- file.path(
-  paths$large,
-  "Data_processed/BiomassQuantityData",
-  "DayMetData_allCONUS_2023ClimateValues_raster.tif"
-)
-
-p_lcmap <- file.path(
-  paths$large,
-  "Data_processed/masks",
-  "LCMAP_fracKeep_1000m.tif"
-)
-
-p_fire <- file.path(
-  paths$large,
-  "Data_processed/masks",
-  paste0("MTBS_fracUnburned_", years, "_1000m.tif")
-)
-
-p_cover <- file.path(
-  paths$large,
-  "Data_processed/CoverData/rap",
-  paste0("RAP_v3_cover_", years, "_1000m.tif")
-)
-
-p_herb_bio <- file.path(
-  paths$large,
-  "Data_processed/BiomassQuantityData/rap",
-  paste0("RAP_v3_herbaceousAGB_mask-Lcmap", lcmap_threshold*100, "_", years, "_1000m.tif")
-)
-
-p_gedi <- file.path(
-  paths$large,
-  "Data_processed/BiomassQuantityData",
-  "GEDI_biomassRaster_onDayMetGrid.tif"
-)
-
-# load rasters (lazy — no data in memory) ---------------------------------
-
-r_climate <- read_climate_raster(p_climate)
-
-r_lcmap <- terra::rast(p_lcmap)
-r_fire <- terra::rast(p_fire)
-
-r_cover <- terra::rast(p_cover)
-
-r_herb_bio <- terra::rast(p_herb_bio)
-names(r_herb_bio) <- "totalHerbaceousBio"
-
-r_gedi <- terra::rast(p_gedi)
-names(r_gedi) <- "totalWoodyBio"
-
-
-# align rasters -----------------------------------------------------------
-
-aligned <- align_raster_extents(
-  rast_list = list(
-    climate = r_climate,
-    lcmap = r_lcmap,
-    fire = r_fire,
-    cover = r_cover,
-    herb_bio = r_herb_bio,
-    gedi = r_gedi
-  )
-)
-
-r_climate  <- aligned$climate
-r_lcmap    <- aligned$lcmap
-r_fire     <- aligned$fire
-r_cover    <- aligned$cover
-r_herb_bio <- aligned$herb_bio
-r_gedi     <- aligned$gedi
-
-# create masks ------------------------------------------------------------
-
-# binary LCMAP mask (1 where fraction keepable >= threshold)
-lcmap_lyr <- paste0('fracKeep_gte', lcmap_threshold*100) 
-if(lcmap_lyr %in% names(r_lcmap)) {
-  mask_lcmap <- r_lcmap[[lcmap_lyr]]
-} else {
-  message('lcmap threshold layer missing,... computing')
-  mask_lcmap <- r_lcmap[["fracKeep"]] >= lcmap_threshold
-}
-
-fire_lyr <- paste0('fracUnburned_gte', fire_threshold*100) 
-if(fire_lyr %in% names(r_fire)) {
-  mask_fire <- r_fire[[fire_lyr]]
-} else {
-  message('fire threshold layer missing,... computing')
-  mask_fire <- r_fire[["fracUnburned"]] >= fire_threshold
-}
-
-# select climate layers and compute scale_df -------------------------------
+# load rasters ------------------------------------------------------------
 
 all_pred_vars <- unique(c(pred_vars_herb, pred_vars_woody))
-r_climate_subset <- r_climate[[all_pred_vars]]
 
-# compute standardization parameters from the full CONUS climate raster
+rasters <- load_conus_rasters(
+  pred_vars = NULL,
+  lcmap_threshold = lcmap_threshold,
+  fire_threshold = fire_threshold,
+  force_scale = FALSE
+)
 
-scale_df <- compute_scale_df(rast = r_climate_subset, 
-                 vars = all_pred_vars, 
-                 source_path = p_climate,
-                 force = FALSE)
+r_climate_subset <- rasters$climate
+r_cover <- rasters$cover
+r_herb_bio <- rasters$herb_bio
+r_gedi <- rasters$gedi
+mask_lcmap <- rasters$mask_lcmap
+mask_fire <- rasters$mask_fire
+scale_df <- rasters$scale_df
 
 
 # === HERBACEOUS training data =============================================
