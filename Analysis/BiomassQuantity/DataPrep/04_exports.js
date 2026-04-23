@@ -133,12 +133,15 @@ if(exportfracNotForest) {
     + '-fire' + maskCutoffFire*100 + '_2019-2023' + fg.resLabel;
     
   // created in 03_rap_fracNotForest.js
-  var notForest =   ee.Image(fg.pathAsset + 'rap/' + notForestAssetName)
+  var notForestUnmasked = ee.Image(fg.pathAsset + 'rap/' + notForestAssetName)
+  
+  var notForest = notForestUnmasked
       .updateMask(fracKeepBinary)
       .updateMask(fracUnburnedBinary);
       
   Map.addLayer(notForest, {min: 0, max: 1, palette: 'white,black'}, 'fracNotForest', false);
-      
+  Map.addLayer(notForestUnmasked, {min: 0, max: 1, palette: 'white,black'}, 'fracNotForest unmasked', false);
+  
   Export.image.toDrive({
     image: notForest,
     description: notForestFileName,
