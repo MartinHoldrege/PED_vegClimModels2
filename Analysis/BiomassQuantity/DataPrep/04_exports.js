@@ -25,10 +25,11 @@ var maskCutoffFire = 0.9;
 var driveFolder = 'PED_vegClimModels2';
 
 // export toggles
-var exportLcmapMask = true;
-var exportFireMask = true;
+var exportLcmapMask = false;
+var exportFireMask = false;
 var exportRapCover = false;
 var exportRapBiomass = false;
+var exportfracNotForest = true
 
 // LCMAP mask (fracKeep + binary) -------------------
 
@@ -57,7 +58,7 @@ if (exportLcmapMask) {
 }
 
 // Fire mask (fracUnburned + binary) ----------------
-if (exportFireMask) {
+
   // created in 01_mtbs_everBurned.js, 02_mtbs_fracUnburned.js
   var fracUnburned = ee.Image(fg.pathAsset + 'fire/MTBS_fracUnburned_' +
     yearStart + '-' + yearEnd + fg.resLabel)
@@ -66,8 +67,10 @@ if (exportFireMask) {
     .gte(maskCutoffFire)
     .selfMask()
     .rename('fracUnburned_gte' + maskCutoffFire*100);
+  
   var fireStack = fracUnburned.addBands(fracUnburnedBinary).toFloat();
 
+if (exportFireMask) {
   var fireFileName = 'MTBS_fracUnburned_' + yearStart + '-' + yearEnd + fg.resLabel;
   Export.image.toDrive({
     image: fireStack,
@@ -121,4 +124,36 @@ if (exportRapBiomass) {
     maxPixels: 1e12,
     fileFormat: 'GeoTIFF'
   });
+
 }
+
+if(exportfracNotForest) {
+  var notForestAssetName = 'RAP_v3_fracNotForest_2019-2023' + fg.resLabel;
+  var notForestFileName = 'RAP_v3_fracNotForest_mask-lcmap' + maskCutoffLcmap * 100 
+    + '-fire' + maskCutoffFire*100 + '_2019-2023' + fg.resLabel;
+    
+  // created in 03_rap_fracNotForest.js
+  var notForestUnmasked = ee.Image(fg.pathAsset + 'rap/' + notForestAssetName)
+  
+  var notForest = notForestUnmasked
+      .updateMask(fracKeepBinary)
+      .updateMask(fracUnburnedBinary);
+      
+  Map.addLayer(notForest, {min: 0, max: 1, palette: 'white,black'}, 'fracNotForest', false);
+  Map.addLayer(notForestUnmasked, {min: 0, max: 1, palette: 'white,black'}, 'fracNotForest unmasked', false);
+  
+  Export.image.toDrive({
+    image: notForest,
+    description: notForestFileName,
+    folder: driveFolder,
+    fileNamePrefix: notForestFileName,
+    crs: fg.crs,
+    crsTransform: fg.crsTransform,
+    region: fg.region,
+    maxPixels: 1e12,
+    fileFormat: 'GeoTIFF'
+  });
+}
+
+
+
