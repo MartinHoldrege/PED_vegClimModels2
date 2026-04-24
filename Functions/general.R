@@ -49,9 +49,9 @@ create_opts_l <- function(suffix) {
   opts_l
 }
 
-create_cmdargs <- function(x) {
+create_cmdargs <- function(x, model_type = NULL) {
   x <- lapply(x, as.character)
-  list(
+  out <- list(
     paste0('--vs=', x$vs),
     paste0('--vd=', x$vd),
     paste0('--vp=', x$vp),
@@ -59,6 +59,10 @@ create_cmdargs <- function(x) {
     paste0('--use_simulated=', x$use_simulated),
     paste0('--pfts=', paste(x$pfts, collapse = ","))
   )
+  if (is.null(model_type)) {
+    out <- c(out, list(paste0('--model_type=', model_type)))
+  }
+  out
 }
 # misc --------------------------------------------------------------------
 

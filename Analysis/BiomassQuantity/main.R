@@ -6,10 +6,11 @@ source('Functions/general.R')
 # params ------------------------------------------------------------------
 
 run_sim <- FALSE # simulate data
-run_fit_model <- TRUE
-run_model_diagnostics <- TRUE
+run_fit_model <- FALSE
+run_predict_rasters <- FALSE
+run_model_diagnostics <- FALSE
 run_model_diagnostics_sim <- FALSE
-
+run_spatial_diagnostics <- TRUE
 run_explore_dat_samp <- FALSE # To do: not updated yet
 
 # [vs]: data version (s for simulated, d- for real data), 
@@ -91,23 +92,49 @@ for (suffix in suffixes) {
     callr::rscript(p, cmdargs = cmdargs)
   }
   
+
+# predict -----------------------------------------------------------------
+
+if(run_predict_rasters & hw_type) {
+  lapply(model_types, \(model_type) {
+      callr::rscript('Analysis/BiomassQuantity/Fit/02_predict_rasters.R',
+                     cmdargs = create_cmdargs(opts_l, model_type = model_type))
+  })
+
+}  
+  
   # Evaluate ----------------------------------------------------------------
   
-  if(run_model_diagnostics) {
-    #dir.create(file.path(output_dir, 'Evaluate'), recursive = TRUE)
-    if(hw_type) {
-      lapply(model_types, function(model_type) {
-        prms_model_diagnostics$model_type <- model_type
-        render_model_diagnostics(prms = prms_model_diagnostics)
-      })
-    } else {
-      render_model_diagnostics(
-         path = "Analysis/BiomassQuantity/Evaluate/01_model_diagnostics.Rmd",
-         prms = prms_model_diagnostics)
-    }
+if(run_model_diagnostics) {
+  #dir.create(file.path(output_dir, 'Evaluate'), recursive = TRUE)
+  if(hw_type) {
+    lapply(model_types, function(model_type) {
+      prms_model_diagnostics$model_type <- model_type
+      render_model_diagnostics(prms = prms_model_diagnostics)
+    })
+  } else {
+    render_model_diagnostics(
+       path = "Analysis/BiomassQuantity/Evaluate/01_model_diagnostics.Rmd",
+       prms = prms_model_diagnostics)
   }
+}
   
-  if(run_model_diagnostics_sim & isTRUE(opts_l$use_simulated) & !hw_type) {
+if(run_spatial_diagnostics & hw_type) {
+    lapply(model_types, function(model_type) {
+      prms <- prms_model_diagnostics
+      prms$model_type <- model_type
+      rmarkdown::render(
+        "Analysis/BiomassQuantity/Evaluate/01_spatial_diagnostics.Rmd", 
+        knit_root_dir = knit_root_dir,
+        params = prms,
+        output_dir = file.path(output_dir, 'Evaluate'),
+        output_file = paste0("01_spatial_diagnostics_", make_suffix(prms), ".html")
+      )
+  })
+}
+  
+  
+if(run_model_diagnostics_sim & isTRUE(opts_l$use_simulated) & !hw_type) {
 
     rmarkdown::render(
       "Analysis/BiomassQuantity/Evaluate/01_evaluate_model_sim-data.Rmd",
@@ -121,6 +148,8 @@ for (suffix in suffixes) {
   }
 
 }
+
+# if(run_sp)
 # data prep exploration -------------------------------------------------------
 
 if(run_explore_dat_samp) {

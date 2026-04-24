@@ -3,7 +3,7 @@ title: "Spatial Diagnostics: Predicted Biomass Maps"
 author: "Martin Holdrege"
 date: "`r Sys.Date()`"
 params:
-  model_type: "herb"
+  model_type: "woody"
   data_version: "d05"
   purer_version: "p04"
   model_version: "m09"
@@ -59,6 +59,8 @@ cover_cols <- config$model$cover_cols
 
 ```{r load-rasters}
 # --- load prediction raster ---
+# created in Fit/02_predict_rasters.R
+
 p_pred <- file.path(
   paths$large,
   "Data_processed/BiomassQuantityData/Predictions",

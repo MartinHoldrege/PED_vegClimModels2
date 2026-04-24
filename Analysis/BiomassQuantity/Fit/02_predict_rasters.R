@@ -18,7 +18,7 @@ vd <- opt$vd
 vm <- opt$vm
 vp <- opt$vp
 model_type <- opt$model_type  # "herb" or "woody"
-
+#model_type <- 'woody'
 stopifnot(model_type %in% c("herb", "woody"))
 
 # load fitted model -------------------------------------------------------
