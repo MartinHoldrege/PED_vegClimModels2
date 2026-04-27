@@ -91,8 +91,9 @@ cwexp_pdp <- function(fit, data, focal_vars = NULL,
 
   if (is.null(focal_vars)) {
     focal_vars <- attr(stats::terms(formula), "term.labels")
-    # drop interaction terms (contain ":")
+    # drop interactions and formula transformations
     focal_vars <- focal_vars[!grepl(":", focal_vars)]
+    focal_vars <- focal_vars[!grepl("^I\\(", focal_vars)]
   }
 
   stopifnot(all(focal_vars %in% names(data)))

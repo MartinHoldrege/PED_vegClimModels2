@@ -18,7 +18,7 @@ option_list <- list(
                         default = "p04"),
   # model version
   optparse::make_option("--vm", type = "character", 
-                        default = "m09"),
+                        default = "m10"),
   # this applies to m09 and later, where seperate woody and herbaceous models
   optparse::make_option("--model_type", type = "character", 
                         default = "woody"),

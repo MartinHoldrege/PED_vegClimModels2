@@ -59,7 +59,7 @@ create_cmdargs <- function(x, model_type = NULL) {
     paste0('--use_simulated=', x$use_simulated),
     paste0('--pfts=', paste(x$pfts, collapse = ","))
   )
-  if (is.null(model_type)) {
+  if (!is.null(model_type)) {
     out <- c(out, list(paste0('--model_type=', model_type)))
   }
   out

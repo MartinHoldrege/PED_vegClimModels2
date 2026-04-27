@@ -77,15 +77,17 @@ safe_softplus <- function(x) ifelse(x > 20, x, log1p(exp(x)))
 # where sub_spec is a list of model specifications
 make_model_formula <- function(sub_spec) {
   pred_vars <- sub_spec$pred_vars
+  extras <- sub_spec$formula_extras  # NULL if not present
   inter <- sub_spec$inter
   
   inter_terms <- if (!is.null(inter)) {
     purrr::map_chr(inter, ~ paste(.x, collapse = ":"))
-  } else {
-    character(0)
-  }
-  all_terms <- c(pred_vars, inter_terms)
-  as.formula(paste("totalBio ~", paste(all_terms, collapse = " + ")))
+  } else character(0)
+  
+  all_terms <- c(pred_vars, extras, inter_terms)
+  f <- as.formula(paste("totalBio ~", paste(all_terms, collapse = " + ")))
+  environment(f) <- globalenv()
+  f
 }
 
 

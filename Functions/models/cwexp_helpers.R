@@ -313,6 +313,82 @@ cwexp_loglik <- function(fit, data, response = NULL, shift = NULL) {
 
 # predict using raster input ----------------------------------------------
 
+#' Resolve a raster layer from a model column name
+#'
+#' Handles direct layer names, `I(var^n)` polynomial terms, and
+#' `var1:var2` interactions (including combinations like `I(x^2):y`).
+#' All operations use lazy terra raster math.
+#'
+#' @param rast A SpatRaster.
+#' @param term Character; column name from `x_cols` (e.g., `"MAT"`,
+#'   `"I(MAT^2)"`, `"MAT:MAP"`).
+#'
+#' @return A single-layer SpatRaster.
+#' @keywords internal
+resolve_raster_layer <- function(rast, term) {
+  # direct match
+  if (term %in% names(rast)) return(rast[[term]])
+  
+  # I(var^n) pattern
+  m <- stringr::str_match(term, "^I\\(([A-Za-z0-9_.]+)\\^([0-9]+)\\)$")
+  if (!is.na(m[1, 1])) {
+    base_var <- m[1, 2]
+    power    <- as.integer(m[1, 3])
+    if (!base_var %in% names(rast)) {
+      stop("Base variable '", base_var, "' not found in raster ",
+           "(from term '", term, "').")
+    }
+    return(rast[[base_var]]^power)
+  }
+  # var1:var2 interaction (recursively resolve each part)
+  if (stringr::str_detect(term, fixed(":"))) {
+    parts <- str_split_1(term, fixed(":"))
+    out <- resolve_raster_layer(rast, parts[1])
+    for (k in 2:length(parts)) {
+      # multiplying the interaction components
+      out <- out * resolve_raster_layer(rast, parts[k])
+    }
+    return(out)
+  }
+  
+  stop("Cannot resolve raster layer for: '", term, "'",
+       "\n  Available layers: ", paste(names(rast), collapse = ", "))
+}
+
+
+#' Extract base variable names from x_cols
+#'
+#' Parses `I(var^n)` and `var1:var2` patterns to find the underlying
+#' raster layer names needed.
+#'
+#' @param terms Character vector of model column names.
+#' @return Character vector of unique base variable names.
+#' @keywords internal
+extract_base_vars <- function(terms) {
+  base_vars <- character()
+  for (col in terms) {
+    # I(var^n) pattern
+    m <- regmatches(col,
+                    regexec("^I\\(([A-Za-z0-9_.]+)\\^([0-9]+)\\)$", col))[[1]]
+    if (length(m) == 3) {
+      base_vars <- c(base_vars, m[2])
+      next
+    }
+    # interaction
+    if (grepl(":", col, fixed = TRUE)) {
+      parts <- strsplit(col, ":", fixed = TRUE)[[1]]
+      # recursively extract from each part
+      base_vars <- c(base_vars, extract_base_vars(parts))
+      next
+    }
+    # plain variable
+    base_vars <- c(base_vars, col)
+  }
+  unique(base_vars)
+}
+
+
+
 #' Predict total biomass from a cwexp model onto a raster
 #'
 #' Computes `mu = sum_g(C_g * softplus(alpha_g + X * beta_g))` using raster
@@ -404,6 +480,95 @@ predict_raster <- function(fit, rast,
   
   # by_group or potential: stack into multi-layer raster
   out <- group_layers
+  pft_labels <- stringr::str_remove(cover_cols, "Cov$")
+  names(out) <- pft_labels
+  out
+}
+
+#' Predict biomass from a cwexp model onto a raster
+#'
+#' Computes `mu = sum_g(C_g * softplus(alpha_g + X * beta_g))` using raster
+#' math. The input raster must have named layers for the base predictor
+#' variables and cover columns. Formula transformations like `I(MAT^2)` and
+#' interactions like `MAT:MAP` are computed on-the-fly from the base layers.
+#'
+#' @param fit Fitted cwexp model object (`cwexp_tmb_fit`).
+#' @param rast A `SpatRaster` (terra) with named layers including base
+#'   predictor variables and cover columns.
+#' @param type Character; `"total"` returns a single-layer SpatRaster of
+#'   total predicted biomass. `"by_group"` returns per-PFT cover-weighted.
+#'   `"potential"` returns per-PFT at 100% cover.
+#'
+#' @return A `SpatRaster`.
+#' @examples
+#' # supports formulas with I() and interactions:
+#' # totalBio ~ MAT + I(MAT^2) + MAP + MAT:MAP
+#' # only requires raster layers named "MAT" and "MAP"
+#' @export
+predict_raster <- function(fit, rast,
+                           type = c("total", "by_group", "potential")) {
+  
+  type <- match.arg(type)
+  
+  stopifnot(inherits(rast, "SpatRaster"),
+            stringr::str_detect(class(fit), "cwexp"))
+  
+  x_cols <- fit$prep$x_cols
+  cover_cols <- fit$spec$cover_cols
+  alpha <- fit$par$alpha
+  B <- fit$par$B
+  
+  # check that base variables (not transformed names) exist in raster
+  base_vars <- extract_base_vars(x_cols)
+  required_layers <- c(base_vars, cover_cols)
+  missing <- setdiff(required_layers, names(rast))
+  if (length(missing) > 0) {
+    stop("Missing layers in raster: ", paste(missing, collapse = ", "))
+  }
+  
+  G <- length(cover_cols)
+  P <- length(x_cols)
+  
+  # helper: safe softplus for rasters
+  r_softplus <- function(r) {
+    terra::ifel(r > 20, r, log1p(exp(r)))
+  }
+  
+  # compute per-group contributions
+  group_layers <- vector("list", G)
+  for (g in seq_len(G)) {
+    # start with alpha_g
+    eta_g <- terra::rast(rast[[1]])  # template
+    terra::values(eta_g) <- alpha[g]
+    
+    # add predictor contributions
+    for (p in seq_len(P)) {
+      eta_g <- eta_g + resolve_raster_layer(rast, x_cols[p]) * B[p, g]
+    }
+    
+    sp_g <- r_softplus(eta_g)
+    
+    if (type == "potential") {
+      group_layers[[g]] <- sp_g
+    } else {
+      group_layers[[g]] <- rast[[cover_cols[g]]] * sp_g
+    }
+  }
+  
+  names(group_layers) <- cover_cols
+  
+  if (type == "total") {
+    out <- group_layers[[1]]
+    if (G > 1) {
+      for (g in 2:G) {
+        out <- out + group_layers[[g]]
+      }
+    }
+    names(out) <- "predicted_totalBio"
+    return(out)
+  }
+  
+  out <- terra::rast(group_layers)
   pft_labels <- stringr::str_remove(cover_cols, "Cov$")
   names(out) <- pft_labels
   out

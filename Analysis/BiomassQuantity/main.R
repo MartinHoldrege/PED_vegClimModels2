@@ -7,8 +7,8 @@ source('Functions/general.R')
 
 run_sim <- FALSE # simulate data
 run_fit_model <- FALSE
-run_predict_rasters <- FALSE
-run_model_diagnostics <- FALSE
+run_predict_rasters <- TRUE
+run_model_diagnostics <- TRUE
 run_model_diagnostics_sim <- FALSE
 run_spatial_diagnostics <- TRUE
 run_explore_dat_samp <- FALSE # To do: not updated yet
@@ -22,10 +22,10 @@ run_explore_dat_samp <- FALSE # To do: not updated yet
 
 # repo updated to only work w/ seperate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <- c('d05-p04-m09')
+suffixes <- c('d05-p04-m10')
 
 # for exploring data sampling
-suffixes_data <- c('d02-p02', 'd04-p02') # for plots looking input data
+suffixes_data <- c('d02-p02', 'd04-p02') # for plots looking input data [not updated]
 
 # for rmd's
 output_dir <- "Reports/BiomassQuantity/"
