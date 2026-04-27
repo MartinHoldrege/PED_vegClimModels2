@@ -1,0 +1,321 @@
+---
+title: "Climate PCA: variable selection"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  data_version: "d05"
+  model_type: "herb"   # which sample to use ("herb" or "woody")
+  n_top: 5             # top N variables per PC to report
+  test_run: FALSE
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Purpose
+
+Run PCA on the climate predictor variables to inform variable selection.
+Goals:
+
+1. Show the % variance explained per principal component (scree plot) to
+   judge how many axes capture most of the climate variability.
+2. Identify the variables loading most strongly on each PC, so a small
+   subset (~4-5) of interpretable variables can be chosen that together
+   represent most of the variation across CONUS climate.
+
+## Setup
+
+```{r source-and-load}
+source("Functions/init.R")
+source_functions()
+theme_set(theme_classic())
+
+vd <- params$data_version
+model_type <- params$model_type
+n_top <- params$n_top
+test_run <- params$test_run
+
+# load the sampled training data
+p_dat <- file.path(
+  paths$large,
+  "Data_processed/BiomassQuantityData/analysis_ready",
+  paste0("biomass_", model_type, "_sample_", vd, ".rds")
+)
+stopifnot(file.exists(p_dat))
+dat_obj <- readRDS(p_dat)
+dat <- dat_obj$data
+
+if(test_run) {
+  dat <- dplyr::sample_n(dat, size = 1e3)
+}
+
+cat("Loaded:", p_dat, "\n")
+cat("Rows:", nrow(dat), " Cols:", ncol(dat), "\n")
+```
+
+## Select climate variables
+
+Drop coordinates, response, cover, and region columns. Everything else is
+treated as a climate variable for the PCA. `prcomp(scale. = TRUE)` re-scales
+all variables, so it doesn't matter whether they were pre-z-scored.
+
+```{r select-vars}
+non_climate <- c("x", "y", "totalBio", "totalHerbaceousCov",
+                 "totalTreeCov", "totalShrubCov", "region", "awc")
+
+clim_vars <- setdiff(names(dat), non_climate)
+clim_vars <- clim_vars[sapply(dat[clim_vars], is.numeric)]
+
+cat("Climate variables (", length(clim_vars), "):\n", sep = "")
+cat(paste(clim_vars, collapse = ", "), "\n")
+
+dat_clim <- dat[, clim_vars, drop = FALSE]
+
+# drop incomplete rows
+n_before <- nrow(dat_clim)
+dat_clim <- dat_clim[complete.cases(dat_clim), , drop = FALSE]
+n_after <- nrow(dat_clim)
+cat("Dropped", n_before - n_after, "rows with NAs (",
+    n_after, "remaining)\n")
+```
+
+## Run PCA
+
+```{r run-pca}
+pca <- prcomp(dat_clim, scale. = TRUE, center = TRUE)
+
+# variance summary
+var_df <- tibble(
+  PC = factor(paste0("PC", seq_along(pca$sdev)),
+              levels = paste0("PC", seq_along(pca$sdev))),
+  pc_num = seq_along(pca$sdev),
+  variance = pca$sdev^2,
+  prop_var = variance / sum(variance),
+  cum_var = cumsum(prop_var)
+)
+```
+
+## Scree plot
+
+Bars show variance explained by each PC; line shows cumulative variance.
+Horizontal reference at 90%.
+
+```{r scree, fig.width = 7, fig.height = 4}
+ggplot(var_df, aes(x = pc_num)) +
+  geom_col(aes(y = prop_var), fill = "steelblue", alpha = 0.7) +
+  geom_line(aes(y = cum_var), color = "black") +
+  geom_point(aes(y = cum_var), color = "black", size = 1.5) +
+  geom_hline(yintercept = 0.9, linetype = "dashed", color = "grey40") +
+  scale_x_continuous(breaks = var_df$pc_num) +
+  scale_y_continuous(
+    labels = scales::percent,
+    sec.axis = sec_axis(~ ., name = "Cumulative variance",
+                        labels = scales::percent)
+  ) +
+  labs(x = "Principal component",
+       y = "Variance explained",
+       title = "Scree plot")
+```
+
+```{r var-table}
+var_df |>
+  mutate(across(c(prop_var, cum_var), ~ scales::percent(.x, accuracy = 0.1))) |>
+  select(PC, variance, prop_var, cum_var) |>
+  knitr::kable(caption = "Variance explained by each PC",
+               col.names = c("PC", "Variance", "% variance", "Cumulative %"),
+               digits = 3)
+```
+
+## Loadings
+
+Loadings (rotation matrix) for all PCs. Variables are ordered by
+hierarchical clustering on the loadings, so variables with similar loading
+patterns sit next to each other -- these are the substitutable variables.
+
+```{r prep-loadings}
+loadings_mat <- pca$rotation
+
+# order variables by hierarchical clustering on loadings
+hc <- hclust(dist(loadings_mat))
+var_order <- rownames(loadings_mat)[hc$order]
+
+loadings_long <- as.data.frame(loadings_mat) |>
+  rownames_to_column("variable") |>
+  pivot_longer(-variable, names_to = "PC", values_to = "loading") |>
+  mutate(
+    PC = factor(PC, levels = colnames(loadings_mat)),
+    variable = factor(variable, levels = var_order)
+  )
+```
+
+### Loadings heatmap
+
+```{r loadings-heatmap, fig.width = 9, fig.height = 7}
+max_abs <- max(abs(loadings_long$loading))
+
+ggplot(loadings_long, aes(x = PC, y = variable, fill = loading)) +
+  geom_tile(color = "white", linewidth = 0.2) +
+  scale_fill_gradient2(low = "#b2182b", mid = "white", high = "#2166ac",
+                       midpoint = 0, limits = c(-max_abs, max_abs)) +
+  labs(x = "Principal component", y = NULL,
+       title = "PCA loadings (variables clustered by loading similarity)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid = element_blank())
+```
+
+### Top loading variables per PC
+
+For each PC up to 90% cumulative variance, the top `r n_top` variables by
+absolute loading. Sign is preserved so direction of association is visible.
+
+```{r top-loadings}
+n_pcs_keep <- min(which(var_df$cum_var >= 0.95))
+
+top_tbl <- loadings_long |>
+  mutate(pc_num = as.integer(str_remove(PC, "PC"))) |>
+  filter(pc_num <= n_pcs_keep) |>
+  group_by(PC) |>
+  arrange(desc(abs(loading)), .by_group = TRUE) |>
+  slice_head(n = n_top) |>
+  mutate(rank = row_number(),
+         loading = round(loading, 3)) |>
+  ungroup()
+
+# wide format: rows = rank, cols = PC, values = "variable (loading)"
+top_wide <- top_tbl |>
+  mutate(entry = paste0(variable, " (", sprintf("%+.2f", loading), ")")) |>
+  select(rank, PC, entry) |>
+  pivot_wider(names_from = PC, values_from = entry)
+
+knitr::kable(
+  top_wide,
+  caption = paste0("Top ", n_top, " variables per PC (by |loading|), ",
+                   "for PCs covering >=95% cumulative variance. ",
+                   "Sign indicates direction.")
+)
+```
+
+## Correlations among top-loading variables
+
+Pearson correlations among all unique variables that appeared in the
+top-`r n_top` for any PC above. Variables ordered by hierarchical
+clustering on the correlation matrix, so highly correlated variables
+cluster together. Use this to identify substitutable variables when
+choosing a small representative set.
+
+```{r corr-heatmap, fig.width = 9, fig.height = 8}
+top_vars <- unique(as.character(top_tbl$variable))
+
+cor_mat <- cor(dat_clim[, top_vars], method = "pearson")
+
+# order by hclust on (1 - |cor|) so similar variables cluster
+hc_cor <- hclust(as.dist(1 - abs(cor_mat)))
+cor_order <- rownames(cor_mat)[hc_cor$order]
+
+cor_long <- as.data.frame(cor_mat) |>
+  rownames_to_column("var1") |>
+  pivot_longer(-var1, names_to = "var2", values_to = "r") |>
+  mutate(
+    var1 = factor(var1, levels = cor_order),
+    var2 = factor(var2, levels = cor_order)
+  )
+
+ggplot(cor_long, aes(x = var1, y = var2, fill = r)) +
+  geom_tile(color = "white", linewidth = 0.2) +
+  geom_text(aes(label = sprintf("%.2f", r)), size = 2.7) +
+  scale_fill_gradient2(low = "#b2182b", mid = "white", high = "#2166ac",
+                       midpoint = 0, limits = c(-1, 1)) +
+  labs(x = NULL, y = NULL,
+       title = "Pearson correlations among top-loading variables") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid = element_blank())
+```
+
+## Climate-space coverage by selected variables
+
+For a chosen set of variables, "coverage" = mean R² across all `r length(clim_vars)`
+climate variables when each is regressed on the selected set. This is the
+direct analog of "first K PCs cover Y% of variance," but using
+interpretable raw variables instead of PCs. Because the raw variables are
+correlated, the per-step contributions depend on the order; only the
+cumulative total is order-invariant.
+
+```{r coverage-fn}
+#' Mean R^2 across all climate variables given a set of predictors
+#'
+#' Regresses each variable in `dat` on the columns named in `predictors`
+#' and averages the R^2 values. When a variable is itself in `predictors`
+#' its R^2 is set to 1.
+#'
+#' @param dat Data frame of climate variables (all numeric).
+#' @param predictors Character vector of column names to use as predictors.
+#'
+#' @return Numeric scalar: mean R^2.
+mean_r2_coverage <- function(dat, predictors) {
+  stopifnot(all(predictors %in% names(dat)))
+  X <- dat[, predictors, drop = FALSE]
+  r2s <- sapply(names(dat), function(v) {
+    if (v %in% predictors) return(1)
+    summary(lm(dat[[v]] ~ ., data = X))$r.squared
+  })
+  mean(r2s)
+}
+
+#' Cumulative coverage as variables are added in a specified order
+#'
+#' @param dat Data frame of climate variables.
+#' @param ordered_vars Character vector of variable names in the order
+#'   they should be added.
+#'
+#' @return Tibble with columns `step`, `variable`, `cum_coverage`,
+#'   `marginal`.
+cumulative_coverage <- function(dat, ordered_vars) {
+  out <- tibble::tibble(
+    step = seq_along(ordered_vars),
+    variable = ordered_vars,
+    cum_coverage = NA_real_
+  )
+  for (i in seq_along(ordered_vars)) {
+    out$cum_coverage[i] <- mean_r2_coverage(dat, ordered_vars[1:i])
+  }
+  out$marginal <- c(out$cum_coverage[1], diff(out$cum_coverage))
+  out
+}
+
+
+```
+
+### Specified selection
+
+```{r coverage-specified}
+# edit to taste
+selected_vars <- c("MAT", "MAP", "PrecipTempCorr", "isothermality")
+
+stopifnot(all(selected_vars %in% names(dat_clim)))
+
+specified_cov <- cumulative_coverage(dat_clim, selected_vars)
+
+specified_cov |>
+  mutate(across(c(cum_coverage, marginal),
+                ~ scales::percent(.x, accuracy = 0.1))) |>
+  knitr::kable(caption = "mean R2 when regressed against across all other climate variables",
+               col.names = c("Step", "Variable", "Cumulative", "Marginal"))
+```
+
+
+
+
+## Session Info
+
+```{r session-info}
+cat("Data version:", vd, "\n")
+cat("Model type:", model_type, "\n")
+cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+sessionInfo()
+```

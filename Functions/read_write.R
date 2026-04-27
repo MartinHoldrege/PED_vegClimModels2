@@ -64,11 +64,20 @@ read_prepare_d01 <- function(root = paths$large,
 
 # renames layers to shorter names
 read_climate_raster <- function(
-    path = file.path(paths$large, "Data_processed/BiomassQuantityData/", "
-                     DayMetData_allCONUS_2023ClimateValues_raster.tif")
+    path = file.path(paths$large, "Data_processed/BiomassQuantityData", 
+                     "DayMetData_allCONUS_2023ClimateValues_raster.tif"),
+    path_soil = file.path(paths$large, 
+              "./Data_processed/soils/", 
+              "awc_SOLUS100_1000m.tif")
     ) {
   r <- terra::rast(path)
   names(r) <- climate_name_lookup(names(r))
+  
+  if(!is.null(path_soil)) {
+    r_soil <- terra::rast(path_soil)
+    names(r_soil) <- stringr::str_replace(names(r_soil), '_cm', '')
+    r <- c(r, r_soil)
+  }
   r
 }
 

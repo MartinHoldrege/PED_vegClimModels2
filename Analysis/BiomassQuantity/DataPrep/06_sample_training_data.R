@@ -17,22 +17,14 @@ n_sample <- 500000
 seed <- 42
 lcmap_threshold <- 0.9  # fraction of pixel that must be "keepable" land cover
 fire_threshold <- 0.9 # unburned fraction, for masking woody
-# which climate variables to include (short names)
-pred_vars_herb <- c("MAT", "MAP", "PrecipTempCorr", "WD_mean", "VPD_mean",
-                    "P_seasonality", "T_coldestMonth", "T_warmestMonth", 
-                    "frost_free_days", "P_wettestMonth")
-
-pred_vars_woody <- pred_vars_herb
 
 # output version tag
 vd <- "d05" # uses RAP cover, for code development/testing
 
 # load rasters ------------------------------------------------------------
 
-all_pred_vars <- unique(c(pred_vars_herb, pred_vars_woody))
-
 rasters <- load_conus_rasters(
-  pred_vars = NULL,
+  pred_vars = NULL, # by default calculate mean/sd for all climate vars
   lcmap_threshold = lcmap_threshold,
   fire_threshold = fire_threshold,
   force_scale = FALSE
@@ -46,7 +38,7 @@ mask_lcmap <- rasters$mask_lcmap
 mask_fire <- rasters$mask_fire
 scale_df <- rasters$scale_df
 
-
+pred_vars <- scale_df$variable
 # === HERBACEOUS training data =============================================
 
 # stack: response + cover + climate
@@ -74,7 +66,7 @@ df_herb <- dplyr::rename(df_herb, totalBio = totalHerbaceousBio) |>
   mutate(totalBio = replace_zero(totalBio))
 
 # standardize climate predictors using CONUS-wide scale_df
-herb_std <- standardize(df_herb, vars = pred_vars_herb, scale_df = scale_df)
+herb_std <- standardize(df_herb, vars = pred_vars, scale_df = scale_df)
 df_herb <- herb_std$data
 
 cat("  Final herbaceous dataset:", nrow(df_herb), "rows,",
@@ -109,7 +101,7 @@ df_woody <- dplyr::rename(df_woody, totalBio = totalWoodyBio) |>
   mutate(totalBio = replace_zero(totalBio))
 
 # standardize climate predictors using same CONUS-wide scale_df
-woody_std <- standardize(df_woody, vars = pred_vars_woody, scale_df = scale_df)
+woody_std <- standardize(df_woody, vars = pred_vars, scale_df = scale_df)
 df_woody <- woody_std$data
 
 
@@ -144,7 +136,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 herb_out <- list(
   data = df_herb,
   scale = scale_df,
-  pred_vars = pred_vars_herb,
+  pred_vars = pred_vars,
   cover_cols = "totalHerbaceousCov",
   response = "totalBio",
   n_sample = n_sample,
@@ -161,7 +153,7 @@ cat("  Saved herbaceous:", p_herb_out, "\n")
 woody_out <- list(
   data = df_woody,
   scale = scale_df,
-  pred_vars = pred_vars_woody,
+  pred_vars = pred_vars,
   cover_cols = c("totalTreeCov", "totalShrubCov"),
   response = "totalBio",
   n_sample = n_sample,

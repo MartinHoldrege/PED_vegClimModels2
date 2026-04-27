@@ -127,6 +127,22 @@ model_specs <- list(
       dll_path = dll_path2,
       cover_cols = c("totalTreeCov", "totalShrubCov")
     )
+  ),
+  'm11' = list(
+    herb = list(
+      pred_vars = c("MAT", "MAP", "PrecipTempCorr", 'isothermality', 'awc'),
+      formula_extras = c("I(MAT^2)"),
+      inter = NULL,
+      dll_path = dll_path2,
+      cover_cols = "totalHerbaceousCov"
+    ),
+    woody = list(
+      pred_vars = c("MAT", "MAP", "PrecipTempCorr", 'isothermality', 'awc'),
+      formula_extras = c("I(MAT^2)"),
+      inter = NULL,
+      dll_path = dll_path2,
+      cover_cols = c("totalTreeCov", "totalShrubCov")
+    )
   )
 )
 

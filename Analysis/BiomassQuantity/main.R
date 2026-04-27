@@ -3,15 +3,18 @@
 source('Functions/constants.R') # for pfts
 source('Functions/models/model_specs.R')
 source('Functions/general.R')
+
 # params ------------------------------------------------------------------
 
-run_sim <- FALSE # simulate data
-run_fit_model <- FALSE
+run_fit_model <- TRUE
 run_predict_rasters <- TRUE
 run_model_diagnostics <- TRUE
-run_model_diagnostics_sim <- FALSE
 run_spatial_diagnostics <- TRUE
 run_explore_dat_samp <- FALSE # To do: not updated yet
+
+# simulation specific
+run_sim <- FALSE # simulate data
+run_model_diagnostics_sim <- FALSE
 
 # [vs]: data version (s for simulated, d- for real data), 
 #       
@@ -22,7 +25,7 @@ run_explore_dat_samp <- FALSE # To do: not updated yet
 
 # repo updated to only work w/ seperate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <- c('d05-p04-m10')
+suffixes <- c('d05-p04-m11')
 
 # for exploring data sampling
 suffixes_data <- c('d02-p02', 'd04-p02') # for plots looking input data [not updated]
