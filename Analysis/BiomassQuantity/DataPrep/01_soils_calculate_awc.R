@@ -9,66 +9,121 @@ source('Functions/init.R')
 source_functions()
 
 # ---- inputs ----
-soil_dir <- "E:/USGS/large_files/PED_vegClimModels/Data_raw/soilsDB_new"
-
-# point depths (cm) — from Daniel's preprocessing
-depths <- c(2, 7, 15, 25, 35, 50, 70, 90, 125, 176)
-
-
+soil_dir <- file.path(paths$large, 'Data_processed/soils')
 
 # ---- load only the bands needed ----
 
-clay   <- rast(file.path(soil_dir, "claytotal_PED-CONUS4km_SOLUS100.nc"))
-sand   <- rast(file.path(soil_dir, "sandtotal_PED-CONUS4km_SOLUS100.nc"))
-coarse <- rast(file.path(soil_dir, "fragvol_PED-CONUS4km_SOLUS100.nc"))
+# files created in 00_soils_aggregate.R
+clay   <- rast(file.path(soil_dir, "claytotal_SOLUS100_1000m.tif"))
+sand   <- rast(file.path(soil_dir, "sandtotal_SOLUS100_1000m.tif"))
+coarse <- rast(file.path(soil_dir, "fragvol_SOLUS100_1000m.tif"))
+resdept <- rast(file.path(soil_dir, "resdept_SOLUS100_1000m.tif"))
+# stack: 7 clay bands, 7 sand bands, 7 coarse bands, 1 depth to restriction band
+soil_stack <- c(clay, sand, coarse, resdept)
 
-# stack: 10 clay bands, 10 sand bands, 10 coarse bands (30 total, in that order)
-soil_stack <- c(clay, sand, coarse)
+# layer depths ------------
 
-# ---- per-pixel AWC function ----
+solus_depths <- stringr::str_extract(names(clay), '(?<=_)\\d+(?=cm$)') |> 
+  as.numeric() |> 
+  sort()
 
-#' Compute total profile available water-holding capacity (cm) for one pixel
-#'
-#' @param x Numeric vector of length 30: clay (10), sand (10), coarse (10),
-#'   each in percent, ordered shallow to deep.
-#' @return Total profile AWC in cm, or NA if surface layer is missing.
+stopifnot(solus_depths == c(0, 5, 15, 30, 60, 100, 150)) # check for now, would work with other depths
+
+# what depths want to interpolate to (as in Alices/Daniels workflow)
+layer_breaks <- c(0, 3, 10, 20, 30, 40, 60, 80, 100, 150, 201)  
+
+# ---- per-pixel AWC function ---
 compute_awc <- function(x) {
-  clay   <- x[1:10]  / 100
-  sand   <- x[11:20] / 100
-  coarse <- x[21:30] / 100
+  sand_pts    <- x[1:7]/100 # percent to proportion
+  clay_pts    <- x[8:14]/100
+  fragvol_pts <- x[15:21]/100
+  resdept     <- x[22]
   
-  # layer thicknesses (cm) corresponding to each point depth
-  # layer boundaries: 0-3, 3-10, 10-20, 20-30, 30-40, 40-60, 60-80, 80-100, 100-150, 150-201
-  thickness <- c(3, 7, 10, 10, 10, 20, 20, 20, 50, 51)
+  if (is.na(sand_pts[1]) || is.na(clay_pts[1]) || is.na(resdept)) {
+    return(NA_real_)
+  }
   
+  # trapezoidal: 7-point SOLUS -> 10-layer Alice scheme
+  # extrapolation = "closest" handles the 150 -> 201 extension
+  sand_lyr    <- trapezoidSoilLayers(solus_depths, sand_pts,    layer_breaks, "closest")
+  clay_lyr    <- trapezoidSoilLayers(solus_depths, clay_pts,    layer_breaks, "closest")
+  fragvol_lyr <- trapezoidSoilLayers(solus_depths, fragvol_pts, layer_breaks, "closest")
   
-  # require surface layer; drop deeper NA layers (e.g., bedrock truncation)
-  if (is.na(sand[1]) || is.na(clay[1])) return(NA_real_)
-  keep <- !is.na(sand) & !is.na(clay) & !is.na(coarse)
-  if (sum(keep) == 0) return(NA_real_)
+  # truncate layer thicknesses at resdept
+  layer_top    <- layer_breaks[-length(layer_breaks)]
+  layer_bottom <- layer_breaks[-1]
+  thickness    <- pmin(layer_bottom, resdept) - layer_top
+  thickness[thickness <= 0] <- NA
+  
+  keep <- !is.na(thickness) &
+    !is.na(sand_lyr) & !is.na(clay_lyr) & !is.na(fragvol_lyr)
+  if (!any(keep)) return(NA_real_)
+  
+  sand_f    <- sand_lyr[keep]   
+  clay_f    <- clay_lyr[keep]   
+  fragvol_f <- fragvol_lyr[keep] 
   
   p <- rSOILWAT2::ptf_estimate(
-    sand = sand[keep], clay = clay[keep], fcoarse = coarse[keep],
+    sand = sand_f, clay = clay_f, fcoarse = fragvol_f,
     swrc_name = "Campbell1974", ptf_name = "Cosby1984"
   )
   vwc <- rSOILWAT2::swrc_swp_to_vwc(
-    c(-1.5, -0.033),  # FC, WP — order chosen so diff is negative, abs gives AWC
-    fcoarse = coarse[keep],
+    c(-1.5, -0.033),
+    fcoarse = fragvol_f,
     swrc = list(name = "Campbell1974", swrcp = p)
   )
-  awc_per_layer <- abs(as.vector(diff(vwc)))  # cm³/cm³
-  sum(thickness[keep] * awc_per_layer)        # cm of water
+  
+  sum(thickness[keep] * as.vector(diff(vwc)))
 }
 
-# ---- apply to raster ----
-awc_rast <- app(soil_stack, fun = compute_awc, cores = 4)
-names(awc_rast) <- "awc_cm"
-
-
 # project AWC to the Daymet grid
-awc_1km <- project(awc_rast, daymet_grid, method = "bilinear")
-
-writeRaster(awc_1km, file.path(paths$large, 
+awc_rast <- app(soil_stack, fun = compute_awc)
+names(awc_rast) <- "awc_cm"
+writeRaster(awc_rast, file.path(paths$large, 
                                "./Data_processed/soils/", 
                                "awc_SOLUS100_1000m.tif"), 
                                overwrite = TRUE)
+
+
+# testing
+if(FALSE) {
+  # layer order in x:
+  # [1:7]   sand at SOLUS depths (0, 5, 15, 30, 60, 100, 150)
+  # [8:14]  clay
+  # [15:21] fragvol
+  # [22]    resdept
+  
+  # Case 1: deep loamy soil, no bedrock issue
+  x_deep <- c(
+    # sand %
+    40, 42, 45, 48, 50, 52, 53,
+    # clay %
+    20, 22, 23, 24, 25, 26, 27,
+    # fragvol %
+    5, 5, 7, 8, 10, 12, 15,
+    # resdept (cm)
+    201
+  )
+  
+  # Case 2: moderately shallow soil, bedrock at 35 cm (mid-layer)
+  x_shallow <- x_deep
+  x_shallow[22] <- 35
+  
+  # Case 3: very shallow soil, bedrock at 15 cm
+  x_veryshallow <- x_deep
+  x_veryshallow[22] <- 15
+  
+  # Case 4: sandy soil, deep
+  x_sandy <- c(
+    85, 86, 87, 88, 89, 90, 90,
+    5, 5, 5, 6, 6, 7, 7,
+    2, 3, 5, 8, 10, 12, 15,
+    201
+  )
+  
+  # run them
+  compute_awc(x_deep)        
+  compute_awc(x_shallow)     
+  compute_awc(x_veryshallow) 
+  compute_awc(x_sandy)       # (sandy = lower AWC)
+}
