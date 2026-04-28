@@ -79,6 +79,9 @@ compute_awc <- function(x) {
 # project AWC to the Daymet grid
 awc_rast <- app(soil_stack, fun = compute_awc)
 names(awc_rast) <- "awc_cm"
+
+# previous version (based on 4km grid version of solus was renamed
+# [not to be used anymore] as a suffix _from4km)
 writeRaster(awc_rast, file.path(paths$large, 
                                "./Data_processed/soils/", 
                                "awc_SOLUS100_1000m.tif"), 

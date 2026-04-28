@@ -25,7 +25,7 @@ run_model_diagnostics_sim <- FALSE
 
 # repo updated to only work w/ seperate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <- c('d05-p04-m11')
+suffixes <- c('d05-p04-m11', 'd05-p04-m12')
 
 # for exploring data sampling
 suffixes_data <- c('d02-p02', 'd04-p02') # for plots looking input data [not updated]

@@ -66,6 +66,8 @@ read_prepare_d01 <- function(root = paths$large,
 read_climate_raster <- function(
     path = file.path(paths$large, "Data_processed/BiomassQuantityData", 
                      "DayMetData_allCONUS_2023ClimateValues_raster.tif"),
+    
+    # created in 01_soils_calculate_awc
     path_soil = file.path(paths$large, 
               "./Data_processed/soils/", 
               "awc_SOLUS100_1000m.tif")
