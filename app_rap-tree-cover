@@ -47,7 +47,7 @@ var buildPanel = function(map, position) {
       mask = mask.and(everBurned.not());
     }
     if (vals.maskLcmap) {
-      mask = mask.and(fg.lcmapKeep);
+      mask = mask.and(fg.lcmapMask);
     }
 
     var belowThreshold = rap.lt(vals.maxTree);
