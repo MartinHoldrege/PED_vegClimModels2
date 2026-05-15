@@ -156,7 +156,7 @@ var buildPanel = function(map, position) {
         {fontWeight: 'bold', fontSize: '12px'}),
       ui.Label('Dataset:', {fontSize: '11px', margin: '4px 0px 0px 0px'}),
       dropdown,
-      makeSlider('Min tree cover (%; below is gray)', 0, 100, 1, defaults.minTree, 'minTree'),
+      makeSlider('Min tree cover (%; below is black)', 0, 100, 1, defaults.minTree, 'minTree'),
       makeSlider('Max tree cover (%; above is gray)', 0, 100, 1, defaults.maxTree, 'maxTree'),
       makeSlider('Color saturation (%)', 1, 100, 1, defaults.colorMax, 'colorMax'),
       ui.Label('Masking', {fontWeight: 'bold', fontSize: '11px', margin: '8px 0px 2px 0px'}),
