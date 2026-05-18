@@ -29,7 +29,7 @@ var exportLcmapMask = false;
 var exportFireMask = false;
 var exportRapCover = false;
 var exportRapBiomass = false;
-var exportfracNotForest = true
+var exportfracNotForest = true;
 
 // LCMAP mask (fracKeep + binary) -------------------
 
@@ -128,7 +128,7 @@ if (exportRapBiomass) {
 }
 
 if(exportfracNotForest) {
-  var notForestAssetName = 'RAP_v3_fracNotForest_2019-2023' + fg.resLabel;
+  var notForestAssetName = 'RAP_v3_fracNotForest_lt1_2019-2023' + fg.resLabel;
   var notForestFileName = 'RAP_v3_fracNotForest_mask-lcmap' + maskCutoffLcmap * 100 
     + '-fire' + maskCutoffFire*100 + '_2019-2023' + fg.resLabel;
     
