@@ -308,7 +308,7 @@ var infoPanel = ui.Panel({
     'Tree cover (30m), ' + yearStart + '–' + yearEnd + ' mean\n' +
     'RAP: Rangeland Analysis Platform v3\n' +
     '% of 1 km pixel that is >=x% RAP trees is applied only to\n' +
-    '30m pixels that do not have the RCMAP mask applied.\n' +
+    '30m pixels that do not have the LCMAP mask applied.\n' +
     'USFS: NLCD Tree Canopy Cover v2023-5',
     {fontSize: '10px', whiteSpace: 'pre'})],
   style: {position: 'bottom-right', padding: '4px',
