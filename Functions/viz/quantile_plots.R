@@ -113,17 +113,26 @@ predvars2long <- function(df, response_vars,
 #' filter_var and percentile_category columns that should be kept
 #' @param return_means logical. if false return the dataframe before
 #' means have been calculated for each quantile
+#' @range_quantiles calculates low and high values at each quantile,
+#' given this range, by default the interquartile range
 #' 
 #' @return For each predictor variable calculate the mean of each decile
 #' and the corresponding mean (of those same rows) of the response variable
 longdf2deciles <- function(df, response_vars, filter_var = FALSE,
                            return_means = TRUE,
                            cut_points = seq(0, 1, 0.01),
+                           range_quantiles = c(0.25, 0.75),
                            summary_fun = c('mean', 'median')) {
   
-  stopifnot(c("name", "value", response_vars) %in% names(df))
+  stopifnot(c("name", "value", response_vars) %in% names(df),
+            range_quantiles <=1,
+            range_quantiles >= 0)
   
   summary_fun <- match.arg(summary_fun) 
+  
+  
+  q_low <- range_quantiles[1]
+  q_high <- range_quantiles[2]
   
   f <- switch(summary_fun,
               mean = mean,
@@ -165,10 +174,14 @@ longdf2deciles <- function(df, response_vars, filter_var = FALSE,
   }
   
     out <- out0 %>% 
-      summarize(across(unname(response_vars), f),
+      summarize(across(unname(response_vars), 
+                       list(midzz = f,
+                            low = \(x) quantile(x, q_low, na.rm = TRUE),
+                            high = \(x) quantile(x, q_high, na.rm = TRUE)),
+                       .names = "{.col}_{.fn}"),
                 mean_value = f(value), # mean of predictor for that decile
                 .groups = 'drop')
-
+    names(out) <- stringr::str_replace(names(out), "_midzz$", "")
   
   as_tibble(out)
 }
@@ -194,6 +207,7 @@ predvars2deciles <- function(df, response_vars, pred_vars,
                              filter_vars = NULL,
                              add_mid = FALSE,
                              cut_points = seq(0, 1, 0.01),
+                             range_quantiles = c(0.25, 0.75),
                              summary_fun = 'mean') {
   
   if (filter_var && is.null(filter_vars)) {
@@ -218,7 +232,10 @@ predvars2deciles <- function(df, response_vars, pred_vars,
   out <- longdf2deciles(long_df, response_vars = response_vars,
                         filter_var = filter_var,
                         cut_points = cut_points,
+                        range_quantiles = range_quantiles,
                         summary_fun = summary_fun)
+  
+  attr(out, "range_quantiles") <- range_quantiles
   out
 }
 
@@ -263,6 +280,7 @@ rmse4dotplot <- function(df, yvar) {
 decile_dotplot <- function(yvar, df, ylab = 'response',
                            xlab = "mean of quantile of predictor variable",
                            add_predicted = FALSE, title = NULL,
+                           add_ribbon = TRUE,
                            size = 0.75,
                            add_rmse = TRUE,
                            subtitle = NULL) {
@@ -273,7 +291,18 @@ decile_dotplot <- function(yvar, df, ylab = 'response',
   
   caption <- "Each panel shows a different predictor variable"
 
-  g <- ggplot(df, aes(x = .data[['mean_value']], y = .data[[yvar]])) +
+  g <- ggplot(df, aes(x = .data[['mean_value']], y = .data[[yvar]])) 
+  
+  if(add_ribbon) {
+    g <- g +
+      geom_ribbon(aes(ymin = .data[[paste0(yvar, "_low")]],
+                    ymax = .data[[paste0(yvar, "_high")]],
+                    fill = "Observed"), alpha = 0.2)
+    qp <- attr(df, "quantile_probs") %||% c(0.25, 0.75)
+    caption <- paste0(caption, '\nRibbon shows ', qp[1]*100, '-', qp[2]*100, 
+                      ' percentiles')
+  }
+  g <- g +
     geom_point(aes(color = "Observed", shape = "Observed"),
                size = size) +
     facet_wrap(~name, scales = 'free_x') +
@@ -283,8 +312,8 @@ decile_dotplot <- function(yvar, df, ylab = 'response',
          title = title) +
     theme(legend.position = 'top',
           legend.title = element_blank()) 
-  g
   
+
   col_values <- c("Observed" = "black")
   shape_values <- c("Observed" = 19)
   
@@ -293,6 +322,13 @@ decile_dotplot <- function(yvar, df, ylab = 'response',
   # but followed by _pred
   if(add_predicted) {
     yvar_pred <- paste0(yvar, "_pred")
+    
+    if(add_ribbon) {
+      g <- g +
+        geom_ribbon(aes(ymin = .data[[paste0(yvar_pred, "_low")]],
+                        ymax = .data[[paste0(yvar_pred, "_high")]],
+                        fill = "Predicted"), alpha = 0.2)
+    }
     
     g <- g +
       geom_point(aes(y = .data[[yvar_pred]], color = 'Predicted',
@@ -319,8 +355,104 @@ decile_dotplot <- function(yvar, df, ylab = 'response',
   out <- g +
     scale_color_manual(name = 'legend', values = col_values) +
     scale_shape_manual(name = 'legend', values = shape_values) +
+    scale_fill_manual(name = 'legend', values = col_values)
     labs(caption = caption)
   out
+}
+
+#' Quantile dotplot filtered by climate variable
+#'
+#' For each predictor variable, shows data that falls in the highest or
+#' lowest percentiles of each filter variable (e.g., wet vs dry sites).
+#' Requires output from `predvars2deciles()` with `filter_var = TRUE`.
+#'
+#' @param yvar Name of the y variable to plot (string, must be in df).
+#' @param df Long-format data frame from `predvars2deciles()` with
+#'   `filter_var = TRUE`. Must contain columns: `name`, `filter_var`,
+#'   `percentile_category`, `mean_value`, and the `yvar` column.
+#' @param ylab Character; y-axis label.
+#' @param add_predicted Logical; if TRUE, also plots `{yvar}_pred` column.
+#' @param add_smooth Logical; if TRUE, adds a loess smoother.
+#' @param title Character; plot title.
+#' @param size Numeric; point size.
+#'
+#' @return A ggplot object with `facet_grid(filter_var ~ name)`.
+#' @export
+decile_dotplot_filtered <- function(yvar, df,
+                                    ylab = "Biomass",
+                                    xlab = "Mean of predictor quantile",
+                                    add_predicted = TRUE,
+                                    add_smooth = FALSE,
+                                    title = NULL,
+                                    size = 0.75) {
+  
+  if (!"filter_var" %in% names(df)) {
+    stop("df must contain a 'filter_var' column. ",
+         "Use predvars2deciles(..., filter_var = TRUE).")
+  }
+  
+  yvar <- unname(yvar)
+  yvar_pred <- paste0(yvar, "_pred")
+  has_pred <- add_predicted && yvar_pred %in% names(df)
+  
+  # pivot observed (and optionally predicted) to long format
+  pivot_cols <- if (has_pred) c(yvar, yvar_pred) else yvar
+  pivot_cols <- pivot_cols[pivot_cols %in% names(df)]
+  
+  df2 <- df |>
+    dplyr::select(name, filter_var, percentile_category, decile,
+                  mean_value, dplyr::all_of(pivot_cols)) |>
+    tidyr::pivot_longer(cols = dplyr::all_of(pivot_cols),
+                        names_to = "source",
+                        values_to = "response") |>
+    dplyr::mutate(
+      source = ifelse(stringr::str_detect(source, "_pred$"),
+                      "Predicted", "Observed"),
+      label = paste0(percentile_category, " (", source, ")")
+    )
+  
+  # determine color/shape mapping
+  n_labels <- length(unique(df2$label))
+  all_colors <- c("#f03b20", "#feb24c", "#0570b0", "#74a9cf")
+  all_shapes <- c(19, 17, 19, 17)
+  
+  if (n_labels <= 2) {
+    colors <- all_colors[c(1, 3)]
+    shapes <- all_shapes[c(1, 3)]
+  } else {
+    colors <- all_colors[seq_len(n_labels)]
+    shapes <- all_shapes[seq_len(n_labels)]
+  }
+  
+  g <- ggplot2::ggplot(df2, ggplot2::aes(x = mean_value, y = response)) +
+    ggplot2::geom_point(
+      ggplot2::aes(color = label, shape = label),
+      size = size
+    ) +
+    ggplot2::facet_grid(filter_var ~ name, scales = "free_x") +
+    ggplot2::labs(
+      x = xlab,
+      y = ylab,
+      title = title,
+      caption = paste0(
+        "Columns: predictor variable. ",
+        "Rows: filtering variable ",
+        "(only pixels in lowest/highest percentiles shown)."
+      )
+    ) +
+    ggplot2::scale_color_manual(name = NULL, values = colors) +
+    ggplot2::scale_shape_manual(name = NULL, values = shapes) +
+    ggplot2::theme(legend.position = "top")
+  
+  if (add_smooth) {
+    g <- g +
+      ggplot2::geom_smooth(
+        ggplot2::aes(color = label),
+        se = FALSE, linewidth = 0.5
+      )
+  }
+  
+  g
 }
 
 

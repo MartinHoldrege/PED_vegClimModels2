@@ -6,8 +6,8 @@ params:
   model_type: "herb"
   data_version: "d05"
   purer_version: 'p04'
-  model_version: "m09"
-  quantile_vars: !r c("MAT", "MAP", "PrecipTempCorr")
+  model_version: "m11"
+  quantile_vars: !r c("MAT", "MAP", "PrecipTempCorr", "awc")
 output:
   html_document:
     toc: true
@@ -210,11 +210,37 @@ for (f in c('mean', 'median')) {
 
 ```
 
+```{r quantile-filtered, fig.width=10, fig.height=7}
+
+f <- 'mean'
+filter_vars <- c('MAT', 'MAP', 'PrecipTempCorr')
+
+quant_df_filt <- predvars2deciles(
+  df = dat_quant,
+  response_vars = c("totalBio", "totalBio_pred"),
+  pred_vars = quantile_vars,
+  filter_var = TRUE,
+  filter_vars = filter_vars,
+  summary_fun = f
+)
+
+g <- decile_dotplot_filtered(
+  yvar = "totalBio",
+  df = quant_df_filt,
+  ylab = paste0("Total Biomass (", f, ")"),
+  xlab = paste(f, "of quantile of predictor variable"),
+  title = "Observed vs Predicted totalBio across climate percentiles"
+)
+print(g)
+
+
+```
 
 ## 5. Per-PFT Biomass Across Climate
 
 
 ### Cover-Weighted
+
 ```{r pft-weighted, fig.width=12, fig.height=10}
 
 quant_weighted <- pft_quantile_summary(

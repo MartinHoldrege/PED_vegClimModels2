@@ -28,8 +28,7 @@ plot_cv_scores <- function(score_summary,
                            selected_lambda,
                            metrics = c(
                              mae_log1p  = "MAE (log1p scale)",
-                             mae_log  = "MAE (log scale)",
-                             rmse_log = "RMSE (log scale)",
+                             rmse_log1p = "RMSE (log1p scale)",
                              mae      = "MAE",
                              rmse = 'RMSE',
                              cor      = "Correlation"
