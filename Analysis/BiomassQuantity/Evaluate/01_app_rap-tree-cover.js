@@ -31,12 +31,29 @@ var usfsTree = ee.ImageCollection('USGS/NLCD_RELEASES/2023_REL/TCC/v2023-5')
 
 var everBurned = ee.Image(fg.pathAsset + 'fire/MTBS_everBurned_30m_2000-2023')
   .unmask(0);
+  
+var percTreed = function(cutoff) {
+  // created in 03_rap_fracNotForest.js
+  var fileName = 'RAP_v3_fracNotForest_lt' + cutoff + '_' +
+    yearStart+ '-' + yearEnd + fg.resLabel;
+    
+  var fracNotForest = ee.Image(fg.pathAsset + 'rap/' + fileName);
+  // to keep plotting easier on the scale of 0-100% like tree cover,
+  // converting to percent >= cutoff. 
+  var percTreed = ee.Image(1).subtract(fracNotForest).multiply(100);
+  return percTreed;
+};
 
 var datasets = {
   'RAP tree cover': rapTree,
   'USFS tree canopy cover (Science)': usfsTree.select('Science_Percent_Tree_Canopy_Cover'),
-  'USFS tree canopy cover (NLCD)': usfsTree.select('NLCD_Percent_Tree_Canopy_Cover')
+  'USFS tree canopy cover (NLCD)': usfsTree.select('NLCD_Percent_Tree_Canopy_Cover'),
+  'RAP % of 1km w/ >= 1% trees': percTreed(1),
+  'RAP % of 1km w/ >= 3% trees': percTreed(3),
+  'RAP % of 1km w/ >= 5% trees': percTreed(5),
+  'RAP % of 1km w/ >= 10% trees': percTreed(10),
 };
+
 var datasetNames = Object.keys(datasets);
 
 // viz --------------
@@ -172,7 +189,7 @@ var buildPanel = function(map, position) {
     var inRange = img.gte(vals.minTree).and(img.lt(vals.maxTree));
     var treeCov = img.updateMask(mask).updateMask(inRange);
     var outOfRange = ee.Image(0).updateMask(mask).updateMask(img.lt(vals.minTree))
-      .blend(ee.Image(1).updateMask(mask).updateMask(img.gte(vals.maxTree)));
+      .blend(ee.Image(1).updateMask(mask).updateMask(img.gt(vals.maxTree)));
 
     var viz = {min: 0, max: vals.colorMax, palette: paletteCov};
 
