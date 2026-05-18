@@ -16,6 +16,7 @@ var yearEndRap = 2023;
 var yearStartFire = 2000;
 var yearEndFire = 2023;
 
+var cutoffs = [3, 5, 10];
 // read in data -------------------------------------
 var rap = ee.ImageCollection('projects/rap-data-365417/assets/vegetation-cover-v3')
   .filter(ee.Filter.calendarRange(yearStartRap, yearEndRap, 'year'));
@@ -28,31 +29,38 @@ var everBurned = ee.Image(fg.pathAsset + 'fire/MTBS_everBurned_30m_' +
 // process ------------------------------------------
 var rapMean = rap.select(['TRE']).mean();
 
-var notForest = rapMean
-  .lt(ee.Image(1)) // <1% cover
-
-// mask: unburned AND natural land
-var keepMask = everBurned.not().and(fg.lcmapMask);
-var notForestMasked = notForest
-  .updateMask(keepMask)
-  .toByte()
-  .rename('TRE_lt1');
-
-// visualize ----------------------------------------
-Map.addLayer(rapMean, {min: 0, max: 5, palette: 'white,green'}, 'tree cov', false);
-Map.addLayer(notForestMasked, {min: 0, max: 1, palette: 'white,black'}, '<1% trees (masked)', false);
-
-// export -------------------------------------------
-var fileName = 'RAP_v3_tree-lt1_masked_' +
-  yearStartRap + '-' + yearEndRap + '_30m';
-
-Export.image.toAsset({
-  image: notForestMasked,
-  description: fileName,
-  assetId: fg.pathAsset + 'rap/' + fileName,
-  crs: fg.crs,
-  scale: 30,
-  region: fg.region,
-  maxPixels: 1e12,
-  pyramidingPolicy: {'TRE_lt1': 'mode'}
-});
+for (var i = 0; i < cutoffs.length; i++) {
+    
+  var cutoff = cutoffs[i];
+  var notForest = rapMean
+    .lt(ee.Image(cutoff)); // <1% cover
+  
+  // mask: unburned AND natural land
+  var keepMask = everBurned.not().and(fg.lcmapMask);
+  var notForestMasked = notForest
+    .updateMask(keepMask)
+    .toByte()
+    .rename('TRE_lt' + cutoff);
+  
+  // visualize ----------------------------------------
+  Map.addLayer(rapMean, {min: 0, max: 5, palette: 'white,green'}, 'tree cov', false);
+  Map.addLayer(notForestMasked, {min: 0, max: 1, palette: 'white,black'}, '<1% trees (masked)', false);
+  
+  // export -------------------------------------------
+  var fileName = 'RAP_v3_tree-lt' + cutoff + '_masked_' +
+    yearStartRap + '-' + yearEndRap + '_30m';
+  
+  var policy = {};
+  policy['TRE_lt' + cutoff] = 'mode';
+  
+  Export.image.toAsset({
+    image: notForestMasked,
+    description: fileName,
+    assetId: fg.pathAsset + 'rap/' + fileName,
+    crs: fg.crs,
+    scale: 30,
+    region: fg.region,
+    maxPixels: 1e12,
+    pyramidingPolicy: policy
+  });
+}

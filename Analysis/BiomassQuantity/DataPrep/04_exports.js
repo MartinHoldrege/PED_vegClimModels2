@@ -20,8 +20,8 @@ var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.
 
 var yearStart = 2000;
 var yearEnd = 2023;
-var maskCutoffLcmap = 0.9;
-var maskCutoffFire = 0.9;
+var maskCutoffLcmap = 0.5; // 50
+var maskCutoffFire = 0.9; // this mask not applied to the frac 0 trees dataset
 var driveFolder = 'PED_vegClimModels2';
 
 // export toggles
@@ -29,7 +29,7 @@ var exportLcmapMask = false;
 var exportFireMask = false;
 var exportRapCover = false;
 var exportRapBiomass = false;
-var exportfracNotForest = true
+var exportfracNotForest = true;
 
 // LCMAP mask (fracKeep + binary) -------------------
 
@@ -128,31 +128,36 @@ if (exportRapBiomass) {
 }
 
 if(exportfracNotForest) {
-  var notForestAssetName = 'RAP_v3_fracNotForest_2019-2023' + fg.resLabel;
-  var notForestFileName = 'RAP_v3_fracNotForest_mask-lcmap' + maskCutoffLcmap * 100 
-    + '-fire' + maskCutoffFire*100 + '_2019-2023' + fg.resLabel;
+  var cutoffs = [3, 5];
+  for (var i = 0; i < cutoffs.length; i++) {
     
-  // created in 03_rap_fracNotForest.js
-  var notForestUnmasked = ee.Image(fg.pathAsset + 'rap/' + notForestAssetName)
-  
-  var notForest = notForestUnmasked
-      .updateMask(fracKeepBinary)
-      .updateMask(fracUnburnedBinary);
+    var cutoff = cutoffs[i];
+    var notForestAssetName = 'RAP_v3_fracNotForest_lt' + cutoff + '_2019-2023' + fg.resLabel;
+    var notForestFileName = 'RAP_v3_fracNotForest_lt' + cutoff + '_mask-lcmap' + maskCutoffLcmap * 100 
+    + '_2019-2023' + fg.resLabel;
       
-  Map.addLayer(notForest, {min: 0, max: 1, palette: 'white,black'}, 'fracNotForest', false);
-  Map.addLayer(notForestUnmasked, {min: 0, max: 1, palette: 'white,black'}, 'fracNotForest unmasked', false);
-  
-  Export.image.toDrive({
-    image: notForest,
-    description: notForestFileName,
-    folder: driveFolder,
-    fileNamePrefix: notForestFileName,
-    crs: fg.crs,
-    crsTransform: fg.crsTransform,
-    region: fg.region,
-    maxPixels: 1e12,
-    fileFormat: 'GeoTIFF'
-  });
+    // created in 03_rap_fracNotForest.js
+    var notForestUnmasked = ee.Image(fg.pathAsset + 'rap/' + notForestAssetName);
+    
+    var notForest = notForestUnmasked
+        .updateMask(fracKeepBinary);
+        // .updateMask(fracUnburnedBinary); not applying the fire mask to this dataset
+        
+    Map.addLayer(notForest, {min: 0, max: 1, palette: 'white,black'}, 'fracNotForest', false);
+    Map.addLayer(notForestUnmasked, {min: 0, max: 1, palette: 'white,black'}, 'fracNotForest unmasked', false);
+    
+    Export.image.toDrive({
+      image: notForest,
+      description: notForestFileName,
+      folder: driveFolder,
+      fileNamePrefix: notForestFileName,
+      crs: fg.crs,
+      crsTransform: fg.crsTransform,
+      region: fg.region,
+      maxPixels: 1e12,
+      fileFormat: 'GeoTIFF'
+    });
+  }
 }
 
 
