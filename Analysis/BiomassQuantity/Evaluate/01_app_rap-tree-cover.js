@@ -5,7 +5,6 @@ Optional masking by fire (MTBS) and land cover (LCMAP).
 Split panel with independent controls on each side.
 CDF chart compares left and right panel datasets.
 
-Author: Martin Holdrege
 Started: April 2026
 */
 
