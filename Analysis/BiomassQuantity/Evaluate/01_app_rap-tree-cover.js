@@ -38,9 +38,14 @@ var percTreed = function(cutoff) {
     yearStart+ '-' + yearEnd + fg.resLabel;
     
   var fracNotForest = ee.Image(fg.pathAsset + 'rap/' + fileName);
+  var mask = fracNotForest.mask()
+    .neq(ee.Image(0)); // becomes 0 where should mask. want to avoid partial masking
+  
   // to keep plotting easier on the scale of 0-100% like tree cover,
   // converting to percent >= cutoff. 
-  var percTreed = ee.Image(1).subtract(fracNotForest).multiply(100);
+  var percTreed = ee.Image(1).subtract(fracNotForest).multiply(100)
+    .unmask()
+    .updateMask(mask);
   return percTreed;
 };
 
@@ -250,8 +255,8 @@ var buildPanel = function(map, position) {
       {fontWeight: 'bold', fontSize: '12px'}),
     ui.Label('Dataset:', {fontSize: '11px', margin: '4px 0px 0px 0px'}),
     dropdown,
-    makeSlider('Min tree cover (%; below is black)', 0, 100, 1, defaults.minTree, 'minTree'),
-    makeSlider('Max tree cover (%; above is gray)', 0, 100, 1, defaults.maxTree, 'maxTree'),
+    makeSlider('Min tree cover (%), or min % of 1km >= x% trees (below is black)', 0, 100, 1, defaults.minTree, 'minTree'),
+    makeSlider('Max tree cover (%), or max % of 1km >= x% trees (above is black)', 0, 100, 1, defaults.maxTree, 'maxTree'),
     makeSlider('Color saturation (%)', 1, 100, 1, defaults.colorMax, 'colorMax'),
     ui.Label('Masking', {fontWeight: 'bold', fontSize: '11px', margin: '8px 0px 2px 0px'}),
     maskFireCheck,
@@ -299,11 +304,14 @@ leftMap.setCenter(-110, 40, 5);
 // info
 var infoPanel = ui.Panel({
   widgets: [ui.Label(
+    
     'Tree cover (30m), ' + yearStart + '–' + yearEnd + ' mean\n' +
     'RAP: Rangeland Analysis Platform v3\n' +
+    '% of 1 km pixel that is >=x% RAP trees is applied only to\n' +
+    '30m pixels that do not have the RCMAP mask applied.\n' +
     'USFS: NLCD Tree Canopy Cover v2023-5',
     {fontSize: '10px', whiteSpace: 'pre'})],
   style: {position: 'bottom-right', padding: '4px',
     backgroundColor: 'rgba(255,255,255,0.8)'}
 });
-leftMap.add(infoPanel);
+rightMap.add(infoPanel);
