@@ -150,9 +150,9 @@ var updateChart = function() {
       var chart = ui.Chart(dataTable)
         .setChartType('LineChart')
         .setOptions({
-          title: 'Tree cover CDF (~ >= 250m, current view)',
+          title: 'CDF (~ >= 250m, current view)',
           hAxis: {title: 'Percentile'},
-          vAxis: {title: 'Tree cover (%)'},
+          vAxis: {title: 'Response (%)'},
           lineWidth: 2,
           colors: ['blue', 'red']
         });
