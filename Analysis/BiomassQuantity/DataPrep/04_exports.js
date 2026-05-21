@@ -18,7 +18,7 @@ var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.
 
 // params -------------------------------------------
 
-var yearStart = 2000;
+var yearStart = 2019 // 2000;
 var yearEnd = 2023;
 var maskCutoffLcmap = 0.5; // 50
 var maskCutoffFire = 0.9; // this mask not applied to the frac 0 trees dataset
@@ -27,9 +27,9 @@ var driveFolder = 'PED_vegClimModels2';
 // export toggles
 var exportLcmapMask = false;
 var exportFireMask = false;
-var exportRapCover = false;
+var exportRapCover = true;
 var exportRapBiomass = false;
-var exportfracNotForest = true;
+var exportfracNotForest = false;
 
 // LCMAP mask (fracKeep + binary) -------------------
 
