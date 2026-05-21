@@ -106,9 +106,9 @@ load_conus_rasters <- function(pred_vars = NULL,
                                lcmap_threshold = 0.9,
                                fire_threshold = 0.9,
                                root = paths$large,
-                               years = "2000-2023",
                                force_scale = FALSE) {
-  
+
+  years = "2000-2023"
   # file paths
   p_climate <- file.path(root, "Data_processed/BiomassQuantityData",
                          "DayMetData_allCONUS_2023ClimateValues_raster.tif")
@@ -116,15 +116,23 @@ load_conus_rasters <- function(pred_vars = NULL,
                        "LCMAP_fracKeep_1000m.tif")
   p_fire <- file.path(root, "Data_processed/masks",
                       paste0("MTBS_fracUnburned_", years, "_1000m.tif"))
-  p_cover <- file.path(root, "Data_processed/CoverData/rap",
+  p_cover_herb <- file.path(root, "Data_processed/CoverData/rap",
                        paste0("RAP_v3_cover_", years, "_1000m.tif"))
+  # using woody cover from the gedi dataset period
+  p_cover_woody <- file.path(root, "Data_processed/CoverData/rap",
+                            paste0("RAP_v3_cover_", '2019-2023', "_1000m.tif"))
   p_herb_bio <- file.path(root, "Data_processed/BiomassQuantityData/rap",
                           paste0("RAP_v3_herbaceousAGB_mask-Lcmap",
                                  lcmap_threshold * 100, "_", years, "_1000m.tif"))
   p_gedi <- file.path(root, "Data_processed/BiomassQuantityData",
                       "GEDI_biomassRaster_onDayMetGrid.tif")
+  p_fracNotForest <- file.path(root, "Data_processed/CoverData/rap",
+    paste0("RAP_v3_fracNotForest_lt5_mask-lcmap50_2019-2023_1000m.tif"))
   
-  all_paths <- c(p_climate, p_lcmap, p_fire, p_cover, p_herb_bio, p_gedi)
+  
+  all_paths <- c(p_climate, p_lcmap, p_fire, p_cover_herb, p_cover_woody, 
+                 p_herb_bio, p_gedi, p_fracNotForest)
+  
   missing <- all_paths[!file.exists(all_paths)]
   if (length(missing) > 0) {
     stop("Missing raster files:\n  ", paste(missing, collapse = "\n  "))
@@ -135,18 +143,22 @@ load_conus_rasters <- function(pred_vars = NULL,
   r_climate <- read_climate_raster(p_climate)
   r_lcmap <- terra::rast(p_lcmap)
   r_fire <- terra::rast(p_fire)
-  r_cover <- terra::rast(p_cover)/100 # RAP cover is %
-  
+  r_cover_herb <- terra::rast(p_cover_herb)$totalHerbaceousCov
+  r_cover_woody <- terra::rast(p_cover_woody)[[c('totalTreeCov', 'totalShrubCov')]]
+  r_cover <- c(r_cover_herb, r_cover_woody)/100 # RAP cover is %
+
   r_herb_bio <- terra::rast(p_herb_bio)
   names(r_herb_bio) <- "totalHerbaceousBio"
   
   r_gedi <- terra::rast(p_gedi)
   names(r_gedi) <- "totalWoodyBio"
   
+  r_zero_tree = terra::rast(p_fracNotForest) > 0.5 # places we're considering 0 trees
   # align
   aligned <- align_raster_extents(rast_list = list(
     climate = r_climate, lcmap = r_lcmap, fire = r_fire,
-    cover = r_cover, herb_bio = r_herb_bio, gedi = r_gedi
+    cover = r_cover, herb_bio = r_herb_bio, gedi = r_gedi,
+    zero_tree = r_zero_tree
   ))
   
   # masks
@@ -181,6 +193,8 @@ load_conus_rasters <- function(pred_vars = NULL,
   
   cat("  Done loading CONUS rasters.\n")
   
+  
+  
   list(
     climate = r_climate_subset,
     cover = aligned$cover,
@@ -190,7 +204,9 @@ load_conus_rasters <- function(pred_vars = NULL,
     mask_fire = mask_fire,
     scale_df = scale_df,
     paths = list(climate = p_climate, lcmap = p_lcmap, fire = p_fire,
-                 cover = p_cover, herb_bio = p_herb_bio, gedi = p_gedi),
+                 cover_herb = p_cover_herb,
+                 cover_woody = p_cover_woody, 
+                 herb_bio = p_herb_bio, gedi = p_gedi),
     params = list(lcmap_threshold = lcmap_threshold,
                   fire_threshold = fire_threshold,
                   pred_vars = pred_vars,

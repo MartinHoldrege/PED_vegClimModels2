@@ -25,8 +25,8 @@ library(future.apply)
 test_run <- FALSE
 
 # which models to fit (toggle on/off)
-fit_herbaceous <- TRUE
-fit_woody <- TRUE
+fit_herbaceous <- opt$fit_herb
+fit_woody <- opt$fit_woody
 
 # data version (from 08_create_training_data.R output)
 vd <- opt$vd # uses RAP cover, for code development/testing
@@ -39,7 +39,7 @@ suffix0 <- paste(vd, vp, vm, sep = "-")
 stopifnot(vm %in% names(model_specs))
 m_spec <- model_specs[[vm]]
 p_spec <- purer_specs[[vp]]
-stopifnot(all(c("herb", "woody") %in% names(m_spec)))
+stopifnot(all(c("herb", "woody")[c(fit_herbaceous, fit_woody)] %in% names(m_spec)))
 
 # CV settings (shared across models; override per-model if needed)
 cv_settings <- list(

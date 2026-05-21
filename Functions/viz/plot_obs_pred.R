@@ -133,3 +133,53 @@ plot_loglik <- function(data, fit,
   
   g1 + g2
 }
+
+#' Plot bias ratio across bins of predicted values
+#'
+#' Computes the ratio of mean observed to mean predicted within bins of
+#' predicted values and plots it. A ratio of 1 indicates mean calibration;
+#' values above 1 indicate the model underpredicts the mean, below 1
+#' indicate overprediction.
+#'
+#' @param data Data frame with observed and predicted columns.
+#' @param observed Character; name of observed column. Default 'totalBio'.
+#' @param predicted Character; name of predicted column. Default 'predicted'.
+#' @param n_bins Integer; number of bins (deciles by default).
+#' @param x_scale Character; 'linear' or 'log' for x-axis scale.
+#'
+#' @return A ggplot object.
+#' @export
+plot_bias_ratio <- function(data,
+                            observed = 'totalBio',
+                            predicted = 'predicted',
+                            n_bins = 10,
+                            x_scale = c('linear', 'log')) {
+  
+  x_scale <- match.arg(x_scale)
+  stopifnot(observed %in% names(data), predicted %in% names(data))
+  
+  bin_df <- data |>
+    dplyr::mutate(bin = dplyr::ntile(.data[[predicted]], n_bins)) |>
+    dplyr::group_by(bin) |>
+    dplyr::summarise(
+      pred_mean = mean(.data[[predicted]]),
+      obs_mean = mean(.data[[observed]]),
+      ratio = obs_mean / pred_mean,
+      n = dplyr::n(),
+      .groups = 'drop'
+    )
+  
+  g <- ggplot2::ggplot(bin_df, ggplot2::aes(x = pred_mean, y = ratio)) +
+    ggplot2::geom_hline(yintercept = 1, linetype = 2, color = 'red') +
+    ggplot2::geom_line(color = 'grey50') +
+    ggplot2::geom_point(ggplot2::aes(size = n)) +
+    ggplot2::scale_size_continuous(guide = 'none') +
+    ggplot2::labs(
+      x = paste0('Mean predicted (within bin, ', n_bins, ' bins)'),
+      y = 'Mean observed / mean predicted',
+      subtitle = 'Ratio > 1: underprediction; < 1: overprediction'
+    )
+  
+  if (x_scale == 'log') g <- g + ggplot2::scale_x_log10()
+  g
+}

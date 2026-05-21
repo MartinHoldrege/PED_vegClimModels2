@@ -6,11 +6,15 @@ source('Functions/general.R')
 
 # params ------------------------------------------------------------------
 
-run_fit_model <- FALSE
-run_predict_rasters <- FALSE
+run_fit_model <- TRUE
+run_predict_rasters <- TRUE
 run_model_diagnostics <- TRUE
-run_spatial_diagnostics <- FALSE
+run_spatial_diagnostics <- TRUE
 run_explore_dat_samp <- FALSE # To do: not updated yet
+
+# with PFTs to fit model to?
+fit_woody = TRUE
+fit_herb = FALSE
 
 # simulation specific
 run_sim <- FALSE # simulate data
@@ -25,7 +29,7 @@ run_model_diagnostics_sim <- FALSE
 
 # repo updated to only work w/ seperate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <-  c('d05-p04-m11', 'd05-p04-m12', 'd05-p04-m13')
+suffixes <-  c('d05-p04-m13', 'd05-p04-m11', 'd05-p04-m12')
 
 # for exploring data sampling
 suffixes_data <- c('d02-p02', 'd04-p02') # for plots looking input data [not updated]
@@ -51,15 +55,24 @@ render_model_diagnostics <- function(prms,
 for (suffix in suffixes) {
   # setup -----------------------------------------------------------------
   
+
+  
   opts_l <- create_opts_l(suffix)
   vm <- opts_l$vm
-  cmdargs <- create_cmdargs(opts_l)
+  cmdargs <- create_cmdargs(opts_l, fit_herb = fit_herb, 
+                            fit_woody = fit_woody)
   print(opts_l)
   hw_type <- vm >= 'm09' # model types that separately fit models to herb and woody
   
   if(hw_type) {
-    model_types <- names(model_specs[[opts_l$vm]])
-    stopifnot(length(model_types) == 2) # currently setup for herb & woody  models
+    model_types0 <- names(model_specs[[opts_l$vm]])
+    
+    model_types <- vector('character')
+    if(fit_herb) model_types <- c(model_types, 'herb')
+    if(fit_woody) model_types <- c(model_types, 'woody')
+    stopifnot(model_types %in% model_types0)
+    
+    # currently setup for herb & woody  models
   } else {
     model_types <- NULL
   }

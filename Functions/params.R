@@ -27,7 +27,13 @@ option_list <- list(
   optparse::make_option("--pfts", type = "character", 
                         default = paste(c("shrub", "needleLeavedTree", 
                                     "broadLeavedTree", "C3Gram", "C4Gram", 
-                                    "Forb"), collapse = ","))
+                                    "Forb"), collapse = ",")),
+  
+  # these two params used in the 01_fit_model_hw.R script
+  optparse::make_option("--fit_herb", type = "logical", 
+                        default = TRUE),
+  optparse::make_option("--fit_woody", type = "logical", 
+                        default = TRUE)
   
 )
 
