@@ -7,13 +7,12 @@ Started: April 6, 2026
 */
 
 // params -------------------------------------------
-// var yearStart = 2019; // years corresponding to GEDI dataset
-// var yearEnd = 2023;
 
-var exportCov = false;
-var exportBio = true; 
+var exportCov = true;
+var exportBio = false; 
 
-var yearStart = 2000; // years corresponding to cover model training data
+// var yearStart = 2000; // years corresponding to cover model training data
+var yearStart = 2019; // for woody data (corresponding to gedi data)
 var yearEnd = 2023;
 
 // dependencies -------------------------------------
