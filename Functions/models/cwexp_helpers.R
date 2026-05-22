@@ -592,7 +592,10 @@ fit_one_model_cwexp <- function(data, config, dll_en,
   fix_alpha_filter <- config$model$fix_alpha_filter
   purer_spec = config$purer
   
-  # sample for fitting --------------------------------------
+  # sample for fitting 
+  
+  #.row_id is a column used in select_purer_by_region so not using here
+  data$row_id__ <- seq_len(nrow(data))
   
   selection <- select_training_pixels(
     dat = data,
@@ -602,6 +605,8 @@ fit_one_model_cwexp <- function(data, config, dll_en,
   )
   
   dat_train <- selection$data
+  train_idx <- dat_train$row_id__
+  dat_train$row_id__ <- NULL
   
   cat("\n============================================================\n")
   cat("Fitting:", model_label, "\n")
@@ -715,6 +720,8 @@ fit_one_model_cwexp <- function(data, config, dll_en,
   list(
     fit = global_fit,
     cv = inner_cv,
+    folds = folds,
+    train_idx = train_idx,
     config = config,
     alpha_prefit = alpha_prefit_info,
     clustering = list(

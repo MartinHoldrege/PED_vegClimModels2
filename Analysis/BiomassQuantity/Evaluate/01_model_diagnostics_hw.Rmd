@@ -3,10 +3,10 @@ title: "Model Diagnostics"
 author: "Martin Holdrege"
 date: "`r Sys.Date()`"
 params:
-  model_type: "herb"
+  model_type: "woody"
   data_version: "d05"
   purer_version: 'p04'
-  model_version: "m11"
+  model_version: "m12"
   quantile_vars: !r c("MAT", "MAP", "PrecipTempCorr", "awc")
 output:
   html_document:
@@ -131,7 +131,7 @@ fold_scores_at_selected <- cv$scores |>
 # summary across folds
 fold_summary <- fold_scores_at_selected |>
   summarise(
-    across(c(mae_log, rmse_log, mae, rmse, cor),
+    across(c(mae_log1p, rmse_log1p, mae, rmse, cor),
            list(mean = mean, sd = sd),
            .names = "{.col}_{.fn}")
   ) |>
@@ -184,7 +184,7 @@ plot_bias_ratio(dat_full)
 
 
 
-## 4. Total Biomass Across Climate (Quantile Plots)
+## 4. 'Holdrege' plots: Total Biomass Across Climate 
 
 Mean observed and predicted total biomass within percentile bins of each
 predictor variable.
@@ -247,7 +247,69 @@ print(g)
 
 ```
 
-## 5. Per-PFT Biomass Across Climate
+### CV based holdrege plots
+
+Predictions made by each CV model to the held out (testing dataset).
+Note predictions are only on the heldout part of the sample datset, this sample
+dataset is the one used in CV (in case of the woody model it contains 'purer' pixels). 
+
+
+```{r cv-predictions}
+
+dat_pred_cv <- cv_holdout_predictions(model_result = m1,
+                                            data = dat_full)
+# decile functions expect yvar and yvar_pred naming convention
+dat_pred_cv_orig <- dat_train_pred_cv |>
+  dplyr::rename(totalBio_pred = predicted) |> 
+  unstandardize(scale_df)
+```
+
+```{r quantile-total-bio, fig.width=10, fig.height=7}
+
+quant_df_cv <- predvars2deciles(
+  df = dat_train_pred_cv_orig,
+  response_vars = c("totalBio", "totalBio_pred"),
+  pred_vars = quantile_vars
+)
+
+  g <- decile_dotplot(
+    yvar = "totalBio",
+    df = quant_df_cv,
+    add_predicted = TRUE,
+    ylab = paste0("Total Biomass (mean)"),
+    title = "Observed vs Predicted totalBio (CV predictions)"
+  )
+  print(g)
+
+
+```
+
+```{r quantile-filtered, fig.width=10, fig.height=7}
+
+f <- 'mean'
+filter_vars <- c('MAT', 'MAP', 'PrecipTempCorr')
+
+quant_df_filt <- predvars2deciles(
+  df = dat_quant,
+  response_vars = c("totalBio", "totalBio_pred"),
+  pred_vars = quantile_vars,
+  filter_var = TRUE,
+  filter_vars = filter_vars,
+  summary_fun = f
+)
+
+g <- decile_dotplot_filtered(
+  yvar = "totalBio",
+  df = quant_df_filt,
+  ylab = paste0("Total Biomass (", f, ")"),
+  xlab = paste(f, "of quantile of predictor variable"),
+  title = "Observed vs Predicted totalBio across climate percentiles"
+)
+print(g)
+
+
+```
+## 5. Holdrege plots: Per-PFT Biomass Across Climate
 
 
 ### Cover-Weighted

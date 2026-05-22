@@ -665,7 +665,7 @@ run_inner_cv <- function(data,
   out <- list(
     en_alpha = en_alpha,
     lambda_seq = lambda_seq,
-    spec = spec_ref,
+    spec = spec_list[[1]],
     scores = scores,
     selected_by_fold = selected_by_fold,
     path_par = path_par,

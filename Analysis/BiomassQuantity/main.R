@@ -7,14 +7,14 @@ source('Functions/general.R')
 # params ------------------------------------------------------------------
 
 run_fit_model <- TRUE
-run_predict_rasters <- TRUE
-run_model_diagnostics <- TRUE
-run_spatial_diagnostics <- TRUE
+run_predict_rasters <- FALSE
+run_model_diagnostics <- FALSE
+run_spatial_diagnostics <- FALSE
 run_explore_dat_samp <- FALSE # To do: not updated yet
 
 # with PFTs to fit model to?
 fit_woody = TRUE
-fit_herb = FALSE
+fit_herb = TRUE
 
 # simulation specific
 run_sim <- FALSE # simulate data
@@ -59,8 +59,7 @@ for (suffix in suffixes) {
   
   opts_l <- create_opts_l(suffix)
   vm <- opts_l$vm
-  cmdargs <- create_cmdargs(opts_l, fit_herb = fit_herb, 
-                            fit_woody = fit_woody)
+
   print(opts_l)
   hw_type <- vm >= 'm09' # model types that separately fit models to herb and woody
   
@@ -68,14 +67,28 @@ for (suffix in suffixes) {
     model_types0 <- names(model_specs[[opts_l$vm]])
     
     model_types <- vector('character')
-    if(fit_herb) model_types <- c(model_types, 'herb')
-    if(fit_woody) model_types <- c(model_types, 'woody')
-    stopifnot(model_types %in% model_types0)
+    if(fit_herb & ('herb' %in% model_types0))  {
+      model_types <- c(model_types, 'herb')
+      fit_herb2 <- fit_herb
+    } else {
+      # some aren't run for herbs b/ they're not specified in model_specs
+      fit_herb2 <- FALSE
+    }
+    if(fit_woody& ('woody' %in% model_types0)) {
+      model_types <- c(model_types, 'woody')
+      fit_woody2 <- fit_woody
+    } else {
+      fit_woody2 <- FALSE
+    }
+    stopifnot(length(model_types) >= 1)
     
     # currently setup for herb & woody  models
   } else {
     model_types <- NULL
   }
+  
+  cmdargs <- create_cmdargs(opts_l, fit_herb = fit_herb2, 
+                            fit_woody = fit_woody2)
 
   # passed to rmd
   prms_model_diagnostics <- list(

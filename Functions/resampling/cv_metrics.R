@@ -680,5 +680,58 @@ compare_group_to_truth <- function(truth, fits, newdata = NULL,
   dplyr::bind_rows(rows)
 }
 
-
-
+#' Generate CV holdout predictions from inner CV results. this
+#' uses the objected create by fit_one_model_cwxp
+#'
+#' For each fold, constructs a lightweight cwexp_tmb_fit object from the
+#' saved parameters at the selected lambda, then uses the standard
+#' predict method on the holdout data. Note this is just the holdout on the
+#' purer/subsampled data used in the cross validation
+#'
+#' @param model_result Output of `fit_one_model_cwexp()`.
+#' @param data Training data frame (same data used for fitting).
+#' @param type Prediction type, passed to `predict.cwexp_tmb_fit()`.
+#'
+#' @return A numeric vector of holdout predictions, same length and order
+#'   as rows in `data`.
+#' @export
+cv_holdout_predictions <- function(model_result, data, type = "mu") {
+  
+  cv <- model_result$cv
+  folds <- model_result$folds
+  spec <- model_result$fit$spec # spec of the final model
+  selected_lambda <- cv$selected$lambda
+  train_idx <- model_result$train_idx
+  stopifnot(all(train_idx %in% (1:nrow(data))))
+  dat_train <- data[train_idx, ] 
+  
+  preds <- rep(NA_real_, nrow(dat_train))
+  
+  for (i in seq_along(folds)) {
+    test_idx <- folds[[i]]$test_rows
+    fr <- cv$fold_results[[i]]
+    
+    # find parameters at selected lambda
+    lambda_match <- which(
+      abs(sapply(fr$path_par, \(x) x$lambda) - selected_lambda) < 1e-10
+    )
+    stopifnot(length(lambda_match) == 1)
+    par <- fr$path_par[[lambda_match]]$par
+    
+    # construct lightweight fit object for predict method
+    fold_fit <- list(
+      spec = list(
+        formula = spec$formula,
+        cover_cols = spec$cover_cols
+      ),
+      par = par
+    )
+    class(fold_fit) <- class(model_result$fit)
+    
+    preds[test_idx] <- predict(fold_fit, newdata = dat_train[test_idx, ], type = type)
+  }
+  
+  stopifnot(!any(is.na(preds)))
+  dat_train$predicted <- preds
+  dat_train
+}
