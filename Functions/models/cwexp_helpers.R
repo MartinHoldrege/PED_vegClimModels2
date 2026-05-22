@@ -724,10 +724,7 @@ fit_one_model_cwexp <- function(data, config, dll_en,
     train_idx = train_idx,
     config = config,
     alpha_prefit = alpha_prefit_info,
-    clustering = list(
-      k = config$clustering$k,
-      vars = cluster_vars
-    ),
+    clustering = clust,
     n_train = nrow(dat_train)
   )
 }

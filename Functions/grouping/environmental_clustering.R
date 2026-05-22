@@ -116,6 +116,60 @@ make_env_clusters <- function(data,
   out
 }
 
+#' Assign new data to existing environmental clusters
+#'
+#' Uses the saved k-means centers and scaling parameters from
+#' `make_env_clusters()` to assign each row of new data to its
+#' nearest cluster.
+#'
+#' @param data Data frame containing the clustering variables.
+#' @param clustering Output of `make_env_clusters()`, with elements
+#'   `centers`, `scale_center`, `scale_scale`, `vars`.
+#'
+#' @return Integer vector of cluster assignments, one per row of `data`.
+#' @export
+assign_to_clusters <- function(data, clustering) {
+  stopifnot(all(clustering$vars %in% names(data)))
+  
+  x <- scale(
+    as.matrix(data[, clustering$vars, drop = FALSE]),
+    center = clustering$scale_center,
+    scale = clustering$scale_scale
+  )
+  
+  centers <- clustering$centers
+  
+  # for each row, find the index of the nearest cluster center
+  apply(x, 1, function(row) {
+    which.min(rowSums(sweep(centers, 2, row)^2))
+  })
+}
+
+#' Map cluster assignments to CV fold test sets
+#'
+#' Given cluster assignments and fold definitions, determines which
+#' fold each observation belongs to as a test observation.
+#'
+#' @param clusters Integer vector of cluster assignments.
+#' @param folds Fold object from `make_cluster_folds()`.
+#'
+#' @return Integer vector of fold assignments (which fold's test set
+#'   each observation falls in). Length equals length of `clusters`.
+#' @export
+clusters_to_fold_id <- function(clusters, folds) {
+  fold_id <- rep(NA_integer_, length(clusters))
+  
+  for (fold in folds) {
+    fold_id[clusters %in% fold$test_clusters] <- fold$fold_id
+  }
+  
+  if (any(is.na(fold_id))) {
+    warning(sum(is.na(fold_id)), " observations not assigned to any fold ",
+            "(cluster not in any test set).")
+  }
+  
+  fold_id
+}
 
 
 #' Create k-means region labels from selected variables

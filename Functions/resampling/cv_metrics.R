@@ -680,37 +680,37 @@ compare_group_to_truth <- function(truth, fits, newdata = NULL,
   dplyr::bind_rows(rows)
 }
 
-#' Generate CV holdout predictions from inner CV results. this
-#' uses the objected create by fit_one_model_cwxp
+#' Generate CV holdout predictions for the full dataset
 #'
-#' For each fold, constructs a lightweight cwexp_tmb_fit object from the
-#' saved parameters at the selected lambda, then uses the standard
-#' predict method on the holdout data. Note this is just the holdout on the
-#' purer/subsampled data used in the cross validation
+#' Assigns every row in `data` to a CV fold based on the saved
+#' environmental clustering, then predicts each row using the fold
+#' model that held out that row's cluster. This gives honest
+#' out-of-sample predictions for the full dataset.
 #'
 #' @param model_result Output of `fit_one_model_cwexp()`.
-#' @param data Training data frame (same data used for fitting).
-#' @param type Prediction type, passed to `predict.cwexp_tmb_fit()`.
+#' @param data Full dataset (same as originally passed to
+#'   `fit_one_model_cwexp()`).
+#' @param type Prediction type passed to `predict.cwexp_tmb_fit()`.
 #'
-#' @return A numeric vector of holdout predictions, same length and order
-#'   as rows in `data`.
+#' @return A data frame identical to `data` with an added `cv_predicted`
+#'   column.
 #' @export
 cv_holdout_predictions <- function(model_result, data, type = "mu") {
   
   cv <- model_result$cv
   folds <- model_result$folds
-  spec <- model_result$fit$spec # spec of the final model
+  clustering <- model_result$clustering
+  spec <- cv$spec
   selected_lambda <- cv$selected$lambda
-  train_idx <- model_result$train_idx
-  stopifnot(all(train_idx %in% (1:nrow(data))))
-  dat_train <- data[train_idx, ] 
   
-  preds <- rep(NA_real_, nrow(dat_train))
+  # assign all rows to clusters, then to folds
+  clusters <- assign_to_clusters(data, clustering)
+  fold_ids <- clusters_to_fold_id(clusters, folds)
   
-  for (i in seq_along(folds)) {
-    test_idx <- folds[[i]]$test_rows
-    fr <- cv$fold_results[[i]]
-    
+  preds <- rep(NA_real_, nrow(data))
+  
+  for (fr in cv$fold_results) {
+
     # find parameters at selected lambda
     lambda_match <- which(
       abs(sapply(fr$path_par, \(x) x$lambda) - selected_lambda) < 1e-10
@@ -718,20 +718,26 @@ cv_holdout_predictions <- function(model_result, data, type = "mu") {
     stopifnot(length(lambda_match) == 1)
     par <- fr$path_par[[lambda_match]]$par
     
-    # construct lightweight fit object for predict method
+    # construct lightweight fit object
     fold_fit <- list(
-      spec = list(
-        formula = spec$formula,
-        cover_cols = spec$cover_cols
-      ),
+      spec = list(formula = spec$formula, cover_cols = spec$cover_cols),
       par = par
     )
     class(fold_fit) <- class(model_result$fit)
     
-    preds[test_idx] <- predict(fold_fit, newdata = dat_train[test_idx, ], type = type)
+    # predict on all rows assigned to this fold's test clusters
+    test_rows <- which(fold_ids == fr$fold_id)
+    if (length(test_rows) > 0) {
+      preds[test_rows] <- predict(fold_fit,
+                                  newdata = data[test_rows, , drop = FALSE],
+                                  type = type)
+    }
   }
   
-  stopifnot(!any(is.na(preds)))
-  dat_train$predicted <- preds
-  dat_train
+  if (any(is.na(preds))) {
+    warning(sum(is.na(preds)), " rows could not be predicted ",
+            "(not assigned to any fold).")
+  }
+  
+  preds
 }
