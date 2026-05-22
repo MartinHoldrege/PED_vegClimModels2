@@ -6,11 +6,13 @@ source('Functions/general.R')
 
 # params ------------------------------------------------------------------
 
-run_fit_model <- TRUE
+run_fit_model <- FALSE
 run_predict_rasters <- FALSE
 run_model_diagnostics <- FALSE
 run_spatial_diagnostics <- FALSE
+run_model_comparison <- TRUE
 run_explore_dat_samp <- FALSE # To do: not updated yet
+
 
 # with PFTs to fit model to?
 fit_woody = TRUE
@@ -27,9 +29,14 @@ run_model_diagnostics_sim <- FALSE
 # m for model version
 #     m01 & m03 matches the formula for simulated data
 
-# repo updated to only work w/ seperate herb/biomass models
+# repo updated to only work w/ separate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
 suffixes <-  c('d05-p04-m13', 'd05-p04-m11', 'd05-p04-m12')
+
+# pairs of suffixes to compare (model1 vs model2)
+comparison_pairs <- list(
+  c("d05-p04-m12", "d05-p04-m13")
+)
 
 # for exploring data sampling
 suffixes_data <- c('d02-p02', 'd04-p02') # for plots looking input data [not updated]
@@ -202,5 +209,43 @@ if(run_explore_dat_samp) {
                            ".html")
     )
     
+  }
+}
+
+# model comparison --------------------------------------------------------
+
+
+
+if (run_model_comparison) {
+  for (pair in comparison_pairs) {
+    opts1 <- create_opts_l(pair[1])
+    opts2 <- create_opts_l(pair[2])
+    
+    # compare within each model type
+    model_types_1 <- names(model_specs[[opts1$vm]])
+    model_types_2 <- names(model_specs[[opts2$vm]])
+    shared_types <- intersect(model_types_1, model_types_2)
+    
+    for (mt in shared_types) {
+      if ((mt == "herb" & !fit_herb) | (mt == "woody" & !fit_woody)) next
+      
+      prms <- list(
+        model_type = mt,
+        vd1 = opts1$vd, vp1 = opts1$vp, vm1 = opts1$vm,
+        vd2 = opts2$vd, vp2 = opts2$vp, vm2 = opts2$vm,
+        n_sample_raster = 50000
+      )
+      
+      out_file <- paste0("01_model_comparison_", mt, "_",
+                         pair[1], "_vs_", pair[2], ".html")
+      
+      rmarkdown::render(
+        "Analysis/BiomassQuantity/Evaluate/01_model_comparison.Rmd",
+        knit_root_dir = knit_root_dir,
+        params = prms,
+        output_dir = file.path(output_dir, "Evaluate", 'comparison'),
+        output_file = out_file
+      )
+    }
   }
 }

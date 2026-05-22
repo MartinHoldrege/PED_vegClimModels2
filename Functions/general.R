@@ -70,3 +70,8 @@ create_cmdargs <- function(x, model_type = NULL,
 # misc --------------------------------------------------------------------
 
 
+add_suffix2names <- function(x, suffix) {
+  nms <- names(x)
+  names(x) <- paste0(nms, suffix)
+  x
+}

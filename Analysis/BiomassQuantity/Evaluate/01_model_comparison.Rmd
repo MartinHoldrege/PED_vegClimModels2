@@ -1,0 +1,333 @@
+---
+title: "Model Comparison"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  model_type: "woody"
+  # model 1 (reference)
+  vd1: "d05"
+  vp1: "p04"
+  vm1: "m12"
+  # model 2 (comparison)
+  vd2: "d05"
+  vp2: "p04"
+  vm2: "m13"
+  n_sample_raster: 50000
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 10, fig.height = 6)
+is_woody <- params$model_type == "woody"
+fig_height_pft <- if (is_woody) 10 else 6
+```
+
+## Purpose
+
+Side-by-side comparison of two `r params$model_type` cwexp biomass models.
+Compares predicted biomass maps, per-PFT decomposition, and scatterplots
+of model 1 vs model 2 predictions sampled from the prediction rasters.
+
+## Setup
+
+```{r source-and-load}
+source("Functions/init.R")
+library(patchwork)
+source_functions()
+theme_set(theme_bw())
+
+model_type <- params$model_type
+
+# build suffixes
+suffix1 <- paste0(model_type, "_", paste(params$vd1, params$vp1, params$vm1, sep = "-"))
+suffix2 <- paste0(model_type, "_", paste(params$vd2, params$vp2, params$vm2, sep = "-"))
+
+label1 <- paste(params$vd1, params$vp1, params$vm1, sep = "-")
+label2 <- paste(params$vd2, params$vp2, params$vm2, sep = "-")
+```
+
+```{r load-models}
+# --- load fitted models ---
+load_fit <- function(suffix) {
+  p <- file.path(paths$large, "Data_processed/BiomassQuantityData/Fit",
+                 paste0("fitted_model_", suffix, ".rds"))
+  stopifnot(file.exists(p))
+  readRDS(p)
+}
+
+m1 <- load_fit(suffix1)
+m2 <- load_fit(suffix2)
+
+# verify same PFT structure
+stopifnot(identical(m1$config$model$cover_cols, m2$config$model$cover_cols))
+cover_cols <- m1$config$model$cover_cols
+n_pft <- length(cover_cols)
+```
+
+
+```{r load-prediction-rasters}
+# --- load prediction rasters ---
+load_pred_raster <- function(suffix) {
+  p <- file.path(paths$large, "Data_processed/BiomassQuantityData/Predictions",
+                 paste0("predicted_biomass_", suffix, ".tif"))
+  stopifnot(file.exists(p))
+  terra::rast(p)
+}
+
+r1 <- load_pred_raster(suffix1)
+r2 <- load_pred_raster(suffix2)
+
+cat("Model 1 layers:", paste(names(r1), collapse = ", "), "\n")
+cat("Model 2 layers:", paste(names(r2), collapse = ", "), "\n")
+```
+
+```{r extract-layers}
+# total predicted
+r1_total <- r1[["predicted_totalBio"]]
+r2_total <- r2[["predicted_totalBio"]]
+
+# difference: model1 - model2
+r_diff_total <- r1_total - r2_total
+names(r_diff_total) <- "difference"
+
+# per-group layers (cover-weighted)
+weighted_lyrs <- names(r1)[!grepl("_potential|predicted_totalBio", names(r1))]
+potential_lyrs <- names(r1)[grepl("_potential", names(r1))]
+```
+
+```{r sample-from-rasters}
+# sample points from both rasters for scatterplots
+set.seed(42)
+
+r1a <- add_suffix2names(r1, '_m1')
+r2a <- add_suffix2names(r2, '_m2')
+
+r_stack <- c(r1a, r2a)
+
+df_sample <- terra::spatSample(r_stack, size = params$n_sample_raster,
+                                method = "random", na.rm = TRUE, xy = FALSE)
+
+```
+
+```{r print-config}
+cat("Model type:", model_type, "\n\n")
+
+cat("--- Model 1:", label1, "---\n")
+cat("  Formula:", deparse(m1$config$model$formula), "\n")
+cat("  Lambda:", signif(m1$cv$selected$lambda, 3), "\n")
+cat("  N training:", m1$n_train, "\n\n")
+
+cat("--- Model 2:", label2, "---\n")
+cat("  Formula:", deparse(m2$config$model$formula), "\n")
+cat("  Lambda:", signif(m2$cv$selected$lambda, 3), "\n")
+cat("  N training:", m2$n_train, "\n")
+```
+
+## 1. CV Performance Comparison
+
+```{r cv-comparison}
+cv_summary <- function(m, label) {
+  m$cv$selected |>
+    dplyr::mutate(model = label) |>
+    dplyr::select(model, lambda, mae_log1p, mae_log1p_se, rmse_log1p, mae, rmse, cor)
+}
+
+cv_compare <- dplyr::bind_rows(
+  cv_summary(m1, label1),
+  cv_summary(m2, label2)
+) |>
+  dplyr::mutate(dplyr::across(dplyr::where(is.numeric), \(x) signif(x, 4)))
+
+knitr::kable(cv_compare, caption = "CV performance at selected lambda")
+```
+
+
+## 2. Total Biomass: Maps
+
+### Side by Side
+
+```{r maps-total-side-by-side, fig.width=14, fig.height=6}
+# shared color limits
+total_q99 <- max(
+  terra::global(r1_total, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]],
+  terra::global(r2_total, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]]
+)
+total_limits <- c(0, total_q99)
+
+g1 <- plot_map_conus(r1_total,
+                     colorscale = colorscale_biomass(limits = total_limits),
+                     title = paste("Model 1:", label1))
+g2 <- plot_map_conus(r2_total,
+                     colorscale = colorscale_biomass(limits = total_limits),
+                     title = paste("Model 2:", label2))
+g1 + g2
+```
+
+### Difference (Model 1 − Model 2)
+
+```{r map-total-diff, fig.width=10, fig.height=6}
+diff_q99 <- terra::global(
+  abs(r_diff_total),
+  fun = function(x) quantile(x, 0.99, na.rm = TRUE)
+)[[1]]
+
+plot_map_conus(
+  r_diff_total,
+  colorscale = colorscale_diverging(
+    name = "M1 − M2\n(Mg/ha)",
+    limits = c(-diff_q99, diff_q99)
+  ),
+  title = paste("Difference in total biomass:", label1, "−", label2)
+)
+```
+
+### Scatterplot: Model 1 vs Model 2
+
+```{r scatter-total, fig.width=6, fig.height=5}
+ggplot(df_sample, aes(x = predicted_totalBio_m1, y = predicted_totalBio_m2)) +
+  geom_hex(bins = 100) +
+  scale_fill_viridis_c(trans = "log10") +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(x = paste("Model 1:", label1),
+       y = paste("Model 2:", label2),
+       title = "Total predicted biomass: Model 1 vs Model 2") +
+  coord_equal()
+```
+
+## 3. Per-PFT Biomass: Cover-Weighted {.tabset}
+
+```{r pft-weighted-comparison, fig.width=14, fig.height=10, eval=length(weighted_lyrs) > 0, results='asis'}
+for (lyr in weighted_lyrs) {
+  r1_lyr <- r1[[lyr]]
+  r2_lyr <- r2[[lyr]]
+  r_diff_lyr <- r1_lyr - r2_lyr
+  
+  lyr_q99 <- max(
+    terra::global(r1_lyr, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]],
+    terra::global(r2_lyr, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]]
+  )
+  
+  diff_lyr_q99 <- terra::global(
+    abs(r_diff_lyr),
+    fun = function(x) quantile(x, 0.99, na.rm = TRUE)
+  )[[1]]
+  
+  cat("\n###", lyr, "\n\n")
+  
+  # side by side maps
+  g1 <- plot_map_conus(r1_lyr,
+                       colorscale = colorscale_biomass(limits = c(0, lyr_q99)),
+                       title = paste("M1:", label1))
+  g2 <- plot_map_conus(r2_lyr,
+                       colorscale = colorscale_biomass(limits = c(0, lyr_q99)),
+                       title = paste("M2:", label2))
+  g_diff <- plot_map_conus(r_diff_lyr,
+                           colorscale = colorscale_diverging(
+                             name = "M1−M2",
+                             limits = c(-diff_lyr_q99, diff_lyr_q99)),
+                           title = paste("Difference:", lyr))
+  
+  print(g1+g2)
+  print(g_diff)
+  
+  # scatterplot
+  m1_col <- paste0(lyr, "_m1")
+  m2_col <- paste0(lyr, "_m2")
+  if (all(c(m1_col, m2_col) %in% names(df_sample))) {
+    g_scatter <- ggplot(df_sample, aes(x = .data[[m1_col]], y = .data[[m2_col]])) +
+      geom_hex(bins = 80) +
+      scale_fill_viridis_c(trans = "log10") +
+      geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+      labs(x = paste("M1:", label1), y = paste("M2:", label2),
+           title = paste(lyr, "— M1 vs M2")) +
+      coord_equal()
+    print(g_scatter)
+  }
+}
+```
+
+## 4. Per-PFT Biomass: Potential (Cover = 100%) {.tabset}
+
+```{r pft-potential-comparison, fig.width=14, fig.height=10, eval=length(potential_lyrs) > 0, results='asis'}
+for (lyr in potential_lyrs) {
+  r1_lyr <- r1[[lyr]]
+  r2_lyr <- r2[[lyr]]
+  r_diff_lyr <- r1_lyr - r2_lyr
+  
+  lyr_q99 <- max(
+    terra::global(r1_lyr, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]],
+    terra::global(r2_lyr, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]]
+  )
+  
+  diff_lyr_q99 <- terra::global(
+    abs(r_diff_lyr),
+    fun = function(x) quantile(x, 0.99, na.rm = TRUE)
+  )[[1]]
+  
+  clean_name <- gsub("_potential$", " (potential)", lyr)
+  cat("\n###", clean_name, "\n\n")
+  
+  g1 <- plot_map_conus(r1_lyr,
+                       colorscale = colorscale_biomass(limits = c(0, lyr_q99),
+                                                       option = "magma"),
+                       title = paste("M1:", label1))
+  g2 <- plot_map_conus(r2_lyr,
+                       colorscale = colorscale_biomass(limits = c(0, lyr_q99),
+                                                       option = "magma"),
+                       title = paste("M2:", label2))
+  g_diff <- plot_map_conus(r_diff_lyr,
+                           colorscale = colorscale_diverging(
+                             name = "M1−M2",
+                             limits = c(-diff_lyr_q99, diff_lyr_q99)),
+                           title = paste("Difference:", clean_name))
+  
+  print(g1+g2)
+  print(g_diff)
+  
+  # scatterplot
+  m1_col <- paste0(lyr, "_m1")
+  m2_col <- paste0(lyr, "_m2")
+  if (all(c(m1_col, m2_col) %in% names(df_sample))) {
+    g_scatter <- ggplot(df_sample, aes(x = .data[[m1_col]], y = .data[[m2_col]])) +
+      geom_hex(bins = 80) +
+      scale_fill_viridis_c(trans = "log10") +
+      geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+      labs(x = paste("M1:", label1), y = paste("M2:", label2),
+           title = paste(clean_name, "— M1 vs M2")) +
+      coord_equal()
+    print(g_scatter)
+  }
+}
+```
+
+## 5. Coefficient Comparison
+
+```{r coef-comparison}
+cat("--- Model 1:", label1, "---\n")
+cat("Alpha:\n")
+print(round(m1$fit$par$alpha, 3))
+cat("\nB:\n")
+print(round(m1$fit$par$B, 3))
+cat("Sigma:", round(m1$fit$par$sigma, 3), "\n\n")
+
+cat("--- Model 2:", label2, "---\n")
+cat("Alpha:\n")
+print(round(m2$fit$par$alpha, 3))
+cat("B:\n")
+print(round(m2$fit$par$B, 3))
+cat("\nSigma:", round(m2$fit$par$sigma, 3), "\n")
+```
+
+## Session Info
+
+```{r session-info}
+cat("Model 1:", suffix1, "\n")
+cat("Model 2:", suffix2, "\n")
+cat("N sampled from rasters:", params$n_sample_raster, "\n")
+cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+```
