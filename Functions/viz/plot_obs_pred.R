@@ -183,3 +183,13 @@ plot_bias_ratio <- function(data,
   if (x_scale == 'log') g <- g + ggplot2::scale_x_log10()
   g
 }
+
+# takes output from compare_to_bigmap()
+bigmap_scatter <- function(df) {
+  ggplot(df, aes(x = bigmap, y = predicted)) +
+    geom_hex(bins = 100) +
+    scale_fill_viridis_c(trans = "log10") +
+    geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+    labs(x = "BIGMAP AGB (Mg/ha)", y = "Model predicted (Mg/ha)") +
+    coord_equal()
+}

@@ -127,7 +127,7 @@ load_conus_rasters <- function(pred_vars = NULL,
   p_gedi <- file.path(root, "Data_processed/BiomassQuantityData",
                       "GEDI_biomassRaster_onDayMetGrid.tif")
   p_fracNotForest <- file.path(root, "Data_processed/CoverData/rap",
-    paste0("RAP_v3_fracNotForest_lt5_mask-lcmap50_2019-2023_1000m.tif"))
+    paste0("RAP_v3_fracNotForest_lt3_mask-lcmap50_2019-2023_1000m.tif"))
   
   
   all_paths <- c(p_climate, p_lcmap, p_fire, p_cover_herb, p_cover_woody, 
@@ -200,6 +200,7 @@ load_conus_rasters <- function(pred_vars = NULL,
     cover = aligned$cover,
     herb_bio = aligned$herb_bio,
     gedi = aligned$gedi,
+    zero_tree = aligned$zero_tree,
     mask_lcmap = mask_lcmap,
     mask_fire = mask_fire,
     scale_df = scale_df,
@@ -226,6 +227,63 @@ load_pred_raster <- function(suffix) {
                  paste0("predicted_biomass_", suffix, ".tif"))
   stopifnot(file.exists(p))
   terra::rast(p)
+}
+
+#' Compare predicted biomass to BIGMAP AGB (treed areas)
+#'
+#' Loads the FIA BIGMAP AGB raster (aggregated to 1 km), masks both predicted
+#' and BIGMAP rasters to treed areas (plus LCMAP and fire masks), samples
+#' pixels, and computes summary metrics.
+#'
+#' @param r_pred Single-layer SpatRaster of predicted biomass (e.g., the
+#'   tree cover-weighted layer).
+#' @param rasters List returned by `load_conus_rasters()`, providing
+#'   `zero_tree`, `mask_lcmap`, and `mask_fire`.
+#' @param n_sample Integer; number of pixels to sample for scatter/metrics.
+#' @param seed Integer; RNG seed for reproducible sampling.
+#' @param root Character; root path for large files.
+#'
+#' @return A list with:
+#'   - `metrics`: tibble from `cv_metrics_df()`
+#'   - `sample`: data frame with columns `predicted` and `bigmap`
+#'   - `r_pred_masked`: masked prediction raster
+#'   - `r_bigmap_masked`: masked BIGMAP raster
+compare_to_bigmap <- function(r_pred, rasters,
+                              n_sample = 50000, seed = 8174,
+                              root = paths$large) {
+
+  p_bigmap <- file.path(root, "Data_processed", "BiomassQuantityData",
+                        "BIGMAP_AGB-Mgha_2018_TOTAL_1000m.tif")
+  stopifnot(file.exists(p_bigmap))
+  r_bigmap <- terra::rast(p_bigmap)
+
+  mask_treed <- rasters$zero_tree == 0
+
+  mask_all <- function(r) {
+    r |>
+      terra::mask(mask_treed, maskvalues = 0) |>
+      terra::mask(rasters$mask_lcmap, maskvalues = 0) |>
+      terra::mask(rasters$mask_fire, maskvalues = 0)
+  }
+
+  r_pred_masked <- mask_all(r_pred)
+  r_bigmap_masked <- mask_all(r_bigmap)
+
+  r_stack <- c(r_pred_masked, r_bigmap_masked)
+  names(r_stack) <- c("predicted", "bigmap")
+
+  set.seed(seed)
+  df <- terra::spatSample(r_stack, size = n_sample,
+                          method = "random", na.rm = TRUE, xy = FALSE)
+
+  metrics <- cv_metrics_df(df, observed = "bigmap", predicted = "predicted")
+
+  list(
+    metrics = metrics,
+    sample = df,
+    r_pred_masked = r_pred_masked,
+    r_bigmap_masked = r_bigmap_masked
+  )
 }
 
 #' Load modelled (GLM) cover raster

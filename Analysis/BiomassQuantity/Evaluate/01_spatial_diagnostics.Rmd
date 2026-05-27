@@ -15,12 +15,14 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
-
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
 # dynamic figure dimensions based on model type
 is_woody <- params$model_type == "woody"
 fig_height_pft <- if (is_woody) 10 else 6
-```
 ```
 
 ## Purpose
@@ -72,7 +74,7 @@ r_pred_all <- terra::rast(p_pred)
 cat("Prediction layers:", paste(names(r_pred_all), collapse = ", "), "\n")
 
 # --- load CONUS rasters (for observed + masks) ---
-rasters <- load_conus_rasters(pred_vars = scale_df$variable)
+rasters <- load_conus_rasters()
 
 # observed biomass raster
 r_observed <- if (model_type == "herb") {
@@ -229,6 +231,84 @@ pft_potential_plots <- lapply(potential_lyrs, function(lyr) {
 })
 
 patchwork::wrap_plots(pft_potential_plots, ncol = 1)
+```
+
+## 6. Comparison with BIGMAP AGB (Treed Areas)
+
+External validation of woody model predictions against the FIA BIGMAP
+aboveground biomass dataset (2018), restricted to pixels classified as treed.
+Uses the tree cover-weighted prediction layer (`totalTree`) rather than total
+biomass, since BIGMAP is tree AGB and total includes shrub biomass.
+
+```{r bigmap-load, eval=is_woody}
+r_tree_pred <- r_pred_all[["totalTree"]]
+bigmap <- compare_to_bigmap(r_tree_pred, rasters)
+
+# shared color limits for maps
+bigmap_q99 <- max(
+  terra::global(bigmap$r_bigmap_masked, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]],
+  terra::global(bigmap$r_pred_masked, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]]
+)
+bigmap_limits <- c(0, bigmap_q99)
+```
+
+### Side-by-Side Maps
+
+```{r bigmap-maps, fig.width=14, fig.height=6, eval=is_woody}
+g_bigmap <- plot_map_conus(
+  bigmap$r_bigmap_masked,
+  colorscale = colorscale_biomass(name = "Biomass\n(Mg/ha)",
+                                  limits = bigmap_limits),
+  title = "BIGMAP AGB (treed areas)"
+)
+g_pred_treed <- plot_map_conus(
+  bigmap$r_pred_masked,
+  colorscale = colorscale_biomass(name = "Biomass\n(Mg/ha)",
+                                  limits = bigmap_limits),
+  title = "Model predicted tree biomass (treed areas)"
+)
+g_bigmap + g_pred_treed
+```
+
+### Difference Map (Model Predicted − BIGMAP)
+
+```{r bigmap-diff-map, fig.width=10, fig.height=6, eval=is_woody}
+r_bigmap_diff <- bigmap$r_pred_masked - bigmap$r_bigmap_masked
+names(r_bigmap_diff) <- "difference"
+
+bigmap_diff_q99 <- terra::global(
+  abs(r_bigmap_diff),
+  fun = function(x) quantile(x, 0.99, na.rm = TRUE)
+)[[1]]
+
+plot_map_conus(
+  r_bigmap_diff,
+  colorscale = colorscale_diverging(
+    name = "Pred − BIGMAP\n(Mg/ha)",
+    limits = c(-bigmap_diff_q99, bigmap_diff_q99)
+  ),
+  title = "Difference: model predicted − BIGMAP AGB (treed areas)"
+)
+```
+
+### Scatterplot
+
+```{r bigmap-scatter, fig.width=6, fig.height=5, eval=is_woody}
+ggplot(bigmap$sample, aes(x = bigmap, y = predicted)) +
+  geom_hex(bins = 100) +
+  scale_fill_viridis_c(trans = "log10") +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(x = "BIGMAP AGB (Mg/ha)", y = "Model predicted tree biomass (Mg/ha)",
+       title = "Model vs BIGMAP AGB (treed areas)") +
+  coord_equal()
+```
+
+### Summary Metrics
+
+```{r bigmap-metrics, eval=is_woody}
+bigmap$metrics |>
+  mutate(value = signif(value, 4)) |>
+  knitr::kable(caption = "Model vs BIGMAP AGB summary (treed areas)")
 ```
 
 ## Session Info

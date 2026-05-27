@@ -317,6 +317,49 @@ print(round(m2$fit$par$B, 3))
 cat("\nSigma:", round(m2$fit$par$sigma, 3), "\n")
 ```
 
+## 6. External Validation: BIGMAP AGB (Treed Areas)
+
+Comparison of each model's tree cover-weighted biomass predictions against the
+FIA BIGMAP AGB dataset, restricted to treed pixels.
+
+```{r bigmap-setup, eval=is_woody}
+# load CONUS rasters (needed for masks)
+rasters <- load_conus_rasters()
+
+r1_tree <- r1[["totalTree"]]
+r2_tree <- r2[["totalTree"]]
+
+bigmap1 <- compare_to_bigmap(r1_tree, rasters)
+bigmap2 <- compare_to_bigmap(r2_tree, rasters)
+```
+
+### Metrics Comparison
+
+```{r bigmap-metrics-comparison, eval=is_woody}
+bigmap_compare <- bind_rows(
+  bigmap1$metrics |> mutate(model = label1),
+  bigmap2$metrics |> mutate(model = label2)
+) |>
+  mutate(value = signif(value, 4)) |>
+  pivot_wider(names_from = model, values_from = value)
+
+knitr::kable(bigmap_compare,
+             caption = "Model vs BIGMAP AGB (treed areas)")
+```
+
+### Scatterplots
+
+```{r bigmap-scatter-comparison, fig.width=12, fig.height=5, eval=is_woody}
+
+g1_bigmap <- bigmap_scatter(bigmap1$sample) +
+  labs(title = paste("Model 1:", label1)) 
+
+g2_bigmap <- bigmap_scatter(bigmap1$sample) +
+  labs(title = paste("Model 2:", label2)) 
+
+g1_bigmap + g2_bigmap
+```
+
 ## Session Info
 
 ```{r session-info}
