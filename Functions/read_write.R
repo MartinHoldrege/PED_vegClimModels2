@@ -214,6 +214,85 @@ load_conus_rasters <- function(pred_vars = NULL,
   )
 }
 
+load_fit <- function(suffix) {
+  p <- file.path(paths$large, "Data_processed/BiomassQuantityData/Fit",
+                 paste0("fitted_model_", suffix, ".rds"))
+  stopifnot(file.exists(p))
+  readRDS(p)
+}
+
+load_pred_raster <- function(suffix) {
+  p <- file.path(paths$large, "Data_processed/BiomassQuantityData/Predictions",
+                 paste0("predicted_biomass_", suffix, ".tif"))
+  stopifnot(file.exists(p))
+  terra::rast(p)
+}
+
+#' Load modelled (GLM) cover raster
+#'
+#' Loads a CONUS-wide raster of modelled vegetation cover by PFT.
+#' Returns a SpatRaster with band names matching the RAP cover convention
+#' (totalTreeCov, totalShrubCov, totalHerbaceousCov).
+#'
+#' @param cover_source Character; identifier for the cover model version
+#'   (e.g., "glm_v01"). Used to construct the file path.
+#' @param cover_cols Character vector of required band names. The output
+#'   raster will have exactly these bands.
+#' @param root Character; root path for large files.
+#'
+#' @return A SpatRaster with named layers matching `cover_cols`.
+#' @export
+load_modelled_cover <- function(cover_source,
+                                cover_cols,
+                                root = paths$large) {
+  
+  p <- file.path(root,
+                 "Data_processed/CoverData/modelled",
+                 paste0("modelled_cover_", cover_source, ".tif"))
+  
+  if (file.exists(p)) {
+    r <- terra::rast(p)
+    
+    # rename bands if needed to match RAP convention
+    # (assumes same order if names differ)
+    if (!all(cover_cols %in% names(r))) {
+      if (terra::nlyr(r) == length(cover_cols)) {
+        stop("need to implement renaming code")
+        # names(r) <- cover_cols
+      } else {
+        stop("Modelled cover raster has ", terra::nlyr(r),
+             " layers but ", length(cover_cols), " cover_cols specified.")
+      }
+    } else {
+      r <- r[[cover_cols]]
+    }
+    
+    return(r)
+    
+  } else {
+    # PLACEHOLDER: generate fake modelled cover from RAP + noise
+    message("Modelled cover file not found: ", p,
+            "\n  Using noised RAP cover as placeholder.")
+    
+    r_rap <- load_conus_rasters(pred_vars = "MAT")$cover[cover_cols]
+    
+    set.seed(123)
+    r_out <- terra::rast(lapply(cover_cols, function(col) {
+      r_layer <- r_rap[[col]]
+      # add spatially correlated noise (~10% of value)
+      noise <- r_layer * 0.1 * (terra::init(r_layer, fun = runif) - 0.5) * 2
+      r_noisy <- r_layer + noise
+      # clamp to valid range
+      r_noisy <- terra::clamp(r_noisy, lower = 0, upper = 100)
+      names(r_noisy) <- col
+      r_noisy
+    }))
+    
+    return(r_out)
+  }
+}
+
+
 # downloading files -----------------------------------------
 
 #' Download a file from Drive if it is newer than the local copy

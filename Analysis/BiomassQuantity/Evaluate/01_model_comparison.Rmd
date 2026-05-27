@@ -53,12 +53,6 @@ label2 <- paste(params$vd2, params$vp2, params$vm2, sep = "-")
 
 ```{r load-models}
 # --- load fitted models ---
-load_fit <- function(suffix) {
-  p <- file.path(paths$large, "Data_processed/BiomassQuantityData/Fit",
-                 paste0("fitted_model_", suffix, ".rds"))
-  stopifnot(file.exists(p))
-  readRDS(p)
-}
 
 m1 <- load_fit(suffix1)
 m2 <- load_fit(suffix2)
@@ -72,13 +66,6 @@ n_pft <- length(cover_cols)
 
 ```{r load-prediction-rasters}
 # --- load prediction rasters ---
-load_pred_raster <- function(suffix) {
-  p <- file.path(paths$large, "Data_processed/BiomassQuantityData/Predictions",
-                 paste0("predicted_biomass_", suffix, ".tif"))
-  stopifnot(file.exists(p))
-  terra::rast(p)
-}
-
 r1 <- load_pred_raster(suffix1)
 r2 <- load_pred_raster(suffix2)
 
@@ -233,7 +220,9 @@ for (lyr in weighted_lyrs) {
                            title = paste("Difference:", lyr))
   
   print(g1+g2)
+  cat("\n\n")
   print(g_diff)
+  cat("\n\n")
   
   # scatterplot
   m1_col <- paste0(lyr, "_m1")
@@ -247,6 +236,7 @@ for (lyr in weighted_lyrs) {
            title = paste(lyr, "— M1 vs M2")) +
       coord_equal()
     print(g_scatter)
+    cat("\n\n")
   }
 }
 ```
@@ -270,6 +260,7 @@ for (lyr in potential_lyrs) {
   )[[1]]
   
   clean_name <- gsub("_potential$", " (potential)", lyr)
+  
   cat("\n###", clean_name, "\n\n")
   
   g1 <- plot_map_conus(r1_lyr,
@@ -287,7 +278,9 @@ for (lyr in potential_lyrs) {
                            title = paste("Difference:", clean_name))
   
   print(g1+g2)
+  cat("\n\n")
   print(g_diff)
+  cat("\n\n")
   
   # scatterplot
   m1_col <- paste0(lyr, "_m1")
@@ -301,6 +294,7 @@ for (lyr in potential_lyrs) {
            title = paste(clean_name, "— M1 vs M2")) +
       coord_equal()
     print(g_scatter)
+    cat("\n\n")
   }
 }
 ```
