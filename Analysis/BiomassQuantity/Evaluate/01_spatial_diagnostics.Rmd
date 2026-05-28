@@ -62,14 +62,7 @@ cover_cols <- config$model$cover_cols
 ```{r load-rasters}
 # --- load prediction raster ---
 # created in Fit/02_predict_rasters.R
-
-p_pred <- file.path(
-  paths$large,
-  "Data_processed/BiomassQuantityData/Predictions",
-  paste0("predicted_biomass_", suffix, ".tif")
-)
-stopifnot(file.exists(p_pred))
-r_pred_all <- terra::rast(p_pred)
+r_pred_all <- load_pred_raster(suffix)
 
 cat("Prediction layers:", paste(names(r_pred_all), collapse = ", "), "\n")
 

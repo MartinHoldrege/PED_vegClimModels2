@@ -380,6 +380,87 @@ plot_cwexp_pdp(pdp_potential,
                title = "Partial dependence: per-PFT potential biomass (cover = 100%)",
                ylab = "Potential biomass (at 100% cover)")
 ```
+
+## 7. Comparison with Field Shrub Biomass
+
+Independent field measurements of shrub biomass from three studies
+(Wright, Jornada LTER, Sevilleta LTER) compared against model predictions
+extracted at the same locations.
+
+```{r shrub-field-load}
+shrub_obs <- read_shrub_biomass()
+
+plot_points_conus(shrub_obs, color_var = 'study')
+```
+
+```{r shrub-histogram, fig.width=8, fig.height=4}
+
+ggplot(shrub_obs, aes(shrubBiomass)) +
+  geom_histogram() +
+  facet_wrap(~study) +
+  labs(x = "Observed shrub biomass (Mg/ha)", y = "Count")
+
+ggplot(shrub_obs, aes(shrubBiomass_potential)) +
+  geom_histogram() +
+  facet_wrap(~study) +
+  labs(x = "Observed potential shrub biomass (Mg/ha)", y = "Count")
+```
+
+```{r shrub-extract}
+
+r_pred_all <- load_pred_raster(suffix) 
+
+extracted <- terra::extract(
+  r_pred_all[[c("totalShrub", "totalShrub_potential")]],
+  terra::vect(shrub_obs)
+)
+
+shrub_compare <- bind_cols(shrub_obs, extracted) |>
+  sf::st_drop_geometry() |>
+  rename(pred_shrubBio = totalShrub,
+         pred_shrubBio_potential = totalShrub_potential)
+```
+
+### Observed vs Predicted Shrub Biomass (Cover-Weighted)
+
+```{r shrub-scatter-weighted, fig.width=6, fig.height=5}
+ggplot(shrub_compare, aes(x = shrubBiomass, y = pred_shrubBio, color = study)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey40") +
+  labs(x = "Observed shrub biomass (Mg/ha)",
+       y = "Predicted shrub biomass (Mg/ha)",
+       title = "Cover-weighted shrub biomass: observed vs predicted")
+```
+
+### Observed vs Predicted Shrub Biomass (Potential)
+
+```{r shrub-scatter-potential, fig.width=6, fig.height=5}
+ggplot(shrub_compare, aes(x = shrubBiomass_potential, y = pred_shrubBio_potential,
+                          color = study)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey40") +
+  labs(x = "Observed potential shrub biomass (Mg/ha)",
+       y = "Predicted potential shrub biomass (Mg/ha)",
+       title = "Potential shrub biomass: observed vs predicted")
+```
+
+### Summary Metrics
+
+```{r shrub-metrics}
+shrub_metrics <- shrub_compare |>
+  summarise(
+    n = n(),
+    cor_weighted = cor(shrubBiomass, pred_shrubBio, use = "complete.obs"),
+    rmse_weighted = sqrt(mean((shrubBiomass - pred_shrubBio)^2, na.rm = TRUE)),
+    cor_potential = cor(shrubBiomass_potential, pred_shrubBio_potential, use = "complete.obs"),
+    rmse_potential = sqrt(mean((shrubBiomass_potential - pred_shrubBio_potential)^2, na.rm = TRUE))
+  ) |>
+  mutate(across(where(is.numeric), \(x) signif(x, 3)))
+
+knitr::kable(shrub_metrics,
+             caption = "Field shrub biomass vs model predictions")
+```
+
 ## Session Info
 
 ```{r session-info}

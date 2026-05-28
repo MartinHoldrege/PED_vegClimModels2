@@ -82,6 +82,115 @@ plot_map_conus <- function(rast,
   g
 }
 
+#' Plot an sf dataframe of points as a ggplot map with US state boundaries
+#'
+#' Creates a ggplot-based map from an sf points object with consistent
+#' CONUS extent and state boundary basemap. Supports coloring points by a
+#' variable, faceting by a column, and flexible color scales. The input
+#' is transformed to `crs_daymet` (the project standard) if not already
+#' in that CRS.
+#'
+#' @param sf_df An sf data frame of points.
+#' @param color_var Character; name of a column in `sf_df` to map to point
+#'   color. If NULL, all points use `point_color`.
+#' @param point_color Character; point color when `color_var` is NULL.
+#' @param point_size Numeric; point size.
+#' @param point_shape Integer; ggplot shape code (default 16 = filled circle).
+#' @param colorscale A ggplot2 scale object (e.g., `scale_color_viridis_c()`).
+#'   If NULL and `color_var` is provided, uses a viridis scale chosen based on
+#'   whether `color_var` is numeric or not.
+#' @param facet_var Character; name of a column to facet by. NULL for none.
+#' @param title Character; plot title.
+#' @param legend_name Character; legend title. Defaults to `color_var`.
+#' @param basemap_color Character; color for state boundaries.
+#' @param basemap_size Numeric; line width for state boundaries.
+#' @param states_sf Optional sf object of state boundaries. If NULL,
+#'   loaded from `spData::us_states` and transformed to `crs_daymet`.
+#'
+#' @return A ggplot object.
+#' @export
+plot_points_conus <- function(sf_df,
+                              color_var = NULL,
+                              point_color = "red",
+                              point_size = 1.5,
+                              point_shape = 16,
+                              colorscale = NULL,
+                              facet_var = NULL,
+                              title = NULL,
+                              legend_name = NULL,
+                              basemap_color = "grey40",
+                              basemap_size = 0.2,
+                              states_sf = NULL) {
+  
+  stopifnot(inherits(sf_df, "sf"))
+  if (!is.null(color_var)) {
+    stopifnot(color_var %in% names(sf_df))
+  }
+  
+  # transform points to project-standard CRS if needed
+  if (sf::st_crs(sf_df) != sf::st_crs(crs_daymet)) {
+    sf_df <- sf::st_transform(sf_df, crs_daymet)
+  }
+  
+  # get state boundaries in the same CRS
+  if (is.null(states_sf)) {
+    states_sf <- get_or_cache_states(crs = crs_daymet)
+  }
+  
+  # default color scale (only if color_var provided and no scale given)
+  if (!is.null(color_var) && is.null(colorscale)) {
+    if (is.numeric(sf_df[[color_var]])) {
+      colorscale <- ggplot2::scale_color_viridis_c(name = legend_name)
+    } else {
+      colorscale <- ggplot2::scale_color_viridis_d(name = legend_name)
+    }
+  }
+  
+  # build plot - state boundaries first so points appear on top
+  g <- ggplot2::ggplot() +
+    ggplot2::geom_sf(data = states_sf,
+                     fill = NA,
+                     color = basemap_color,
+                     linewidth = basemap_size)
+  
+  if (is.null(color_var)) {
+    g <- g + ggplot2::geom_sf(data = sf_df,
+                              color = point_color,
+                              size = point_size,
+                              shape = point_shape)
+  } else {
+    g <- g +
+      ggplot2::geom_sf(
+        data = sf_df,
+        ggplot2::aes(color = .data[[color_var]]),
+        size = point_size,
+        shape = point_shape
+      ) +
+      colorscale
+  }
+  
+  # use CONUS extent from state boundaries
+  bbox <- sf::st_bbox(states_sf)
+  g <- g +
+    ggplot2::coord_sf(
+      xlim = c(bbox["xmin"], bbox["xmax"]),
+      ylim = c(bbox["ymin"], bbox["ymax"]),
+      crs = crs_daymet,
+      expand = FALSE
+    ) +
+    ggplot2::labs(title = title) +
+    map_theme()
+  
+  if (!is.null(facet_var)) {
+    g <- g + ggplot2::facet_wrap(
+      stats::as.formula(paste0("~", facet_var)),
+      ncol = 2
+    )
+  }
+  
+  g
+}
+
 
 #' Minimal clean theme for maps
 #'

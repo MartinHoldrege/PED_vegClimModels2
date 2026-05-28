@@ -83,7 +83,6 @@ read_climate_raster <- function(
   r
 }
 
-
 #' Load and align CONUS rasters for biomass modeling
 #'
 #' Loads climate, cover, biomass response, and mask rasters, aligns
@@ -223,6 +222,7 @@ load_fit <- function(suffix) {
 }
 
 load_pred_raster <- function(suffix) {
+  # created in Fit/02_predict_rasters.R
   p <- file.path(paths$large, "Data_processed/BiomassQuantityData/Predictions",
                  paste0("predicted_biomass_", suffix, ".tif"))
   stopifnot(file.exists(p))
@@ -375,3 +375,169 @@ download_if_newer <- function(drive_row, local_dir) {
   invisible(local_path)
 }
 
+
+# observed biomass datasets -----------------------------------------------
+
+# aboveground biomass of live shrubs from Wright et al 2015
+read_prepare_wright <- function() {
+  
+  dir <- file.path(paths$large, "Data_raw/BiomassDataSources",
+                   "wright_sagebrush_fuels", "Data")
+  p <- file.path(dir, "Pre-burn biomass.csv")
+  dat <- read_csv(p)
+  
+  cover <- read_csv(file.path(dir, "Cover and Height.csv"))
+  
+  cover2 <- cover |> 
+    # Pre-burn vegetation cover: sage, other shrub
+    rename(shrubCover = p_sa_os) |> 
+    select(siteid, shrubCover)
+  
+  
+  dat2 <- dat |> 
+    # Pre-burn biomass of live other shrub
+    # plus Pre-burn biomass of live sage
+    # units are Mg/ha
+    mutate(shrubBiomass = b_los + b_ls) |> 
+    select(siteid, shrubBiomass) |> 
+    left_join(cover2, by = 'siteid') |>
+    mutate(shrubBiomass_potential = shrubBiomass/(shrubCover/100))
+  
+  site <- read_csv(file.path(dir, "Site variables.csv"))
+  
+  # Merge with site data
+  dat3 <- site |> 
+    select(siteID, lat, long) |> 
+    # source CSV stores western longitudes as positive values
+    mutate(long = -abs(long)) |> 
+    left_join(dat2, by = c("siteID" = "siteid")) |> 
+    sf::st_as_sf(coords = c("long", "lat"), crs = 4326, remove = FALSE) |> 
+    rename(site = siteID) |> 
+    select(-long, -lat)
+  
+  dat3
+}
+
+
+#' Read and prepare Sevilleta SEV-182 shrub biomass data
+#'
+#' Loads the per-quadrat biomass CSV, filters to shrub species, and joins
+#' hardcoded site coordinates extracted from the package EML metadata.
+#'
+#' @return An sf data frame of shrub biomass observations with site
+#'   coordinates (WGS84).
+#' @noRd
+read_prepare_sevilleta <- function() {
+  dir <- file.path(paths$large, "Data_raw/BiomassDataSources",
+                   "sevilleta_agb")
+  
+  dat <- read_csv(file.path(dir, 'sev182_NPP_core_biomass.csv'))
+  
+  # site coordinates copied from package EML metadata
+  # (geographicCoverage blocks in eml_metadata.xml)
+  sites <- tibble::tribble(
+    ~site,           ~lon,      ~lat,
+    "core_black",    -106.736,  34.3331,
+    "core_blue",     -106.631,  34.3348,
+    "core_creosote", -106.736,  34.3331
+  )
+  
+  shrub_biomass <- dat |>
+    filter(FunctionalGroup == 'shrub') |>
+    # sum across shrub species within each quadrat-season
+    group_by(site, year, season, web, plot, quad) |>
+    summarise(biomass_g_m2 = sum(biomass.BM, na.rm = TRUE), 
+              cover = sum(cover, na.rm = TRUE),
+              .groups = "drop") |>
+    # take peak (max across seasons) within each quadrat-year
+    group_by(site, year, web, plot, quad) |>
+    summarise(peak_g_m2 = max(biomass_g_m2, na.rm = TRUE),
+              cover = max(cover, na.rm = TRUE), 
+              .groups = "drop") |>
+    # average across quadrats within site-year
+    group_by(site, year) |>
+    summarise(
+      # this file indicates quadrats are 1m x 1m:
+      # https://portal.edirepository.org/nis/metadataviewer?packageid=knb-lter-sev.129.258322&contentType=application/xml
+      # so units are g/m2
+      peak_g_m2  = mean(peak_g_m2, na.rm = TRUE),
+      peak_Mg_ha = peak_g_m2 * 0.01,
+      shrubCover = mean(cover, na.rm = TRUE),
+      n_quadrats = n(),
+      .groups    = "drop"
+    ) |> 
+    rename(shrubBiomass = peak_Mg_ha) |> 
+    mutate(shrubBiomass_potential = shrubBiomass/(shrubCover/100)) |> 
+    select(-peak_g_m2) |> 
+    left_join(sites, by = "site") |> 
+    sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) |> 
+    select(-lat, -lon)
+  shrub_biomass
+}
+
+
+#' Read and prepare Jornada Basin LTER NPP shrub biomass data
+#'
+#' Loads the per-quadrat biomass CSV (knb-lter-jrn.210011001), filters to
+#' shrub and sub-shrub species (`form %in% c("SHRUB", "S-SHR")`), and
+#' aggregates to site-year means following the same logic as
+#' `read_prepare_sevilleta()`. Per-site coordinates are not available in
+#' the package metadata; a single centroid of the bounding box is used for
+#' all sites.
+#'
+#' @return An sf data frame of shrub biomass observations with centroid
+#'   coordinates (WGS84).
+read_prepare_jornada <- function() {
+  dir <- file.path(paths$large, "Data_raw/BiomassDataSources",
+                   "jornada_agb")
+
+  dat <- read_csv(file.path(dir, "quadrat_plant_volume_and_biomass_data.csv"))
+
+  # bounding box from EML metadata (eml_metadata.xml):
+  # west = -106.865, east = -106.713, south = 32.488, north = 32.669
+  # Per-site coordinates unavailable; use centroid for all sites
+  bbox_lon <- mean(c(-106.865, -106.713))
+  bbox_lat <- mean(c(32.488, 32.669))
+
+  shrub_biomass <- dat |>
+    filter(form %in% c("SHRUB", "S-SHR")) |>
+    # sum across shrub species within each quadrat-season
+    group_by(site, zone, year, season, quad) |>
+    summarise(biomass_g_m2 = sum(biomass, na.rm = TRUE),
+              cover = sum(cum_cover, na.rm = TRUE),
+              .groups = "drop") |>
+    # take peak (max across seasons) within each quadrat-year
+    group_by(site, zone, year, quad) |>
+    summarise(peak_g_m2 = max(biomass_g_m2, na.rm = TRUE),
+              cover = max(cover, na.rm = TRUE),
+              .groups = "drop") |>
+    # average across quadrats within site-year
+    group_by(site, zone, year) |>
+    summarise(
+      # quadrats are 1m x 1m so biomass is g/m2
+      peak_g_m2  = mean(peak_g_m2, na.rm = TRUE),
+      peak_Mg_ha = peak_g_m2 * 0.01,
+      shrubCover = mean(cover, na.rm = TRUE),
+      n_quadrats = n(),
+      .groups    = "drop"
+    ) |>
+    rename(shrubBiomass = peak_Mg_ha) |>
+    mutate(shrubBiomass_potential = shrubBiomass / (shrubCover / 100)) |>
+    select(-peak_g_m2) |>
+    mutate(lon = bbox_lon, lat = bbox_lat) |>
+    sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) |> 
+    select(-lon, -lat)
+
+  shrub_biomass
+}
+
+# read in field data of shrub biomass observations
+read_shrub_biomass <- function() {
+  dat_l <- list(wright = read_prepare_wright(),
+       jornada = read_prepare_jornada(),
+       sevilleta = read_prepare_sevilleta())
+  
+  dat <- map(dat_l, sf::st_transform, crs = crs_daymet) |> 
+    bind_rows(.id = 'study')
+  dat
+}

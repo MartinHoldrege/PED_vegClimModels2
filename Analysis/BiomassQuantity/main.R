@@ -8,15 +8,15 @@ source('Functions/general.R')
 
 run_fit_model <- FALSE
 run_predict_rasters <- FALSE
-run_model_diagnostics <- FALSE
+run_model_diagnostics <- TRUE
 run_spatial_diagnostics <- FALSE
-run_model_comparison <- TRUE
+run_model_comparison <- FALSE
 run_explore_dat_samp <- FALSE # To do: not updated yet
 
 
 # with PFTs to fit model to?
 fit_woody = TRUE
-fit_herb = TRUE
+fit_herb = FALSE
 
 # simulation specific
 run_sim <- FALSE # simulate data
