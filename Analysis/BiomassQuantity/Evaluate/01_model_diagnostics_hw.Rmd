@@ -37,7 +37,7 @@ vm <- params$model_version
 vd <- params$data_version
 vp <- params$purer_version
 model_type <- params$model_type
-
+is_woody <- model_type == 'woody'
 # --- load fitted model ---
 suffix <- paste0(model_type, "_", paste(vd, vp, vm, sep = "-"))
 
@@ -381,19 +381,21 @@ plot_cwexp_pdp(pdp_potential,
                ylab = "Potential biomass (at 100% cover)")
 ```
 
+```{asis, echo=is_woody}
 ## 7. Comparison with Field Shrub Biomass
 
 Independent field measurements of shrub biomass from three studies
 (Wright, Jornada LTER, Sevilleta LTER) compared against model predictions
 extracted at the same locations.
+```
 
-```{r shrub-field-load}
+```{r shrub-field-load, eval=is_woody}
 shrub_obs <- read_shrub_biomass()
 
 plot_points_conus(shrub_obs, color_var = 'study')
 ```
 
-```{r shrub-histogram, fig.width=8, fig.height=4}
+```{r shrub-histogram, fig.width=8, fig.height=4, eval=is_woody}
 
 ggplot(shrub_obs, aes(shrubBiomass)) +
   geom_histogram() +
@@ -406,7 +408,7 @@ ggplot(shrub_obs, aes(shrubBiomass_potential)) +
   labs(x = "Observed potential shrub biomass (Mg/ha)", y = "Count")
 ```
 
-```{r shrub-extract}
+```{r shrub-extract, eval=is_woody}
 
 r_pred_all <- load_pred_raster(suffix) 
 
@@ -421,9 +423,11 @@ shrub_compare <- bind_cols(shrub_obs, extracted) |>
          pred_shrubBio_potential = totalShrub_potential)
 ```
 
+```{asis, echo=is_woody}
 ### Observed vs Predicted Shrub Biomass (Cover-Weighted)
+```
 
-```{r shrub-scatter-weighted, fig.width=6, fig.height=5}
+```{r shrub-scatter-weighted, fig.width=6, fig.height=5, eval=is_woody}
 ggplot(shrub_compare, aes(x = shrubBiomass, y = pred_shrubBio, color = study)) +
   geom_point(alpha = 0.6) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey40") +
@@ -432,9 +436,12 @@ ggplot(shrub_compare, aes(x = shrubBiomass, y = pred_shrubBio, color = study)) +
        title = "Cover-weighted shrub biomass: observed vs predicted")
 ```
 
+```{asis, echo=is_woody}
 ### Observed vs Predicted Shrub Biomass (Potential)
+```
 
-```{r shrub-scatter-potential, fig.width=6, fig.height=5}
+
+```{r shrub-scatter-potential, fig.width=6, fig.height=5, eval=is_woody}
 ggplot(shrub_compare, aes(x = shrubBiomass_potential, y = pred_shrubBio_potential,
                           color = study)) +
   geom_point(alpha = 0.6) +
@@ -444,7 +451,9 @@ ggplot(shrub_compare, aes(x = shrubBiomass_potential, y = pred_shrubBio_potentia
        title = "Potential shrub biomass: observed vs predicted")
 ```
 
+```{asis, echo=is_woody}
 ### Summary Metrics
+```
 
 ```{r shrub-metrics}
 shrub_metrics <- shrub_compare |>

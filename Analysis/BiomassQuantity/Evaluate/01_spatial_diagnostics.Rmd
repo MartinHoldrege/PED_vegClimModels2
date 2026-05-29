@@ -308,6 +308,5 @@ bigmap$metrics |>
 
 ```{r session-info}
 cat("Model file:", p_fit, "\n")
-cat("Prediction raster:", p_pred, "\n")
 cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
 ```

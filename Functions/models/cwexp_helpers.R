@@ -640,6 +640,19 @@ fit_one_model_cwexp <- function(data, config, dll_en,
     seed = config$cv$fold_seed
   )
   
+  # --- optionally score CV on full (non-purer) data ---
+  score_full_data <- isTRUE(config$cv$score_full_data)
+  if (score_full_data) {
+    cat("  CV scoring will use full (non-purer) held-out data\n")
+    full_clusters <- assign_to_clusters(data, clust)
+    full_fold_ids <- clusters_to_fold_id(full_clusters, folds)
+    cv_score_data <- data
+    cv_score_fold_ids <- full_fold_ids
+  } else {
+    cv_score_data <- NULL
+    cv_score_fold_ids <- NULL
+  }
+
   # --- parallel setup ---
   if (use_parallel) {
     workers <- min(config$cv$n_folds,
@@ -680,7 +693,9 @@ fit_one_model_cwexp <- function(data, config, dll_en,
     ),
     keep_fold_results = TRUE,
     parallel = use_parallel,
-    dll_path = dll_path
+    dll_path = dll_path,
+    score_data = cv_score_data,
+    score_fold_ids = cv_score_fold_ids
   )
   
   if (use_parallel) plan(sequential)

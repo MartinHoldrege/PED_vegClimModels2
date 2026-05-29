@@ -214,7 +214,9 @@ run_fold_path <- function(data,
                             tol = 0
                           ),
                           keep_best_fit = TRUE,
-                          keep_path_fit = FALSE) {
+                          keep_path_fit = FALSE,
+                          score_data = NULL,
+                          score_fold_id = NULL) {
   if (!is.data.frame(data)) {
     stop("data must be a data frame.")
   }
@@ -242,7 +244,14 @@ run_fold_path <- function(data,
   
   split_dat <- subset_fold_data(data = data, fold = fold)
   train_dat <- split_dat$train
-  test_dat <- split_dat$test
+
+  # when score_data is provided, score on ALL rows from the full dataset
+  # that fall in this fold's test clusters (not just the purer subset)
+  if (!is.null(score_data) && !is.null(score_fold_id)) {
+    test_dat <- score_data[score_fold_id == fold$fold_id, , drop = FALSE]
+  } else {
+    test_dat <- split_dat$test
+  }
   
   # start new
   lambda_max_l1 <- NA_real_
@@ -472,7 +481,9 @@ run_inner_cv <- function(data,
                          keep_fold_results = FALSE,
                          run_fold_path_args = list(),
                          parallel = FALSE,
-                         dll_path = NULL
+                         dll_path = NULL,
+                         score_data = NULL,
+                         score_fold_ids = NULL
 ) {
   if (!is.data.frame(data)) {
     stop("data must be a data frame.")
@@ -576,7 +587,9 @@ run_inner_cv <- function(data,
           score_args = score_args,
           select_fun = select_fun,
           # 1se rule doesn't apply for single fold scores (ie n = 1)
-          select_args = list(metric = select_args$metric, rule = "min")
+          select_args = list(metric = select_args$metric, rule = "min"),
+          score_data = score_data,
+          score_fold_id = score_fold_ids
         ),
         run_fold_path_args
       )

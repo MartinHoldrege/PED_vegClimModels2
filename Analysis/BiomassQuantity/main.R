@@ -6,11 +6,11 @@ source('Functions/general.R')
 
 # params ------------------------------------------------------------------
 
-run_fit_model <- FALSE
-run_predict_rasters <- FALSE
+run_fit_model <- TRUE
+run_predict_rasters <- TRUE
 run_model_diagnostics <- TRUE
-run_spatial_diagnostics <- FALSE
-run_model_comparison <- FALSE
+run_spatial_diagnostics <- TRUE
+run_model_comparison <- TRUE
 run_explore_dat_samp <- FALSE # To do: not updated yet
 
 
@@ -31,11 +31,11 @@ run_model_diagnostics_sim <- FALSE
 
 # repo updated to only work w/ separate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <-  c('d05-p04-m13', 'd05-p04-m11', 'd05-p04-m12')
+suffixes <- 'd05-p04.1-m13'# c('d05-p04-m13', 'd05-p04-m11', 'd05-p04-m12')
 
 # pairs of suffixes to compare (model1 vs model2)
 comparison_pairs <- list(
-  c("d05-p04-m12", "d05-p04-m13")
+  c("d05-p04-m13", "d05-p04.1-m13")
 )
 
 # for exploring data sampling

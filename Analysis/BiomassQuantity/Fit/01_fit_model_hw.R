@@ -98,6 +98,7 @@ if (fit_herbaceous) {
   
   # build formula and config
   formula_herb <- make_model_formula(sub_spec)
+  
   config_herb <- build_config(
     vm = vm, sub_spec = sub_spec,
     vp = vp,
