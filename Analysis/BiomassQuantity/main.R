@@ -31,11 +31,12 @@ run_model_diagnostics_sim <- FALSE
 
 # repo updated to only work w/ separate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <- 'd05-p04.1-m13'# c('d05-p04-m13', 'd05-p04-m11', 'd05-p04-m12')
+suffixes <- 'd05-p04.2-m13'# c('d05-p04-m13', 'd05-p04-m11', 'd05-p04-m12')
 
 # pairs of suffixes to compare (model1 vs model2)
 comparison_pairs <- list(
-  c("d05-p04-m13", "d05-p04.1-m13")
+  c("d05-p04-m13", "d05-p04.2-m13"),
+  c("d05-p04.1-m13", "d05-p04.2-m13")
 )
 
 # for exploring data sampling

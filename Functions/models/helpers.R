@@ -118,8 +118,10 @@ build_config <- function(vm, sub_spec, formula,
       max_n_per_region = NULL,  # NULL = no cap
       seed = 42
     ),
-    cv = c(cv_settings,
-           list(score_full_data = isTRUE(purer_spec$score_full_data))),
+    cv = modifyList(cv_settings, compact(list(
+      score_full_data = isTRUE(purer_spec$score_full_data),
+      n_folds = purer_spec$n_folds
+    ))),
     clustering = clustering_settings,
     data = list(version = vd, type = model_type)
   )
