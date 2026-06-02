@@ -12,14 +12,22 @@ source("Functions/init.R")
 source_functions()
 
 # params ------------------------------------------------------------------
+vd <- "d06" # uses RAP cover, for code development/testing
 
-n_sample <- 500000
+if(vd == 'd05') {
+  n_sample <- 500000
+  k_regions <- 20
+} else if (vd == 'd06') {
+  n_sample <- NULL # grab entire dataset
+  k_regions <- 'EPA_L3' # use level 3 ecoregions as regions
+}
+
 seed <- 42
 lcmap_threshold <- 0.9  # fraction of pixel that must be "keepable" land cover
 fire_threshold <- 0.9 # unburned fraction, for masking woody
 
 # output version tag
-vd <- "d05" # uses RAP cover, for code development/testing
+
 
 # load rasters ------------------------------------------------------------
 
@@ -48,18 +56,29 @@ r_herb_stack <- c(
   r_climate_subset
 )
 
+if(k_regions == 'EPA_L3') {
+  r_herb_stack <- c(r_herb_stack, rasters$region)
+}
+
 # mask to valid LCMAP pixels
-r_herb_stack <- terra::mask(r_herb_stack, mask_lcmap, maskvalues = 0)
+r_herb_stack <- terra::mask(r_herb_stack, mask_lcmap, maskvalues = c(NA, 0))
 
 # sample
 set.seed(seed)
-df_herb <- terra::spatSample(
-  r_herb_stack,
-  size = n_sample,
-  method = "random",
-  na.rm = TRUE,
-  xy = TRUE
-)
+
+if(is.numeric(n_sample)) {
+  
+  df_herb <- terra::spatSample(
+    r_herb_stack,
+    size = n_sample,
+    method = "random",
+    na.rm = TRUE,
+    xy = TRUE
+  ) 
+} else if(is.null(n_sample)) {
+  df_herb <- data.frame(r_herb_stack) |> 
+    drop_na()
+}
 
 # rename response for model compatibility
 df_herb <- dplyr::rename(df_herb, totalBio = totalHerbaceousBio) |> 
@@ -82,20 +101,30 @@ r_woody_stack <- c(
   r_climate_subset
 )
 
+if(k_regions == 'EPA_L3') {
+  r_woody_stack <- c(r_woody_stack, rasters$region)
+}
 # mask to valid LCMAP pixels
-r_woody_stack <- terra::mask(r_woody_stack, mask_lcmap, maskvalues = 0)
-r_woody_stack <- terra::mask(r_woody_stack, mask_fire, maskvalues = 0)
+r_woody_stack <- terra::mask(r_woody_stack, mask_lcmap, maskvalues = c(NA, 0))
+r_woody_stack <- terra::mask(r_woody_stack, mask_fire, maskvalues = c(NA, 0))
 # sample
 
 set.seed(seed + 1)  # different seed from herbaceous
-df_woody <- terra::spatSample(
-  r_woody_stack,
-  size = n_sample,
-  method = "random",
-  na.rm = TRUE,
-  xy = TRUE
-)
 
+
+if(is.numeric(n_sample)) {
+  
+  df_woody <- terra::spatSample(
+    r_woody_stack,
+    size = n_sample,
+    method = "random",
+    na.rm = TRUE,
+    xy = TRUE
+  )
+} else if(is.null(n_sample)) {
+  df_woody <- data.frame(r_woody_stack) |> 
+    drop_na()
+}
 # rename response
 df_woody <- dplyr::rename(df_woody, totalBio = totalWoodyBio) |> 
   mutate(totalBio = replace_zero(totalBio))
@@ -108,23 +137,28 @@ df_woody <- woody_std$data
 # add regions -------------------------------------------------------------
 # artificial regions for sampling purer cells
 
-region_vars <- c('x', 'y', 'MAT', 'MAP')
 
-df_woody$region <- suppressWarnings(make_region_kmeans(
-  dat = df_woody,
-  vars = region_vars,
-  nstart = 5,
-  k = 20,
-  max_iter = 10000
-))$data
 
-df_herb$region <- suppressWarnings(make_region_kmeans(
-  dat = df_herb,
-  vars = region_vars,
-  nstart = 5,
-  k = 20,
-  max_iter = 10000
-))$data
+if(is.numeric(k_regions)) {
+  region_vars <- c('x', 'y', 'MAT', 'MAP')
+  
+  df_woody$region <- suppressWarnings(make_region_kmeans(
+    dat = df_woody,
+    vars = region_vars,
+    nstart = 5,
+    k = k_regions,
+    max_iter = 10000
+  ))$data
+  
+  df_herb$region <- suppressWarnings(make_region_kmeans(
+    dat = df_herb,
+    vars = region_vars,
+    nstart = 5,
+    k = k_regions,
+    max_iter = 10000
+  ))$data
+}
+
 
 # save outputs -------------------------------------------------------------
 
@@ -168,3 +202,4 @@ saveRDS(woody_out, p_woody_out)
 cat("  Saved woody:", p_woody_out, "\n")
 
 cat("\nDone.\n")
+

@@ -35,7 +35,7 @@ phenology_metric_info <- function() {
     ~metric, ~type,     ~valid_min, ~valid_max, ~na_codes,             ~scale_fun,     ~is_circular, ~period,
     "SOST",  "timing",  -150,        365,        list(c(-1000, 1000)),  list(identity_scale), TRUE,  365,
     "EOST",  "timing",     1,        450,        list(c(-1000, 1000)),  list(identity_scale), TRUE,  365,
-    "MAXT",  "timing",     1,        365,        list(c(-1000, 1000)),  list(identity_scale), FALSE, 365,
+    "MAXT",  "timing",     1,        365,        list(c(-1000, 1000)),  list(identity_scale), TRUE, 365,
     "SOSN",  "ndvi",     101,        200,        list(c(100, 255)),     list(ndvi_scale),     FALSE, NA,
     "EOSN",  "ndvi",     101,        200,        list(c(100, 255)),     list(ndvi_scale),     FALSE, NA,
     "MAXN",  "ndvi",     101,        200,        list(c(100, 255)),     list(ndvi_scale),     FALSE, NA,
@@ -112,7 +112,7 @@ decode_phenology <- function(r, info) {
 #' flagged circular (SOST, EOST) are encoded to sin/cos on their period,
 #' each component projected with "average", then decoded back to day-of-year.
 #' This makes the spatial averaging seam-safe (e.g. DOY 360 and DOY 5 average
-#' to ~+2/-3, not ~180). MAXT is bounded 1-365 and projected linearly.
+#' to ~+2/-3, not ~180). 
 #'
 #' Also returns a "valid fraction" layer: the proportion of contributing 375 m
 #' cells that were non-NA, obtained by projecting a 0/1 validity mask with
@@ -130,7 +130,7 @@ project_phenology_year <- function(r, info, grid) {
 
   if (isTRUE(info$is_circular)) {
     period <- info$period
-    ang <- 2 * pi * r / period
+    ang <- 2 * pi * r / period # angle in radians
     sin_p <- terra::project(sin(ang), grid, method = "average")
     cos_p <- terra::project(cos(ang), grid, method = "average")
     # Circular mean direction -> back to [0, period). Note: for SOST this maps
@@ -153,37 +153,27 @@ project_phenology_year <- function(r, info, grid) {
 
 #' Collapse a multi-year stack of one metric to a single layer.
 #'
-#' Computes BOTH a linear mean and a linear median across years, plus their
-#' absolute difference (a diagnostic for seam/outlier contamination). For
-#' circular timing metrics, also computes a circular mean across years, so the
-#' linear-vs-circular gap can be inspected. The caller decides which to keep.
+#' Returns the circular mean for circular metrics (`info$is_circular`), the
+#' arithmetic mean otherwise.
 #'
 #' @param stk SpatRaster of the metric across years (one layer per year, raw units).
 #' @param info One row of `phenology_metric_info()`.
-#' @return A SpatRaster with layers: mean, median, mean_median_absdiff, and
-#'   (if circular) circ_mean and circ_linear_absdiff.
+#' @return A single-layer SpatRaster of the collapsed metric (raw units).
 #' @export
 collapse_years <- function(stk, info) {
-  m_mean   <- terra::app(stk, mean,   na.rm = TRUE)
-  m_median <- terra::app(stk, median, na.rm = TRUE)
-  names(m_mean) <- "mean"; names(m_median) <- "median"
-  absdiff <- abs(m_mean - m_median); names(absdiff) <- "mean_median_absdiff"
-  out <- c(m_mean, m_median, absdiff)
-
   if (isTRUE(info$is_circular)) {
     period <- info$period
     ang <- 2 * pi * stk / period
-    s <- terra::app(sin(ang), mean, na.rm = TRUE)
+    s  <- terra::app(sin(ang), mean, na.rm = TRUE)
     cc <- terra::app(cos(ang), mean, na.rm = TRUE)
-    circ <- (terra::atan2(s, cc) / (2 * pi)) * period
-    circ <- terra::ifel(circ < 0, circ + period, circ)
-    names(circ) <- "circ_mean"
-    cl_diff <- abs(m_mean - circ); names(cl_diff) <- "circ_linear_absdiff"
-    out <- c(out, circ, cl_diff)
+    out <- (terra::atan2(s, cc) / (2 * pi)) * period
+    out <- terra::ifel(out < 0, out + period, out)
+  } else {
+    out <- terra::app(stk, mean, na.rm = TRUE)
   }
+  names(out) <- info$metric
   out
 }
-
 
 # Rescaling -------------------------------------------------------------------
 

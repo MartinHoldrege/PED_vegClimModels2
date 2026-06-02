@@ -145,7 +145,8 @@ load_conus_rasters <- function(pred_vars = NULL,
   r_cover_herb <- terra::rast(p_cover_herb)$totalHerbaceousCov
   r_cover_woody <- terra::rast(p_cover_woody)[[c('totalTreeCov', 'totalShrubCov')]]
   r_cover <- c(r_cover_herb, r_cover_woody)/100 # RAP cover is %
-
+  r_region <- load_ecoregion_raster()
+  
   r_herb_bio <- terra::rast(p_herb_bio)
   names(r_herb_bio) <- "totalHerbaceousBio"
   
@@ -157,8 +158,8 @@ load_conus_rasters <- function(pred_vars = NULL,
   aligned <- align_raster_extents(rast_list = list(
     climate = r_climate, lcmap = r_lcmap, fire = r_fire,
     cover = r_cover, herb_bio = r_herb_bio, gedi = r_gedi,
-    zero_tree = r_zero_tree
-  ))
+    zero_tree = r_zero_tree, region = r_region)
+  )
   
   # masks
   lcmap_lyr <- paste0("fracKeep_gte", lcmap_threshold * 100)
@@ -200,6 +201,7 @@ load_conus_rasters <- function(pred_vars = NULL,
     herb_bio = aligned$herb_bio,
     gedi = aligned$gedi,
     zero_tree = aligned$zero_tree,
+    region = aligned$region,
     mask_lcmap = mask_lcmap,
     mask_fire = mask_fire,
     scale_df = scale_df,
@@ -350,6 +352,20 @@ load_modelled_cover <- function(cover_source,
   }
 }
 
+#' Load EPA L3 ecoregion raster on the daymet grid
+#'
+#' @param root Root path for large files.
+#' @return A single-layer SpatRaster with integer ecoregion IDs.
+#' @export
+load_ecoregion_raster <- function(root = paths$large) {
+  # file created in "DataPrep/01_rasterize_ecoregions.R"
+  p <- file.path(root, "Data_processed/regions",
+                 "EPA_L3_ecoregion_daymet_1000m.tif")
+  stopifnot(file.exists(p))
+  r <- terra::rast(p)
+  names(r) <- 'region'
+  r
+}
 
 # downloading files -----------------------------------------
 

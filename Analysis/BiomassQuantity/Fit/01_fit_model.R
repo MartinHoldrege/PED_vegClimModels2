@@ -73,7 +73,7 @@ config <- list(
   ),
   # cross-validation
   cv = list(
-    n_folds = 4,
+    n_folds = 4,# this is the default, can be changed by model_specs.R
     en_alpha = 0.5,
     n_lambda = 10,
     include_zero = TRUE,
