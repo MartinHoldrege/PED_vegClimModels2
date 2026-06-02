@@ -1,26 +1,40 @@
 
 
 plot_obs_vs_pred <- function(data, observed = 'observed', predicted = 'predicted',
-                             size = 1e5, title = NULL) {
+                             size = 1e5, title = NULL,
+                             x_percentile = NULL, y_percentile = NULL) {
   
   size <- if(size < nrow(data)) size else nrow(data)
   data2 <- dplyr::sample_n(data, size = size)
-  g1 <- ggplot(data2, aes(.data[[observed]],
-                          .data[[predicted]])) +
+  
+  # Compute axis limits from a percentile (NULL means no limit).
+  # Scalar pct -> c(0, pct); length-2 pct -> use as lower/upper.
+  pct_lim <- function(x, pct) {
+    if (is.null(pct)) return(NULL)
+    if (length(pct) == 1) pct <- c(0, pct)
+    stopifnot(length(pct) == 2, all(pct >= 0 & pct <= 1), pct[1] < pct[2])
+    unname(quantile(x, probs = pct, na.rm = TRUE))
+  }
+  x_lims <- pct_lim(data2[[observed]], x_percentile)
+  y_lims <- pct_lim(data2[[predicted]], y_percentile)
+  
+  base <- ggplot(data2, aes(.data[[observed]],
+                            .data[[predicted]])) +
     geom_point(alpha = 0.05, size = 0.3) +
-    geom_smooth(se = FALSE) +
+    geom_smooth(se = FALSE, method = 'lm') +
     geom_abline(slope = 1, intercept = 0, color = 'red')
   
-  g2 <- g1 +
-    scale_y_continuous(transform='log1p') +
-    scale_x_continuous(transform ='log1p') +
+  g1 <- base +
+    coord_cartesian(xlim = x_lims, ylim = y_lims) +
+    labs(x = 'Observed', y = 'Predicted')
+  
+  g2 <- base +
+    scale_y_continuous(transform = 'log1p') +
+    scale_x_continuous(transform = 'log1p') +
     labs(x = 'Observed (log scale)',
          y = 'Predicted (log scale)')
   
-  g1b <- g1 +
-    labs(x = 'Observed', y = 'Predicted')
-  
-  g1b + g2 + patchwork::plot_annotation(title = title)
+  g1 + g2 + patchwork::plot_annotation(title = title)
 }
 
 

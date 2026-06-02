@@ -216,5 +216,10 @@ purer_specs = list(
       q = NULL, n_sample = 5e5,
       score_full_data = TRUE
     )
-  )
+  ),
+  'p07' = list(
+    woody = list(
+      q = 0.99, min_raw_cover = 0.05,
+      n_folds = 10, score_full_data = TRUE
+    ))
 )

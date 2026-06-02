@@ -155,6 +155,28 @@ plot_map_conus(
 )
 ```
 
+## 1b. Cover Maps
+
+```{r cover-maps, fig.width=10, fig.height=fig_height_pft}
+cover_lyrs <- if (model_type == "woody") {
+  c("totalTreeCov", "totalShrubCov")
+} else {
+  "totalHerbaceousCov"
+}
+
+cover_plots <- lapply(cover_lyrs, function(lyr) {
+  r <- rasters$cover[[lyr]]
+  plot_map_conus(
+    r,
+    colorscale = colorscale_biomass(name = "Cover\n(proportion)",
+                                    limits = c(0, 1)),
+    title = lyr
+  )
+})
+
+patchwork::wrap_plots(cover_plots, ncol = 1)
+```
+
 ## 2. Predicted Total Biomass
 
 ```{r map-predicted, fig.width=10, fig.height=6}

@@ -63,6 +63,10 @@ stopifnot(file.exists(p_data))
 data_obj <- readRDS(p_data)
 
 dat_full <- data_obj$data
+if(nrow(dat_full) > 5e5) {
+  
+  dat_full <- dat_full[sample.int(nrow(dat_full), size = 5e5), ]
+}
 scale_df <- data_obj$scale
 
 # --- predictions on full data ---
@@ -167,9 +171,11 @@ knitr::kable(metrics_df, caption = "Final model error on full dataset")
 ```
 
 ```{r obs-vs-pred-scatter, fig.width=10, fig.height=4.5}
-plot_obs_vs_pred(dat_full, title = 'Observed vs predicted total biomass')
+plot_obs_vs_pred(dat_full, title = 'Observed vs predicted total biomass',
+                 x_percentile = 0.99)
 plot_obs_vs_pred(dat_full, predicted = 'predicted_cv', 
-                 title = 'Observed vs predicted total biomass (CV)')
+                 title = 'Observed vs predicted total biomass (CV)',
+                 x_percentile = 0.99)
 ```
 
 ```{r residual-plots, fig.width=10, fig.height=4.5}

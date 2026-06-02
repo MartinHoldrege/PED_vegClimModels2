@@ -63,6 +63,7 @@ control <- list(iter.max = 1000, eval.max = 1000)
 
 # parallelization
 use_parallel <- TRUE
+options(future.globals.maxSize = 4 * 1024^3) # 4 GiB, needed for large datasets
 
 
 
@@ -93,7 +94,9 @@ if (fit_herbaceous) {
   stopifnot(file.exists(p_herb))
   herb_obj <- readRDS(p_herb)
   
-  dat_herb <- herb_obj$data
+  # keep only columns needed for fitting to reduce memory in parallel CV
+  keep_cols <- unique(c("totalBio", "region", sub_spec$cover_cols, sub_spec$pred_vars))
+  dat_herb <- herb_obj$data[, keep_cols]
   if (test_run) dat_herb <- dplyr::sample_n(dat_herb, 3000)
   
   # build formula and config
@@ -150,7 +153,9 @@ if (fit_woody) {
   stopifnot(file.exists(p_woody))
   woody_obj <- readRDS(p_woody)
   
-  dat_woody <- woody_obj$data
+  # keep only columns needed for fitting to reduce memory in parallel CV
+  keep_cols <- unique(c("totalBio", "region", sub_spec$cover_cols, sub_spec$pred_vars))
+  dat_woody <- woody_obj$data[, keep_cols]
   if (test_run) dat_woody <- dplyr::sample_n(dat_woody, 3000)
   
   # build formula and config

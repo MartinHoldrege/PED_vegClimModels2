@@ -3,6 +3,8 @@
 # then refit global model at selected lambda.
 # For starters this is for testing on simulated data.
 #
+# This is an older version of the script--not used anymore
+#
 # Author: Martin Holdrege
 
 # dependencies ------------------------------------------------------------
