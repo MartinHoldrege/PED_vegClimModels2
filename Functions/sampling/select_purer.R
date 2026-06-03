@@ -159,11 +159,47 @@ select_purer_by_region <- function(dat,
       .groups = "drop"
     )
   
-  # select pixels above threshold
-  selected_long <- eligible |>
-    dplyr::inner_join(thresholds, by = c(region_col, "pft")) |>
-    dplyr::filter(.data$scaled_cover >= .data$threshold_scaled)
-  
+  # select pixels above threshold, subsampling ties at the boundary
+  # so that total selected ≈ (1 - q) * n_eligible per region × PFT.
+  # Without this, mass points at the threshold (e.g., many pixels with
+  # scaled_cover = 1.0) can cause far more than (1 - q) to be selected.
+  joined <- eligible |>
+    dplyr::inner_join(thresholds, by = c(region_col, "pft"))
+
+  tol <- .Machine$double.eps^0.5
+
+  # split into strictly above vs at the threshold (within floating-point tol)
+  above_rows <- joined |>
+    dplyr::filter(.data$scaled_cover > .data$threshold_scaled + tol)
+
+  at_thresh_rows <- joined |>
+    dplyr::filter(.data$scaled_cover <= .data$threshold_scaled + tol &
+                  .data$scaled_cover >= .data$threshold_scaled - tol)
+
+  if (!is.null(seed)) set.seed(seed)
+
+  # count how many are strictly above per group
+  n_above_by_group <- above_rows |>
+    dplyr::count(.data[[region_col]], .data$pft, name = "n_above")
+
+  # compute how many tied pixels to keep per group
+  at_thresh_with_target <- at_thresh_rows |>
+    dplyr::left_join(n_above_by_group, by = c(region_col, "pft")) |>
+    dplyr::mutate(n_above = tidyr::replace_na(.data$n_above, 0L),
+                  n_to_sample = pmax(0L, ceiling((1 - q) * .data$n_eligible) -
+                                       .data$n_above))
+
+  # randomly subsample tied pixels to fill remaining slots up to target
+  at_thresh_sampled <- at_thresh_with_target |>
+    dplyr::group_by(.data[[region_col]], .data$pft) |>
+    dplyr::group_modify(\(df, grp) {
+      dplyr::slice_sample(df, n = min(nrow(df), df$n_to_sample[1]))
+    }) |>
+    dplyr::ungroup() |>
+    dplyr::select(-"n_above", -"n_to_sample")
+
+  selected_long <- dplyr::bind_rows(above_rows, at_thresh_sampled)
+
   # --- selection summary (before downsampling) -----------------------------
   selection_summary <- selected_long |>
     dplyr::group_by(.data[[region_col]], .data$pft) |>
@@ -293,6 +329,7 @@ select_training_pixels <- function(dat, cover_vars = NULL, purer_spec,
   
   q <- purer_spec$q
   
+
   if (is.null(q)) {
     # simple random subsample
     n_sample <- purer_spec$n_sample

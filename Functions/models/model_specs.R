@@ -184,7 +184,7 @@ purer_specs = list(
   ),
   'p04' = list(
     woody = list(
-      q = 0.98, min_raw_cover = 0.05
+      q = 0.95, min_raw_cover = 0.05
     ),
     herb = list(
       q = NULL, n_sample = 3e4
@@ -192,13 +192,13 @@ purer_specs = list(
   ),
   'p04.1' = list(
     woody = list(
-      q = 0.98, min_raw_cover = 0.05,
+      q = 0.95, min_raw_cover = 0.05,
       score_full_data = TRUE
     )
   ),
   'p04.2' = list(
     woody = list(
-      q = 0.98, min_raw_cover = 0.05,
+      q = 0.95, min_raw_cover = 0.05,
       score_full_data = TRUE,
       n_folds = 10
     )
@@ -216,10 +216,5 @@ purer_specs = list(
       q = NULL, n_sample = 5e5,
       score_full_data = TRUE
     )
-  ),
-  'p07' = list(
-    woody = list(
-      q = 0.99, min_raw_cover = 0.05,
-      n_folds = 10, score_full_data = TRUE
-    ))
+  )
 )

@@ -7,10 +7,10 @@ source('Functions/general.R')
 # params ------------------------------------------------------------------
 
 run_fit_model <- TRUE
-run_predict_rasters <- TRUE
-run_model_diagnostics <- TRUE
-run_spatial_diagnostics <- TRUE
-run_model_comparison <- TRUE
+run_predict_rasters <- FALSE
+run_model_diagnostics <- FALSE
+run_spatial_diagnostics <- FALSE
+run_model_comparison <- FALSE
 run_explore_dat_samp <- FALSE # To do: not updated yet
 
 
@@ -31,12 +31,12 @@ run_model_diagnostics_sim <- FALSE
 
 # repo updated to only work w/ separate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <- c('d06-p07-m13','d05-p04-m12', 'd05-p04.2-m12', 'd05-p04.2-m13')
+suffixes <- c('d06-p04.2-m13', 'd05-p04.2-m13') #,'d05-p04-m12', 'd05-p04.2-m12', 'd05-p04.2-m13')
 
 # pairs of suffixes to compare (model1 vs model2)
 comparison_pairs <- list(
   # c("d05-p04-m13", "d05-p04.2-m13"),
-  c("d05-p04.2-m13", "d06-p07-m13")
+  c("d05-p04.2-m13", "d06-p04.2-m13")
 )
 
 # for exploring data sampling
@@ -67,6 +67,23 @@ for (suffix in suffixes) {
   
   opts_l <- create_opts_l(suffix)
   vm <- opts_l$vm
+  
+  # validate that vm and vp keys exist in their respective spec lists
+  if(!opts_l$vm %in% names(model_specs)) {
+    paste0("vm '", opts_l$vm, "' not found in model_specs")
+    
+    # e.g. if fitting woody then the woody sublist needs to exist
+    stopifnot(!fit_woody | !is.null(model_specs[[vm]]$woody),
+              !fit_herb | !is.null(model_specs[[vm]]$herb))
+  }
+  
+  if(opts_l$vp %in% names(purer_specs)) {
+    paste0("vp '", opts_l$vp, "' not found in purer_specs") 
+    
+    stopifnot(!fit_woody | !is.null(purer_specs[[vm]]$woody),
+              !fit_herb | !is.null(purer_specs[[vm]]$herb))
+  }
+
 
   print(opts_l)
   hw_type <- vm >= 'm09' # model types that separately fit models to herb and woody
