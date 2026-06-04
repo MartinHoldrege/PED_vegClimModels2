@@ -47,13 +47,7 @@ vp <- params$purer_version
 suffix <- paste0(model_type,'_', vd, '-', vp, '-', vm)
 
 # --- load fitted model ---
-p_fit <- file.path(
-  paths$large,
-  "Data_processed/BiomassQuantityData/Fit",
-  paste0("fitted_model_", suffix, ".rds")
-)
-stopifnot(file.exists(p_fit))
-m <- readRDS(p_fit)
+m <- load_fit(suffix)
 config <- m$config
 scale_df <- m$scale
 cover_cols <- config$model$cover_cols
@@ -166,10 +160,11 @@ cover_lyrs <- if (model_type == "woody") {
 
 cover_plots <- lapply(cover_lyrs, function(lyr) {
   r <- rasters$cover[[lyr]]
+  limits <- c(0, raster_quantile(r, 0.99))
   plot_map_conus(
     r,
     colorscale = colorscale_biomass(name = "Cover\n(proportion)",
-                                    limits = c(0, 1)),
+                                    limits = limits),
     title = lyr
   )
 })
@@ -212,7 +207,7 @@ plot_map_conus(
 # individual maps per PFT with independent color scales
 pft_weighted_plots <- lapply(weighted_lyrs, function(lyr) {
   r <- r_pred_all[[lyr]]
-  lyr_max <- terra::global(r, fun = function(x) quantile(x, 0.99, na.rm = TRUE))
+  lyr_max <- raster_quantile(r, 0.99) 
   
   plot_map_conus(
     r,
@@ -329,6 +324,5 @@ bigmap$metrics |>
 ## Session Info
 
 ```{r session-info}
-cat("Model file:", p_fit, "\n")
 cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
 ```

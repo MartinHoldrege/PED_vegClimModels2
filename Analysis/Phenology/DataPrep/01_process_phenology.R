@@ -39,7 +39,7 @@ process_one_metric <- function(metric_code) {
 }
 
 # Build all metric layers into one named stack.
-metric_layers <- map(info_tbl$metric[1], process_one_metric)
+metric_layers <- map(info_tbl$metric, process_one_metric)
 pheno <- terra::rast(metric_layers)
 names(pheno) <- info_tbl$metric
 

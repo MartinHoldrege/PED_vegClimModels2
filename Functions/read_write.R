@@ -49,6 +49,22 @@ read_analysis_ready <- function(opt = NULL, vd = NULL, root = paths$large,
   obj
 }
 
+read_analysis_ready_hw <- function(vd, model_type, only_dataframe = FALSE) {
+  
+  p_data <- file.path(
+    paths$large,
+    "Data_processed/BiomassQuantityData/analysis_ready",
+    paste0("biomass_", model_type, "_sample_", vd, ".rds")
+  )
+  stopifnot(file.exists(p_data))
+  data_obj <- readRDS(p_data)
+  
+  if(only_dataframe) {
+    return(data_obj$data)
+  }
+  data_obj
+}
+
 read_prepare_d01 <- function(root = paths$large,
                              trim_tree_cov = NULL,
                              trim_shrub_cov = NULL,

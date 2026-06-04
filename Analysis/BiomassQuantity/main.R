@@ -6,12 +6,12 @@ source('Functions/general.R')
 
 # params ------------------------------------------------------------------
 
-run_fit_model <- TRUE
+run_fit_model <- FALSE
 run_predict_rasters <- FALSE
 run_model_diagnostics <- FALSE
 run_spatial_diagnostics <- FALSE
 run_model_comparison <- FALSE
-run_explore_dat_samp <- FALSE # To do: not updated yet
+run_explore_dat_samp <- TRUE
 
 
 # with PFTs to fit model to?
@@ -40,7 +40,7 @@ comparison_pairs <- list(
 )
 
 # for exploring data sampling
-suffixes_data <- c('d02-p02', 'd04-p02') # for plots looking input data [not updated]
+suffixes_data <- c('d05-p04.2', 'd06-p04.2') # for plots looking input data 
 
 # for rmd's
 output_dir <- "Reports/BiomassQuantity/"
@@ -63,8 +63,6 @@ render_model_diagnostics <- function(prms,
 for (suffix in suffixes) {
   # setup -----------------------------------------------------------------
   
-
-  
   opts_l <- create_opts_l(suffix)
   vm <- opts_l$vm
   
@@ -72,17 +70,16 @@ for (suffix in suffixes) {
   if(!opts_l$vm %in% names(model_specs)) {
     paste0("vm '", opts_l$vm, "' not found in model_specs")
     
-    # e.g. if fitting woody then the woody sublist needs to exist
-    stopifnot(!fit_woody | !is.null(model_specs[[vm]]$woody),
-              !fit_herb | !is.null(model_specs[[vm]]$herb))
   }
+  # e.g. if fitting woody then the woody sublist needs to exist
+  stopifnot(!fit_woody | !is.null(model_specs[[vm]]$woody),
+            !fit_herb | !is.null(model_specs[[vm]]$herb))
   
-  if(opts_l$vp %in% names(purer_specs)) {
+  if(!opts_l$vp %in% names(purer_specs)) {
     paste0("vp '", opts_l$vp, "' not found in purer_specs") 
-    
-    stopifnot(!fit_woody | !is.null(purer_specs[[vm]]$woody),
-              !fit_herb | !is.null(purer_specs[[vm]]$herb))
   }
+  stopifnot(!fit_woody | !is.null(purer_specs[[opts_l$vp]]$woody),
+            !fit_herb | !is.null(purer_specs[[opts_l$vp]]$herb))
 
 
   print(opts_l)
@@ -203,37 +200,38 @@ if(run_model_diagnostics_sim & isTRUE(opts_l$use_simulated) & !hw_type) {
 
 }
 
-# if(run_sp)
 # data prep exploration -------------------------------------------------------
 
 if(run_explore_dat_samp) {
+
   for(suffix_data in suffixes_data) {
     
-    # adding a dummy model version to get function to work
-    opts_i <- create_opts_l(paste0(suffix_data, '-m00')) 
-    
-    prms_i <- list(
-      data_version = if(opts_i$use_simulated) opts_i$vs else opts_i$vd,
-      purer_version = opts_i$vp)
-    
-    
-    rmarkdown::render(
-      "Analysis/BiomassQuantity/DataPrep/08_explore_data_sampling.Rmd",
-      knit_root_dir = knit_root_dir,
-      params = prms_i,
-      output_dir = file.path(output_dir, 'DataPrep'),
-      output_file = paste0("08_explore_data_sampling_", 
-                           suffix_data, 
-                           ".html")
-    )
-    
+    for(model_type in c('woody', 'herb')[c(fit_woody, fit_herb)]) {
+        
+  
+      # adding a dummy model version to get function to work
+      opts_i <- create_opts_l(paste0(suffix_data, '-m00')) 
+      
+      prms_i <- list(
+        data_version = if(opts_i$use_simulated) opts_i$vs else opts_i$vd,
+        purer_version = opts_i$vp,
+        model_type = model_type)
+      
+      
+      rmarkdown::render(
+        "Analysis/BiomassQuantity/DataPrep/08_explore_data_sampling.Rmd",
+        knit_root_dir = knit_root_dir,
+        params = prms_i,
+        output_dir = file.path(output_dir, 'DataPrep'),
+        output_file = paste0("08_explore_data_sampling_", model_type, '_', 
+                             suffix_data, 
+                             ".html")
+      )
+    }
   }
 }
-
 # model comparison --------------------------------------------------------
-
-
-
+  
 if (run_model_comparison) {
   for (pair in comparison_pairs) {
     opts1 <- create_opts_l(pair[1])
@@ -241,6 +239,12 @@ if (run_model_comparison) {
     
     # compare within each model type
     model_types_1 <- names(model_specs[[opts1$vm]])
+    model_types_2 <- names(model_specs[[opts2$vm]])
+    shared_types <- intersect(model_types_1, model_types_2)
+    
+    for (mt in shared_types) {
+      if ((mt == "herb" & !fit_herb) | (mt == "woody" & !fit_woody)) next
+    }
     model_types_2 <- names(model_specs[[opts2$vm]])
     shared_types <- intersect(model_types_1, model_types_2)
     

@@ -41,26 +41,16 @@ is_woody <- model_type == 'woody'
 # --- load fitted model ---
 suffix <- paste0(model_type, "_", paste(vd, vp, vm, sep = "-"))
 
-p_fit <- file.path(
-  paths$large,
-  "Data_processed/BiomassQuantityData/Fit",
-  paste0("fitted_model_", suffix, ".rds")
-)
-stopifnot(file.exists(p_fit))
-m1 <- readRDS(p_fit)
+m1 <- load_fit(suffix)
 
 fit <- m1$fit
 cv <- m1$cv
 config <- m1$config
 n_pft <- length(m1$fit$spec$cover_cols)
 # --- load full dataset ---
-p_data <- file.path(
-  paths$large,
-  "Data_processed/BiomassQuantityData/analysis_ready",
-  paste0("biomass_", model_type, "_sample_", vd, ".rds")
-)
-stopifnot(file.exists(p_data))
-data_obj <- readRDS(p_data)
+
+data_obj <- read_analysis_ready_hw(vd = vd, model_type = model_type,
+                                   only_dataframe = FALSE)
 
 dat_full <- data_obj$data
 if(nrow(dat_full) > 5e5) {
@@ -172,10 +162,10 @@ knitr::kable(metrics_df, caption = "Final model error on full dataset")
 
 ```{r obs-vs-pred-scatter, fig.width=10, fig.height=4.5}
 plot_obs_vs_pred(dat_full, title = 'Observed vs predicted total biomass',
-                 x_percentile = 0.99)
+                 x_percentile = 0.99, y_percentile = 0.99)
 plot_obs_vs_pred(dat_full, predicted = 'predicted_cv', 
                  title = 'Observed vs predicted total biomass (CV)',
-                 x_percentile = 0.99)
+                 x_percentile = 0.99,y_percentile = 0.99)
 ```
 
 ```{r residual-plots, fig.width=10, fig.height=4.5}
@@ -479,6 +469,5 @@ knitr::kable(shrub_metrics,
 ## Session Info
 
 ```{r session-info}
-cat("Model file:", p_fit, "\n")
 cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
 ```

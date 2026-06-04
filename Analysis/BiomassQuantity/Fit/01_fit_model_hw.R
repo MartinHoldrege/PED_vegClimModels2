@@ -86,13 +86,7 @@ if (fit_herbaceous) {
   sub_spec <- m_spec$herb
 
   # load training data
-  p_herb <- file.path(
-    paths$large,
-    "Data_processed/BiomassQuantityData/analysis_ready",
-    paste0("biomass_herb_sample_", vd, ".rds")
-  )
-  stopifnot(file.exists(p_herb))
-  herb_obj <- readRDS(p_herb)
+  herb_obj <- read_analysis_ready_hw(vd = vd, model_type = 'herb')
   
   # keep only columns needed for fitting to reduce memory in parallel CV
   keep_cols <- unique(c("totalBio", "region", sub_spec$cover_cols, sub_spec$pred_vars))
@@ -145,14 +139,8 @@ if (fit_woody) {
   
   sub_spec <- m_spec$woody
   # load training data
-  p_woody <- file.path(
-    paths$large,
-    "Data_processed/BiomassQuantityData/analysis_ready",
-    paste0("biomass_woody_sample_", vd, ".rds")
-  )
-  stopifnot(file.exists(p_woody))
-  woody_obj <- readRDS(p_woody)
-  
+  woody_obj <- read_analysis_ready_hw(vd = vd, model_type = 'woody')
+
   # keep only columns needed for fitting to reduce memory in parallel CV
   keep_cols <- unique(c("totalBio", "region", sub_spec$cover_cols, sub_spec$pred_vars))
   dat_woody <- woody_obj$data[, keep_cols]

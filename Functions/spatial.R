@@ -63,3 +63,9 @@ align_raster_extents <- function(..., rast_list = NULL) {
   # crop each
   purrr::map(rast_list, \(r) terra::crop(r, common_ext))
 }
+
+# for just a single layer, for determining limits for plotting
+raster_quantile <- function(r, prob) {
+  stopifnot(nlyr(r) == 1)
+  terra::global(r, fun = function(x) quantile(x, probs = prob, na.rm = TRUE))[[1]]
+}
