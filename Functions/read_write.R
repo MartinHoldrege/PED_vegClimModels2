@@ -373,10 +373,13 @@ load_modelled_cover <- function(cover_source,
 #' @param root Root path for large files.
 #' @return A single-layer SpatRaster with integer ecoregion IDs.
 #' @export
-load_ecoregion_raster <- function(root = paths$large) {
+load_ecoregion_raster <- function(
+    epa_lev = c('L3', 'L2'), 
+    root = paths$large) {
   # file created in "DataPrep/01_rasterize_ecoregions.R"
+  lev <- arg.match(epa_lev)
   p <- file.path(root, "Data_processed/regions",
-                 "EPA_L3_ecoregion_daymet_1000m.tif")
+                 paste0("EPA_", lev, "_ecoregion_daymet_1000m.tif"))
   stopifnot(file.exists(p))
   r <- terra::rast(p)
   names(r) <- 'region'

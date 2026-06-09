@@ -6,9 +6,14 @@
 # take up local storage
 paths <- list()
 if(dir.exists("E:/USGS")) {
-  paths$large <- "E:/USGS/large_files/PED_vegClimModels2"
-} else  if(dir.exists("D:/USGS")) {
-  paths$large <- "D:/USGS/large_files/PED_vegClimModels2"
+  .base <- "E:/USGS"
+} else if(dir.exists("D:/USGS")) {
+  .base <- "D:/USGS"
 } else {
   warning('directory not found')
 }
+paths$large <- file.path(.base, "large_files/PED_vegClimModels2")
+
+# used in a few cases to avoid copying raw data
+# unnecessarily, this is the directory created by Alice:
+paths$large0 <- file.path(.base, "large_files/PED_vegClimModels")

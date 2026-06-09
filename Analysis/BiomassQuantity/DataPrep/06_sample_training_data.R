@@ -14,13 +14,18 @@ source_functions()
 # params ------------------------------------------------------------------
 vd <- "d06" # uses RAP cover, for code development/testing
 
+run_herb <- TRUE
 if(vd == 'd05') {
   n_sample <- 500000
   k_regions <- 20
 } else if (vd == 'd06') {
   n_sample <- NULL # grab entire dataset
-  k_regions <- 'EPA_L3' # use level 3 ecoregions as regions
-}
+  k_regions <- 'L3' # use level 3 ecoregions as regions
+} else if (vd == 'd07') {
+  run_herb <- FALSE # this dataset is only different for woody
+  n_sample <- NULL
+  k_regions <- 'L2'
+} 
 
 seed <- 42
 lcmap_threshold <- 0.9  # fraction of pixel that must be "keepable" land cover
@@ -56,7 +61,7 @@ r_herb_stack <- c(
   r_climate_subset
 )
 
-if(k_regions == 'EPA_L3') {
+if(k_regions == 'L3') {
   r_herb_stack <- c(r_herb_stack, rasters$region)
 }
 
@@ -101,7 +106,7 @@ r_woody_stack <- c(
   r_climate_subset
 )
 
-if(k_regions == 'EPA_L3') {
+if(k_regions == 'L3') {
   r_woody_stack <- c(r_woody_stack, rasters$region)
 }
 # mask to valid LCMAP pixels
@@ -150,20 +155,24 @@ if(is.numeric(k_regions)) {
     max_iter = 10000
   ))$data
   
-  df_herb$region <- suppressWarnings(make_region_kmeans(
-    dat = df_herb,
-    vars = region_vars,
-    nstart = 5,
-    k = k_regions,
-    max_iter = 10000
-  ))$data
+  if(run_herb) {
+    df_herb$region <- suppressWarnings(make_region_kmeans(
+      dat = df_herb,
+      vars = region_vars,
+      nstart = 5,
+      k = k_regions,
+      max_iter = 10000
+    ))$data
+  }
+
 }
 
 
 # save outputs -------------------------------------------------------------
 
-out_dir <- file.path(paths$large,
-                     "Data_processed/BiomassQuantityData/analysis_ready")
+if(run_herb) {
+  out_dir <- file.path(paths$large,
+                                   "Data_processed/BiomassQuantityData/analysis_ready")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # herbaceous
@@ -182,6 +191,8 @@ herb_out <- list(
 p_herb_out <- file.path(out_dir, paste0("biomass_herb_sample_", vd, ".rds"))
 saveRDS(herb_out, p_herb_out)
 cat("  Saved herbaceous:", p_herb_out, "\n")
+}
+
 
 # woody
 woody_out <- list(
