@@ -121,7 +121,9 @@ load_conus_rasters <- function(pred_vars = NULL,
                                lcmap_threshold = 0.9,
                                fire_threshold = 0.9,
                                root = paths$large,
-                               force_scale = FALSE) {
+                               force_scale = FALSE,
+                               epa_lev = 'L3'
+                               ) {
 
   years = "2000-2023"
   # file paths
@@ -161,7 +163,7 @@ load_conus_rasters <- function(pred_vars = NULL,
   r_cover_herb <- terra::rast(p_cover_herb)$totalHerbaceousCov
   r_cover_woody <- terra::rast(p_cover_woody)[[c('totalTreeCov', 'totalShrubCov')]]
   r_cover <- c(r_cover_herb, r_cover_woody)/100 # RAP cover is %
-  r_region <- load_ecoregion_raster()
+  r_region <- load_ecoregion_raster(epa_lev = epa_lev)
   
   r_herb_bio <- terra::rast(p_herb_bio)
   names(r_herb_bio) <- "totalHerbaceousBio"
@@ -374,12 +376,13 @@ load_modelled_cover <- function(cover_source,
 #' @return A single-layer SpatRaster with integer ecoregion IDs.
 #' @export
 load_ecoregion_raster <- function(
-    epa_lev = c('L3', 'L2'), 
+    epa_lev = NULL, 
     root = paths$large) {
   # file created in "DataPrep/01_rasterize_ecoregions.R"
-  lev <- arg.match(epa_lev)
+  if (is.null(epa_lev)) epa_lev <- "L3"
+  epa_lev <- match.arg(epa_lev, choices = c("L3", "L2"))
   p <- file.path(root, "Data_processed/regions",
-                 paste0("EPA_", lev, "_ecoregion_daymet_1000m.tif"))
+                 paste0("EPA_", epa_lev, "_ecoregion_daymet_1000m.tif"))
   stopifnot(file.exists(p))
   r <- terra::rast(p)
   names(r) <- 'region'

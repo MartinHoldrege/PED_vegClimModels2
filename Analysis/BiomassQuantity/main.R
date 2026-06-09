@@ -6,12 +6,12 @@ source('Functions/general.R')
 
 # params ------------------------------------------------------------------
 
-run_fit_model <- FALSE
-run_predict_rasters <- FALSE
-run_model_diagnostics <- FALSE
-run_spatial_diagnostics <- FALSE
-run_model_comparison <- FALSE
-run_explore_dat_samp <- TRUE
+run_fit_model <- TRUE
+run_predict_rasters <- TRUE
+run_model_diagnostics <- TRUE
+run_spatial_diagnostics <- TRUE
+run_model_comparison <- TRUE
+run_explore_dat_samp <- FALSE
 
 
 # with PFTs to fit model to?
@@ -31,16 +31,17 @@ run_model_diagnostics_sim <- FALSE
 
 # repo updated to only work w/ separate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <- c('d06-p04.2-m13', 'd05-p04.2-m13') #,'d05-p04-m12', 'd05-p04.2-m12', 'd05-p04.2-m13')
+suffixes <- c('d07-p04.2-m13') # 'd05-p04.2-m13' #,'d05-p04-m12', 'd05-p04.2-m12', 'd05-p04.2-m13')
 
 # pairs of suffixes to compare (model1 vs model2)
 comparison_pairs <- list(
   # c("d05-p04-m13", "d05-p04.2-m13"),
-  c("d05-p04.2-m13", "d06-p04.2-m13")
+  c("d06-p04.2-m13", "d07-p04.2-m13")
 )
 
 # for exploring data sampling
-suffixes_data <- c('d05-p04.2', 'd06-p04.2') # for plots looking input data 
+suffixes_data <- c(#'d05-p04.2', 'd06-p04.2', 
+  'd07-p04.2') # for plots looking input data 
 
 # for rmd's
 output_dir <- "Reports/BiomassQuantity/"

@@ -219,6 +219,35 @@ cat("N full:", nrow(dat_full), "\n")
 ```
 
 
+## 2.0 Spatial Distribution of Training Pixels
+
+```{r spatial-map, fig.width=10, fig.height=7, eval=all(c("x","y") %in% names(dat_full))}
+# use a CONUS raster as the template grid
+rasters <- load_conus_rasters()
+r_map <- rasters$climate[[1]]
+terra::values(r_map) <- NA_integer_
+
+# 1 = full data only, 2 = purer-selected
+cells_full <- terra::cellFromXY(r_map, as.matrix(dat_full[, c("x", "y")]))
+r_map[cells_full] <- 1L
+
+cells_purer <- terra::cellFromXY(r_map, as.matrix(dat_purer[, c("x", "y")]))
+r_map[cells_purer] <- 2L
+
+r_map <- terra::as.factor(r_map)
+levels(r_map) <- data.frame(id = c(1L, 2L),
+                            label = c("Full data", "Purer-selected"))
+
+plot_map_conus(
+  r_map,
+  colorscale = scale_fill_manual(
+    values = c("Full data" = "grey70", "Purer-selected" = "blue"),
+    na.translate = FALSE, name = NULL
+  ),
+  title = "Training pixel locations"
+)
+```
+
 ## 2.1 Cover Distributions: Selected vs Full
 
 ```{r cover-selected-vs-full, fig.height=4*ceiling(length(cover_cols)/2)}

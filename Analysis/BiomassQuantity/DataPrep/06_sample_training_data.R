@@ -12,7 +12,7 @@ source("Functions/init.R")
 source_functions()
 
 # params ------------------------------------------------------------------
-vd <- "d06" # uses RAP cover, for code development/testing
+vd <- "d07" # uses RAP cover, for code development/testing
 
 run_herb <- TRUE
 if(vd == 'd05') {
@@ -40,7 +40,8 @@ rasters <- load_conus_rasters(
   pred_vars = NULL, # by default calculate mean/sd for all climate vars
   lcmap_threshold = lcmap_threshold,
   fire_threshold = fire_threshold,
-  force_scale = FALSE
+  force_scale = FALSE,
+  epa_lev = if(is.character(k_regions)) k_regions else NULL
 )
 
 r_climate_subset <- rasters$climate
@@ -81,7 +82,7 @@ if(is.numeric(n_sample)) {
     xy = TRUE
   ) 
 } else if(is.null(n_sample)) {
-  df_herb <- data.frame(r_herb_stack) |> 
+  df_herb <- terra::as.data.frame(r_herb_stack, xy = TRUE) |> 
     drop_na()
 }
 
@@ -106,7 +107,7 @@ r_woody_stack <- c(
   r_climate_subset
 )
 
-if(k_regions == 'L3') {
+if(is.character(k_regions)) {
   r_woody_stack <- c(r_woody_stack, rasters$region)
 }
 # mask to valid LCMAP pixels
@@ -127,7 +128,7 @@ if(is.numeric(n_sample)) {
     xy = TRUE
   )
 } else if(is.null(n_sample)) {
-  df_woody <- data.frame(r_woody_stack) |> 
+  df_woody <- terra::as.data.frame(r_woody_stack, xy = TRUE) |> 
     drop_na()
 }
 # rename response
@@ -169,11 +170,11 @@ if(is.numeric(k_regions)) {
 
 
 # save outputs -------------------------------------------------------------
+out_dir <- file.path(paths$large,
+                     "Data_processed/BiomassQuantityData/analysis_ready")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 if(run_herb) {
-  out_dir <- file.path(paths$large,
-                                   "Data_processed/BiomassQuantityData/analysis_ready")
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # herbaceous
 herb_out <- list(
