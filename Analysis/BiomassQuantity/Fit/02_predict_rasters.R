@@ -18,12 +18,15 @@ vd <- opt$vd
 vm <- opt$vm
 vp <- opt$vp
 model_type <- opt$model_type  # "herb" or "woody"
-#model_type <- 'woody'
+cover_source <- opt$cover_source  # "rap" or "model"
 stopifnot(model_type %in% c("herb", "woody"))
 
 # load fitted model -------------------------------------------------------
 
-suffix <- paste0(model_type,'_', vd, '-', vp, '-', vm)
+suffix <- paste0(model_type, '_', vd, '-', vp, '-', vm)
+if (cover_source != "rap") {
+  suffix <- paste0(suffix, "_cov-", cover_source)
+}
 
 p_fit <- file.path(
   paths$large,
@@ -47,7 +50,7 @@ cat("  Pred vars:", paste(pred_vars, collapse = ", "), "\n\n")
 
 # load CONUS rasters -------------------------------------------------------
 
-rasters <- load_conus_rasters()
+rasters <- load_conus_rasters(cover_source = cover_source)
 scale_df <- rasters$scale_df
 
 # standardize climate

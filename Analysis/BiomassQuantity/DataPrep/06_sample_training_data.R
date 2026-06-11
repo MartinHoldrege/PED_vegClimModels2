@@ -12,20 +12,15 @@ source("Functions/init.R")
 source_functions()
 
 # params ------------------------------------------------------------------
-vd <- "d07" # uses RAP cover, for code development/testing
+vd <- "d08" # uses RAP cover, for code development/testing
 
-run_herb <- TRUE
-if(vd == 'd05') {
-  n_sample <- 500000
-  k_regions <- 20
-} else if (vd == 'd06') {
-  n_sample <- NULL # grab entire dataset
-  k_regions <- 'L3' # use level 3 ecoregions as regions
-} else if (vd == 'd07') {
-  run_herb <- FALSE # this dataset is only different for woody
-  n_sample <- NULL
-  k_regions <- 'L2'
-} 
+stopifnot(vd %in% names(data_specs))
+
+d_spec <- data_specs[[vd]] # list from model_specs.R
+n_sample <- d_spec$n_sample
+k_regions <- d_spec$k_regions
+run_herb <- d_spec$run_herb
+cover_source <- d_spec$cover_source
 
 seed <- 42
 lcmap_threshold <- 0.9  # fraction of pixel that must be "keepable" land cover
@@ -41,7 +36,8 @@ rasters <- load_conus_rasters(
   lcmap_threshold = lcmap_threshold,
   fire_threshold = fire_threshold,
   force_scale = FALSE,
-  epa_lev = if(is.character(k_regions)) k_regions else NULL
+  epa_lev = if(is.character(k_regions)) k_regions else NULL,
+  cover_source = cover_source
 )
 
 r_climate_subset <- rasters$climate

@@ -122,7 +122,8 @@ load_conus_rasters <- function(pred_vars = NULL,
                                fire_threshold = 0.9,
                                root = paths$large,
                                force_scale = FALSE,
-                               epa_lev = 'L3'
+                               epa_lev = 'L3',
+                               cover_source = 'rap'
                                ) {
 
   years = "2000-2023"
@@ -133,11 +134,7 @@ load_conus_rasters <- function(pred_vars = NULL,
                        "LCMAP_fracKeep_1000m.tif")
   p_fire <- file.path(root, "Data_processed/masks",
                       paste0("MTBS_fracUnburned_", years, "_1000m.tif"))
-  p_cover_herb <- file.path(root, "Data_processed/CoverData/rap",
-                       paste0("RAP_v3_cover_", years, "_1000m.tif"))
-  # using woody cover from the gedi dataset period
-  p_cover_woody <- file.path(root, "Data_processed/CoverData/rap",
-                            paste0("RAP_v3_cover_", '2019-2023', "_1000m.tif"))
+  
   p_herb_bio <- file.path(root, "Data_processed/BiomassQuantityData/rap",
                           paste0("RAP_v3_herbaceousAGB_mask-Lcmap",
                                  lcmap_threshold * 100, "_", years, "_1000m.tif"))
@@ -147,7 +144,7 @@ load_conus_rasters <- function(pred_vars = NULL,
     paste0("RAP_v3_fracNotForest_lt3_mask-lcmap50_2019-2023_1000m.tif"))
   
   
-  all_paths <- c(p_climate, p_lcmap, p_fire, p_cover_herb, p_cover_woody, 
+  all_paths <- c(p_climate, p_lcmap, p_fire, 
                  p_herb_bio, p_gedi, p_fracNotForest)
   
   missing <- all_paths[!file.exists(all_paths)]
@@ -160,9 +157,7 @@ load_conus_rasters <- function(pred_vars = NULL,
   r_climate <- read_climate_raster(p_climate)
   r_lcmap <- terra::rast(p_lcmap)
   r_fire <- terra::rast(p_fire)
-  r_cover_herb <- terra::rast(p_cover_herb)$totalHerbaceousCov
-  r_cover_woody <- terra::rast(p_cover_woody)[[c('totalTreeCov', 'totalShrubCov')]]
-  r_cover <- c(r_cover_herb, r_cover_woody)/100 # RAP cover is %
+  
   r_region <- load_ecoregion_raster(epa_lev = epa_lev)
   
   r_herb_bio <- terra::rast(p_herb_bio)
@@ -170,6 +165,8 @@ load_conus_rasters <- function(pred_vars = NULL,
   
   r_gedi <- terra::rast(p_gedi)
   names(r_gedi) <- "totalWoodyBio"
+  
+  r_cover <- load_cover(cover_source = cover_source, root = root)
   
   r_zero_tree = terra::rast(p_fracNotForest) > 0.5 # places we're considering 0 trees
   # align
@@ -211,8 +208,6 @@ load_conus_rasters <- function(pred_vars = NULL,
   
   cat("  Done loading CONUS rasters.\n")
   
-  
-  
   list(
     climate = r_climate_subset,
     cover = aligned$cover,
@@ -224,13 +219,12 @@ load_conus_rasters <- function(pred_vars = NULL,
     mask_fire = mask_fire,
     scale_df = scale_df,
     paths = list(climate = p_climate, lcmap = p_lcmap, fire = p_fire,
-                 cover_herb = p_cover_herb,
-                 cover_woody = p_cover_woody, 
                  herb_bio = p_herb_bio, gedi = p_gedi),
     params = list(lcmap_threshold = lcmap_threshold,
                   fire_threshold = fire_threshold,
                   pred_vars = pred_vars,
-                  years = years)
+                  years = years,
+                  cover_source = cover_source)
   )
 }
 
@@ -241,8 +235,11 @@ load_fit <- function(suffix) {
   readRDS(p)
 }
 
-load_pred_raster <- function(suffix) {
+load_pred_raster <- function(suffix, cover_source = "rap") {
   # created in Fit/02_predict_rasters.R
+  if (cover_source != "rap") {
+    suffix <- paste0(suffix, "_cov-", cover_source)
+  }
   p <- file.path(paths$large, "Data_processed/BiomassQuantityData/Predictions",
                  paste0("predicted_biomass_", suffix, ".tif"))
   stopifnot(file.exists(p))
@@ -320,55 +317,49 @@ compare_to_bigmap <- function(r_pred, rasters,
 #'
 #' @return A SpatRaster with named layers matching `cover_cols`.
 #' @export
-load_modelled_cover <- function(cover_source,
-                                cover_cols,
-                                root = paths$large) {
+load_modeled_cover <- function(root = paths$large) {
   
-  p <- file.path(root,
-                 "Data_processed/CoverData/modelled",
-                 paste0("modelled_cover_", cover_source, ".tif"))
+  p <- file.path(root, "Data_processed/CoverData/finalAbsoluteCoverData.tif")
   
-  if (file.exists(p)) {
-    r <- terra::rast(p)
-    
-    # rename bands if needed to match RAP convention
-    # (assumes same order if names differ)
-    if (!all(cover_cols %in% names(r))) {
-      if (terra::nlyr(r) == length(cover_cols)) {
-        stop("need to implement renaming code")
-        # names(r) <- cover_cols
-      } else {
-        stop("Modelled cover raster has ", terra::nlyr(r),
-             " layers but ", length(cover_cols), " cover_cols specified.")
-      }
-    } else {
-      r <- r[[cover_cols]]
-    }
-    
-    return(r)
-    
-  } else {
-    # PLACEHOLDER: generate fake modelled cover from RAP + noise
-    message("Modelled cover file not found: ", p,
-            "\n  Using noised RAP cover as placeholder.")
-    
-    r_rap <- load_conus_rasters(pred_vars = "MAT")$cover[cover_cols]
-    
-    set.seed(123)
-    r_out <- terra::rast(lapply(cover_cols, function(col) {
-      r_layer <- r_rap[[col]]
-      # add spatially correlated noise (~10% of value)
-      noise <- r_layer * 0.1 * (terra::init(r_layer, fun = runif) - 0.5) * 2
-      r_noisy <- r_layer + noise
-      # clamp to valid range
-      r_noisy <- terra::clamp(r_noisy, lower = 0, upper = 100)
-      names(r_noisy) <- col
-      r_noisy
-    }))
-    
-    return(r_out)
-  }
+  stopifnot(file.exists(p))
+  
+  r <- terra::rast(p)
+  
+  lookup <- c(
+    "absTotalTree_CONUS" = "totalTreeCov",
+    "absShrub_CONUS" = "totalShrubCov",
+    "absTotalHerb_CONUS" = "totalHerbaceousCov"
+  )
+  
+  stopifnot(names(lookup) %in% names(r))
+  r <- r[[names(lookup)]]
+  names(r) <- lookup[names(r)]
+  r
 }
+
+load_cover <- function(cover_source = c('rap', 'model'),
+                       root = paths$large) {
+  cover_source = match.arg(cover_source)
+  
+  if(cover_source == 'model') {
+    return(load_modeled_cover(root = root))
+  } else {
+    years = "2000-2023"
+    p_cover_herb <- file.path(root, "Data_processed/CoverData/rap",
+                              paste0("RAP_v3_cover_", years, "_1000m.tif"))
+    # using woody cover from the gedi dataset period
+    p_cover_woody <- file.path(root, "Data_processed/CoverData/rap",
+                               paste0("RAP_v3_cover_", '2019-2023', "_1000m.tif"))
+    
+    stopifnot(file.exists(p_cover_herb, p_cover_woody))
+    r_cover_herb <- terra::rast(p_cover_herb)$totalHerbaceousCov
+    r_cover_woody <- terra::rast(p_cover_woody)[[c('totalTreeCov', 'totalShrubCov')]]
+    r_cover <- c(r_cover_herb, r_cover_woody)/100 # RAP cover is %
+  }
+  r_cover
+}
+
+
 
 #' Load EPA L3 ecoregion raster on the daymet grid
 #'

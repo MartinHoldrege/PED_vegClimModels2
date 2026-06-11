@@ -13,6 +13,10 @@ run_spatial_diagnostics <- TRUE
 run_model_comparison <- TRUE
 run_explore_dat_samp <- FALSE
 
+# if TRUE, only predict with the cover source used for fitting;
+# if FALSE (default), RAP-trained models also predict with model cover
+predict_native_only <- FALSE
+
 
 # with PFTs to fit model to?
 fit_woody = TRUE
@@ -148,11 +152,22 @@ for (suffix in suffixes) {
 # predict -----------------------------------------------------------------
 
 if(run_predict_rasters & hw_type) {
-  lapply(model_types, \(model_type) {
+  native_cover <- data_specs[[opts_l$vd]]$cover_source
+  
+  if (predict_native_only || native_cover == "model") {
+    predict_cover_sources <- native_cover
+  } else {
+    # RAP-trained models also predict with model cover
+    predict_cover_sources <- c("rap", "model")
+  }
+  
+  for (model_type in model_types) {
+    for (cs in predict_cover_sources) {
       callr::rscript('Analysis/BiomassQuantity/Fit/02_predict_rasters.R',
-                     cmdargs = create_cmdargs(opts_l, model_type = model_type))
-  })
-
+                     cmdargs = create_cmdargs(opts_l, model_type = model_type,
+                                              cover_source = cs))
+    }
+  }
 }  
   
   # Evaluate ----------------------------------------------------------------

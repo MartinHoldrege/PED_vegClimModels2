@@ -218,3 +218,31 @@ purer_specs = list(
     )
   )
 )
+
+# data version specs for 06_sample_training_data.R
+data_specs <- list(
+  'd05' = list(
+    n_sample = 500000,
+    k_regions = 20,
+    run_herb = TRUE,
+    cover_source = "rap"
+  ),
+  'd06' = list(
+    n_sample = NULL,
+    k_regions = "L3",
+    run_herb = TRUE,
+    cover_source = "rap"
+  ),
+  'd07' = list(
+    n_sample = NULL,
+    k_regions = "L2",
+    run_herb = FALSE,
+    cover_source = "rap"
+  ),
+  'd08' = list(
+    n_sample = NULL,
+    k_regions = "L3",
+    run_herb = TRUE,
+    cover_source = "model"
+  )
+)

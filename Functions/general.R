@@ -49,7 +49,7 @@ create_opts_l <- function(suffix) {
   opts_l
 }
 
-create_cmdargs <- function(x, model_type = NULL,
+create_cmdargs <- function(x, model_type = NULL, cover_source = NULL,
                            fit_woody = TRUE, fit_herb = TRUE) {
   x <- lapply(x, as.character)
   out <- list(
@@ -64,6 +64,9 @@ create_cmdargs <- function(x, model_type = NULL,
   )
   if (!is.null(model_type)) {
     out <- c(out, list(paste0('--model_type=', model_type)))
+  }
+  if (!is.null(cover_source)) {
+    out <- c(out, list(paste0('--cover_source=', cover_source)))
   }
   out
 }

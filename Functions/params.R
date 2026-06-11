@@ -29,6 +29,10 @@ option_list <- list(
                                     "broadLeavedTree", "C3Gram", "C4Gram", 
                                     "Forb"), collapse = ",")),
   
+  # cover source for predictions ('rap' or 'model')
+  optparse::make_option("--cover_source", type = "character",
+                        default = "rap"),
+  
   # these two params used in the 01_fit_model_hw.R script
   optparse::make_option("--fit_herb", type = "logical", 
                         default = TRUE),
