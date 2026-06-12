@@ -58,7 +58,7 @@ align_raster_extents <- function(..., rast_list = NULL) {
     stop("Rasters have no overlapping extent.")
   }
   
-  cat("Common extent:", as.vector(common_ext), "\n")
+  # cat("Common extent:", as.vector(common_ext), "\n")
   
   # crop each
   purrr::map(rast_list, \(r) terra::crop(r, common_ext))

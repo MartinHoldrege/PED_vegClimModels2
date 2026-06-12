@@ -74,6 +74,10 @@ n_pft <- length(cover_cols)
 r1 <- load_pred_raster(suffix1, cover_source = cs1)
 r2 <- load_pred_raster(suffix2, cover_source = cs2)
 
+# align extents (may differ if data versions differ)
+aligned <- align_raster_extents(rast_list = list(r1 = r1, r2 = r2))
+r1 <- aligned$r1
+r2 <- aligned$r2
 cat("Model 1 layers:", paste(names(r1), collapse = ", "), "\n")
 cat("Model 2 layers:", paste(names(r2), collapse = ", "), "\n")
 ```

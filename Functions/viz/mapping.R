@@ -32,9 +32,9 @@ plot_map_conus <- function(rast,
                            colorscale = NULL,
                            title = NULL,
                            legend_name = NULL,
-                           basemap_color = "white",
+                           basemap_color = "black",
                            basemap_size = 0.2,
-                           na_color = "grey90",
+                           na_color = NA,
                            maxcell = 1e6,
                            states_sf = NULL) {
   
@@ -257,7 +257,7 @@ colorscale_biomass <- function(name = "Biomass\n(Mg/ha)",
   ggplot2::scale_fill_viridis_c(
     name = name,
     limits = limits,
-    na.value = "grey90",
+    na.value = NA,
     option = option,
     oob = scales::oob_squish,
     ...
@@ -278,31 +278,42 @@ colorscale_diverging <- function(name = "Difference",
   ggplot2::scale_fill_gradient2(
     name = name,
     low = "darkblue",
-    mid = "white",
+    mid = "grey85",
     high = "darkred",
     midpoint = midpoint,
     limits = limits,
-    na.value = "grey90",
+    na.value = NA,
     oob = scales::oob_squish,
     ...
   )
 }
 
 
-#' Continuous color scale for cover (0-1 or 0-100%)
+#' Continuous color scale for cover (0-1 or 0-100%),
+#' with 0s showing up gray.
 #' @param name Legend title.
 #' @param limits Numeric limits.
-#' @param ... Passed to `scale_fill_viridis_c`.
 #' @export
 colorscale_cover <- function(name = "Cover",
                              limits = c(0, 1),
+                             zero_color = "grey85", 
                              ...) {
-  ggplot2::scale_fill_viridis_c(
+  n_colors <- 256
+  mako_cols <- viridis::viridis(n_colors, option = "mako", direction = -1)
+  
+  # gray at exactly 0, then mako from epsilon onward
+  colors <- c(zero_color, mako_cols)
+  values <- scales::rescale(
+    c(0, seq(1e-4, limits[2], length.out = n_colors)),
+    to = c(0, 1)
+  )
+  
+  ggplot2::scale_fill_gradientn(
     name = name,
     limits = limits,
-    na.value = "grey90",
-    option = "mako",
-    direction = -1,
+    colors = colors,
+    values = values,
+    na.value = NA,
     oob = scales::oob_squish,
     ...
   )

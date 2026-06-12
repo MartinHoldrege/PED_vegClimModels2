@@ -274,16 +274,17 @@ compare_to_bigmap <- function(r_pred, rasters,
   stopifnot(file.exists(p_bigmap))
   r_bigmap <- terra::rast(p_bigmap)
 
-  # align BIGMAP extent to the prediction raster (load_conus_rasters may crop)
+  # align all rasters to r_pred extent (extents may differ across runs)
   r_bigmap <- terra::crop(r_bigmap, r_pred)
-
-  mask_treed <- rasters$zero_tree == 0
+  mask_treed <- terra::crop(rasters$zero_tree, r_pred) == 0
+  mask_lcmap <- terra::crop(rasters$mask_lcmap, r_pred)
+  mask_fire <- terra::crop(rasters$mask_fire, r_pred)
 
   mask_all <- function(r) {
     r |>
       terra::mask(mask_treed, maskvalues = 0) |>
-      terra::mask(rasters$mask_lcmap, maskvalues = 0) |>
-      terra::mask(rasters$mask_fire, maskvalues = 0)
+      terra::mask(mask_lcmap, maskvalues = 0) |>
+      terra::mask(mask_fire, maskvalues = 0)
   }
 
   r_pred_masked <- mask_all(r_pred)

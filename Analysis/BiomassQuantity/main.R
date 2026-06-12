@@ -9,7 +9,7 @@ source('Functions/general.R')
 run_fit_model <- FALSE
 run_predict_rasters <- FALSE
 run_model_diagnostics <- FALSE
-run_spatial_diagnostics <- TRUE
+run_spatial_diagnostics <- FALSE
 run_model_comparison <- TRUE
 run_explore_dat_samp <- FALSE
 
@@ -35,10 +35,11 @@ run_model_diagnostics_sim <- FALSE
 
 # repo updated to only work w/ separate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <- c('d08-p04.2-m13', 'd06-p04.2-m13') # 'd05-p04.2-m13' #,'d05-p04-m12', 'd05-p04.2-m12', 'd05-p04.2-m13')
+suffixes <- c('d06-p04.2-m13', 'd08-p04.2-m13') #, 'd05-p04.2-m13' #,'d05-p04-m12', 'd05-p04.2-m12', 'd05-p04.2-m13')
 
 # comparison tuples: each element is a vector of equal length.
 # Each index defines one comparison (suffix1 vs suffix2, cs1 vs cs2).
+# cs means 'cover source' 
 comparison_pairs <- list(
   suffix1 = c("d06-p04.2-m13", "d06-p04.2-m13"),
   suffix2 = c("d08-p04.2-m13", "d06-p04.2-m13"),
