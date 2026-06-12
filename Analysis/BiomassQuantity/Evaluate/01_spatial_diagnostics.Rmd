@@ -7,6 +7,7 @@ params:
   data_version: "d05"
   purer_version: "p04"
   model_version: "m09"
+  cover_source: "rap"
 output:
   html_document:
     toc: true
@@ -28,8 +29,8 @@ fig_height_pft <- if (is_woody) 10 else 6
 ## Purpose
 
 Wall-to-wall CONUS maps of observed and predicted biomass for the
-`r params$model_type` model. Includes per-PFT decomposition for
-woody models (cover-weighted and potential).
+`r params$model_type` model`r if (params$cover_source != "rap") paste0(" (cover source: ", params$cover_source, ")")`.
+Includes per-PFT decomposition for woody models (cover-weighted and potential).
 
 ## Setup
 
@@ -43,8 +44,11 @@ model_type <- params$model_type
 vd <- params$data_version
 vm <- params$model_version
 vp <- params$purer_version
+cover_source <- params$cover_source
 
-suffix <- paste0(model_type,'_', vd, '-', vp, '-', vm)
+cover_label <- if (cover_source != "rap") paste0(" [cover: ", cover_source, "]") else ""
+
+suffix <- paste0(model_type, '_', vd, '-', vp, '-', vm)
 
 # --- load fitted model ---
 m <- load_fit(suffix)
@@ -56,12 +60,13 @@ cover_cols <- config$model$cover_cols
 ```{r load-rasters}
 # --- load prediction raster ---
 # created in Fit/02_predict_rasters.R
-r_pred_all <- load_pred_raster(suffix)
+r_pred_all <- load_pred_raster(suffix, cover_source = cover_source)
 
 cat("Prediction layers:", paste(names(r_pred_all), collapse = ", "), "\n")
+cat("Cover source:", cover_source, "\n")
 
-# --- load CONUS rasters (for observed + masks) ---
-rasters <- load_conus_rasters()
+# --- load CONUS rasters (for observed + masks + cover) ---
+rasters <- load_conus_rasters(cover_source = cover_source)
 
 # observed biomass raster
 r_observed <- if (model_type == "herb") {
@@ -97,7 +102,7 @@ if (model_type == "woody") {
 
 # --- residual: observed - predicted (masked to valid area) ---
 r_pred_masked <- terra::mask(r_total_pred, r_obs_masked)
-r_diff <- r_obs_masked - r_pred_masked
+r_diff <- r_pred_masked - r_obs_masked
 names(r_diff) <- "residual"
 ```
 
@@ -194,7 +199,7 @@ Masked to areas where observed data exists (LCMAP valid pixels
 plot_map_conus(
   r_diff,
   colorscale = colorscale_diverging(
-    name = "Obs − Pred\n(Mg/ha)",
+    name = "Pred - Obs \n(Mg/ha)",
     limits = c(-diff_limit, diff_limit)
   ),
   title = paste0("Residual: observed − predicted ", model_type, " biomass")
@@ -297,7 +302,7 @@ plot_map_conus(
     name = "Pred − BIGMAP\n(Mg/ha)",
     limits = c(-bigmap_diff_q99, bigmap_diff_q99)
   ),
-  title = "Difference: model predicted − BIGMAP AGB (treed areas)"
+  title = "Difference: BIGMAP AGB (treed areas) - model predicted"
 )
 ```
 
@@ -324,5 +329,7 @@ bigmap$metrics |>
 ## Session Info
 
 ```{r session-info}
+cat("Suffix:", suffix, "\n")
+cat("Cover source:", cover_source, "\n")
 cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
 ```

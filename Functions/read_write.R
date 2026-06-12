@@ -274,6 +274,9 @@ compare_to_bigmap <- function(r_pred, rasters,
   stopifnot(file.exists(p_bigmap))
   r_bigmap <- terra::rast(p_bigmap)
 
+  # align BIGMAP extent to the prediction raster (load_conus_rasters may crop)
+  r_bigmap <- terra::crop(r_bigmap, r_pred)
+
   mask_treed <- rasters$zero_tree == 0
 
   mask_all <- function(r) {

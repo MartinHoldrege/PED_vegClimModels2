@@ -24,18 +24,14 @@ stopifnot(model_type %in% c("herb", "woody"))
 # load fitted model -------------------------------------------------------
 
 suffix <- paste0(model_type, '_', vd, '-', vp, '-', vm)
+
 if (cover_source != "rap") {
-  suffix <- paste0(suffix, "_cov-", cover_source)
+  suffix2 <- paste0(suffix, "_cov-", cover_source)
+} else {
+  suffix2 <- suffix
 }
 
-p_fit <- file.path(
-  paths$large,
-  "Data_processed/BiomassQuantityData/Fit",
-  paste0("fitted_model_", suffix, ".rds")
-)
-stopifnot(file.exists(p_fit))
-
-m <- readRDS(p_fit)
+m <- load_fit(suffix)
 
 fit <- m$fit
 config <- m$config
@@ -90,7 +86,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 p_out <- file.path(
   out_dir,
-  paste0("predicted_biomass_", suffix, ".tif")
+  paste0("predicted_biomass_", suffix2, ".tif")
 )
 
 cat("Writing prediction raster:", p_out, "\n")

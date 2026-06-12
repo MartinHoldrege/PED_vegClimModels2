@@ -201,6 +201,9 @@ purer_specs = list(
       q = 0.95, min_raw_cover = 0.05,
       score_full_data = TRUE,
       n_folds = 10
+    ),
+    herb = list(
+      q = NULL, n_sample = 1e5
     )
   ),
   'p05' = list(

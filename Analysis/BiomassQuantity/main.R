@@ -6,9 +6,9 @@ source('Functions/general.R')
 
 # params ------------------------------------------------------------------
 
-run_fit_model <- TRUE
-run_predict_rasters <- TRUE
-run_model_diagnostics <- TRUE
+run_fit_model <- FALSE
+run_predict_rasters <- FALSE
+run_model_diagnostics <- FALSE
 run_spatial_diagnostics <- TRUE
 run_model_comparison <- TRUE
 run_explore_dat_samp <- FALSE
@@ -35,12 +35,15 @@ run_model_diagnostics_sim <- FALSE
 
 # repo updated to only work w/ separate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <- c('d07-p04.2-m13') # 'd05-p04.2-m13' #,'d05-p04-m12', 'd05-p04.2-m12', 'd05-p04.2-m13')
+suffixes <- c('d08-p04.2-m13', 'd06-p04.2-m13') # 'd05-p04.2-m13' #,'d05-p04-m12', 'd05-p04.2-m12', 'd05-p04.2-m13')
 
-# pairs of suffixes to compare (model1 vs model2)
+# comparison tuples: each element is a vector of equal length.
+# Each index defines one comparison (suffix1 vs suffix2, cs1 vs cs2).
 comparison_pairs <- list(
-  # c("d05-p04-m13", "d05-p04.2-m13"),
-  c("d06-p04.2-m13", "d07-p04.2-m13")
+  suffix1 = c("d06-p04.2-m13", "d06-p04.2-m13"),
+  suffix2 = c("d08-p04.2-m13", "d06-p04.2-m13"),
+  cs1     = c("model",           "rap"),
+  cs2     = c("model",           "model")
 )
 
 # for exploring data sampling
@@ -151,15 +154,17 @@ for (suffix in suffixes) {
 
 # predict -----------------------------------------------------------------
 
-if(run_predict_rasters & hw_type) {
-  native_cover <- data_specs[[opts_l$vd]]$cover_source
+native_cover <- data_specs[[opts_l$vd]]$cover_source
+
+if (predict_native_only || native_cover == "model") {
+  predict_cover_sources <- native_cover
+} else {
+  # RAP-trained models also predict with model cover
+  predict_cover_sources <- c("rap", "model")
+}
   
-  if (predict_native_only || native_cover == "model") {
-    predict_cover_sources <- native_cover
-  } else {
-    # RAP-trained models also predict with model cover
-    predict_cover_sources <- c("rap", "model")
-  }
+if(run_predict_rasters & hw_type) {
+
   
   for (model_type in model_types) {
     for (cs in predict_cover_sources) {
@@ -187,17 +192,24 @@ if(run_model_diagnostics) {
 }
   
 if(run_spatial_diagnostics & hw_type) {
-    lapply(model_types, function(model_type) {
+  for (model_type in model_types) {
+    for (cs in predict_cover_sources) {
       prms <- prms_model_diagnostics
       prms$model_type <- model_type
+      prms$cover_source <- cs
+      
+      out_suffix <- make_suffix(prms)
+      if (cs != "rap") out_suffix <- paste0(out_suffix, "_cov-", cs)
+      
       rmarkdown::render(
         "Analysis/BiomassQuantity/Evaluate/01_spatial_diagnostics.Rmd", 
         knit_root_dir = knit_root_dir,
         params = prms,
         output_dir = file.path(output_dir, 'Evaluate'),
-        output_file = paste0("01_spatial_diagnostics_", make_suffix(prms), ".html")
+        output_file = paste0("01_spatial_diagnostics_", out_suffix, ".html")
       )
-  })
+    }
+  }
 }
   
   
@@ -249,9 +261,13 @@ if(run_explore_dat_samp) {
 # model comparison --------------------------------------------------------
   
 if (run_model_comparison) {
-  for (pair in comparison_pairs) {
-    opts1 <- create_opts_l(pair[1])
-    opts2 <- create_opts_l(pair[2])
+  n_comparisons <- length(comparison_pairs$suffix1)
+  
+  for (i in seq_len(n_comparisons)) {
+    opts1 <- create_opts_l(comparison_pairs$suffix1[i])
+    opts2 <- create_opts_l(comparison_pairs$suffix2[i])
+    cs1_i <- comparison_pairs$cs1[i]
+    cs2_i <- comparison_pairs$cs2[i]
     
     # compare within each model type
     model_types_1 <- names(model_specs[[opts1$vm]])
@@ -260,28 +276,28 @@ if (run_model_comparison) {
     
     for (mt in shared_types) {
       if ((mt == "herb" & !fit_herb) | (mt == "woody" & !fit_woody)) next
-    }
-    model_types_2 <- names(model_specs[[opts2$vm]])
-    shared_types <- intersect(model_types_1, model_types_2)
-    
-    for (mt in shared_types) {
-      if ((mt == "herb" & !fit_herb) | (mt == "woody" & !fit_woody)) next
       
       prms <- list(
         model_type = mt,
-        vd1 = opts1$vd, vp1 = opts1$vp, vm1 = opts1$vm,
-        vd2 = opts2$vd, vp2 = opts2$vp, vm2 = opts2$vm,
+        vd1 = opts1$vd, vp1 = opts1$vp, vm1 = opts1$vm, cs1 = cs1_i,
+        vd2 = opts2$vd, vp2 = opts2$vp, vm2 = opts2$vm, cs2 = cs2_i,
         n_sample_raster = 50000
       )
       
+      # build output filename reflecting cover sources when they differ
+      tag1 <- comparison_pairs$suffix1[i]
+      tag2 <- comparison_pairs$suffix2[i]
+      if (cs1_i != "rap") tag1 <- paste0(tag1, "_cov-", cs1_i)
+      if (cs2_i != "rap") tag2 <- paste0(tag2, "_cov-", cs2_i)
+      
       out_file <- paste0("01_model_comparison_", mt, "_",
-                         pair[1], "_vs_", pair[2], ".html")
+                         tag1, "_vs_", tag2, ".html")
       
       rmarkdown::render(
         "Analysis/BiomassQuantity/Evaluate/01_model_comparison.Rmd",
         knit_root_dir = knit_root_dir,
         params = prms,
-        output_dir = file.path(output_dir, "Evaluate", 'comparison'),
+        output_dir = file.path(output_dir, "Evaluate", "comparison"),
         output_file = out_file
       )
     }

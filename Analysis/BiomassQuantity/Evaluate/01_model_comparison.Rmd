@@ -8,10 +8,12 @@ params:
   vd1: "d05"
   vp1: "p04"
   vm1: "m12"
+  cs1: "rap"
   # model 2 (comparison)
   vd2: "d05"
   vp2: "p04"
   vm2: "m13"
+  cs2: "rap"
   n_sample_raster: 50000
 output:
   html_document:
@@ -42,13 +44,16 @@ source_functions()
 theme_set(theme_bw())
 
 model_type <- params$model_type
+cs1 <- params$cs1
+cs2 <- params$cs2
 
 # build suffixes
 suffix1 <- paste0(model_type, "_", paste(params$vd1, params$vp1, params$vm1, sep = "-"))
 suffix2 <- paste0(model_type, "_", paste(params$vd2, params$vp2, params$vm2, sep = "-"))
 
-label1 <- paste(params$vd1, params$vp1, params$vm1, sep = "-")
-label2 <- paste(params$vd2, params$vp2, params$vm2, sep = "-")
+cs_label <- function(cs) if (cs != "rap") paste0(" (cov:", cs, ")") else ""
+label1 <- paste0(paste(params$vd1, params$vp1, params$vm1, sep = "-"), cs_label(cs1))
+label2 <- paste0(paste(params$vd2, params$vp2, params$vm2, sep = "-"), cs_label(cs2))
 ```
 
 ```{r load-models}
@@ -66,8 +71,8 @@ n_pft <- length(cover_cols)
 
 ```{r load-prediction-rasters}
 # --- load prediction rasters ---
-r1 <- load_pred_raster(suffix1)
-r2 <- load_pred_raster(suffix2)
+r1 <- load_pred_raster(suffix1, cover_source = cs1)
+r2 <- load_pred_raster(suffix2, cover_source = cs2)
 
 cat("Model 1 layers:", paste(names(r1), collapse = ", "), "\n")
 cat("Model 2 layers:", paste(names(r2), collapse = ", "), "\n")
@@ -363,8 +368,8 @@ g1_bigmap + g2_bigmap
 ## Session Info
 
 ```{r session-info}
-cat("Model 1:", suffix1, "\n")
-cat("Model 2:", suffix2, "\n")
+cat("Model 1:", suffix1, "(cover:", cs1, ")\n")
+cat("Model 2:", suffix2, "(cover:", cs2, ")\n")
 cat("N sampled from rasters:", params$n_sample_raster, "\n")
 cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
 ```
