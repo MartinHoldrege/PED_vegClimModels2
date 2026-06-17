@@ -248,7 +248,123 @@ pft_potential_plots <- lapply(potential_lyrs, function(lyr) {
 patchwork::wrap_plots(pft_potential_plots, ncol = 1)
 ```
 
-## 6. Comparison with BIGMAP AGB (Treed Areas)
+## 6. Sagebrush Biome Focus
+
+```{r load-sagebrush-mask}
+r_sage_mask <- load_sagebrush_mask()
+
+sage_ext <- terra::ext(r_sage_mask)
+r_sage_mask <- terra::crop(r_sage_mask, sage_ext)
+```
+
+```{r mask-to-sagebrush}
+
+crop_mask_sage <- function(r) {
+  terra::crop(r, sage_ext) |>
+    terra::mask(r_sage_mask)
+}
+# mask and crop predictions to sagebrush region
+r_total_sage <- crop_mask_sage(r_total_pred)
+
+# per-group weighted
+r_weighted_sage <- crop_mask_sage(r_pred_all[[weighted_lyrs]])
+
+
+# per-group potential
+r_potential_sage <- crop_mask_sage(r_pred_all[[potential_lyrs]])
+
+# observed
+r_obs_sage <- crop_mask_sage(r_obs_masked)
+```
+
+
+### Observed Biomass
+
+```{r sage-observed, fig.width=8, fig.height=6}
+
+q <- 0.9
+max_sage <- max(c(raster_quantile(r_obs_sage, q),
+                      raster_quantile(r_total_sage, q)))
+
+cap1 <- paste0('colors trimmed to ', q*100, 'th percentile')
+plot_map_conus(r_obs_sage,
+               colorscale = colorscale_biomass(limits = c(0, max_sage)),
+               title = paste("Observed", model_type, "biomass — Sagebrush biome")) +
+  labs(caption = cap1)
+```
+
+### Total Predicted Biomass
+
+```{r sage-total-pred, fig.width=8, fig.height=6}
+plot_map_conus(r_total_sage,
+               colorscale = colorscale_biomass(limits = c(0, max_sage)),
+               title = paste("Predicted", model_type, "biomass — Sagebrush biome"))+
+  labs(caption = cap1)
+```
+
+### Per-PFT Biomass (Cover-Weighted) {.tabset}
+
+```{r sage-pft-weighted, fig.width=8, fig.height=6, results='asis'}
+q2 <- 0.95
+cap2 <- paste0('color trimmed to ', q2*100, 'th percentile')
+for (lyr in weighted_lyrs) {
+  
+  r_lyr <- r_weighted_sage[[lyr]]
+  lyr_q <- raster_quantile(r_lyr, q2)
+  
+  
+  cat("\n####", lyr, "\n\n")
+  
+  g <- plot_map_conus(r_lyr,
+                      colorscale = colorscale_biomass(limits = c(0, lyr_q)),
+                      title = paste(lyr, "— Sagebrush biome")) +
+    labs(caption = cap2)
+  print(g)
+  cat("\n\n")
+  
+  # histogram
+  vals <- terra::values(r_lyr, na.rm = TRUE)
+  g_hist <- ggplot(data.frame(biomass = vals[,1]), aes(x = biomass)) +
+    geom_histogram(bins = 80, fill = "steelblue", color = "white") +
+    labs(x = paste(lyr, "(Mg/ha)"), y = "Count",
+         title = paste(lyr, "— distribution in sagebrush biome")) +
+    scale_x_continuous(trans = "log1p")
+  print(g_hist)
+  cat("\n\n")
+}
+```
+
+### Per-PFT Biomass (Potential) {.tabset}
+
+```{r sage-pft-potential, fig.width=8, fig.height=6, results='asis'}
+for (lyr in potential_lyrs) {
+  r_lyr <- r_potential_sage[[lyr]]
+  lyr_q <- raster_quantile(r_lyr, q2)
+  
+  clean_name <- gsub("_potential$", " (potential)", lyr)
+  cat("\n####", clean_name, "\n\n")
+  
+  g <- plot_map_conus(r_lyr,
+                      colorscale = colorscale_biomass(limits = c(0, lyr_q),
+                                                      option = "magma"),
+                      title = paste(clean_name, "— Sagebrush biome")) +
+    labs(caption = cap2)
+  print(g)
+  cat("\n\n")
+  
+  vals <- terra::values(r_lyr, na.rm = TRUE)
+  g_hist <- ggplot(data.frame(biomass = vals[,1]), aes(x = biomass)) +
+    geom_histogram(bins = 80, fill = "steelblue", color = "white") +
+    labs(x = paste(clean_name, "(Mg/ha)"), y = "Count",
+         title = paste(clean_name, "— distribution in sagebrush biome"))
+  print(g_hist)
+  cat("\n\n")
+}
+```
+
+
+
+## 7. Comparison with BIGMAP AGB (Treed Areas)
 
 External validation of woody model predictions against the FIA BIGMAP
 aboveground biomass dataset (2018), restricted to pixels classified as treed.

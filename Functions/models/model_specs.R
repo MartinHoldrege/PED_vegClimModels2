@@ -234,7 +234,8 @@ data_specs <- list(
     n_sample = NULL,
     k_regions = "L3",
     run_herb = TRUE,
-    cover_source = "rap"
+    cover_source = "rap",
+    alt_vd = list(model = "d08") # same dataset but with the alternate cover model
   ),
   'd07' = list(
     n_sample = NULL,

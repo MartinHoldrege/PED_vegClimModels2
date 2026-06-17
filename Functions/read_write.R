@@ -384,6 +384,56 @@ load_ecoregion_raster <- function(
   r
 }
 
+#' Load sagebrush biome mask raster
+#'
+#' Returns a SpatRaster with 1 inside the sagebrush biome, NA outside,
+#' on the daymet 1km grid. Caches the reprojected result; recomputes
+#' if the source file changes. Input file is from the holdrege et al 2024
+#' data release (associated w/ fire ecology pub)
+#'
+#' @param path Path to the source raster.
+#' @param cache_dir Directory for cached output.
+#' @param force Logical; if TRUE, recompute even if cache exists.
+#' @return A single-layer SpatRaster on the daymet grid.
+#' @export
+load_sagebrush_mask <- function(
+    path = "../cheatgrass_fire/data_processed/data_publication/cell_number_ids.tif",
+    cache_dir = file.path(paths$large, "Data_processed/cache"),
+    force = FALSE) {
+  
+  if (!file.exists(path)) {
+    stop("Source file not found: ", path,
+         "\n  See load_sagebrush_mask() for details.")
+  }
+  
+  dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  file_info <- file.info(path)
+  fingerprint <- paste(file_info$size, file_info$mtime)
+  
+  cache_tif <- file.path(cache_dir, "sagebrush_mask_daymet.tif")
+  cache_meta <- file.path(cache_dir, "sagebrush_mask_daymet.rds")
+  
+  if (!force && file.exists(cache_tif) && file.exists(cache_meta)) {
+    cached <- readRDS(cache_meta)
+    if (identical(cached$fingerprint, fingerprint)) {
+      return(terra::rast(cache_tif))
+    }
+  }
+  
+  r1 <- terra::rast(path)
+  # daymet_grid defined in mapping.R
+  r1 <- terra::project(r1, daymet_grid, method = "near")
+  r1 <- terra::trim(r1)
+  r_mask <- terra::ifel(r1 > 0, 1, NA)
+  names(r_mask) <- "sagebrush_mask"
+  
+  terra::writeRaster(r_mask, cache_tif, overwrite = TRUE, datatype = "INT1U")
+  saveRDS(list(fingerprint = fingerprint), cache_meta)
+  
+  r_mask
+}
+
 # downloading files -----------------------------------------
 
 #' Download a file from Drive if it is newer than the local copy

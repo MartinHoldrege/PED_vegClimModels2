@@ -9,8 +9,8 @@ source('Functions/general.R')
 run_fit_model <- FALSE
 run_predict_rasters <- FALSE
 run_model_diagnostics <- FALSE
-run_spatial_diagnostics <- FALSE
-run_model_comparison <- TRUE
+run_spatial_diagnostics <- TRUE
+run_model_comparison <-  TRUE
 run_explore_dat_samp <- FALSE
 
 # if TRUE, only predict with the cover source used for fitting;
@@ -35,16 +35,16 @@ run_model_diagnostics_sim <- FALSE
 
 # repo updated to only work w/ separate herb/biomass models
 # meaning: vd >= d05, vp >= p04, and vm >= 0
-suffixes <- c('d06-p04.2-m13', 'd08-p04.2-m13') #, 'd05-p04.2-m13' #,'d05-p04-m12', 'd05-p04.2-m12', 'd05-p04.2-m13')
+suffixes <- c('d08-p04.2-m13', 'd06-p04.2-m13') #, , 'd05-p04.2-m13','d05-p04-m12', 'd05-p04.2-m12', 'd05-p04.2-m13')
 
 # comparison tuples: each element is a vector of equal length.
 # Each index defines one comparison (suffix1 vs suffix2, cs1 vs cs2).
 # cs means 'cover source' 
 comparison_pairs <- list(
-  suffix1 = c("d06-p04.2-m13", "d06-p04.2-m13"),
-  suffix2 = c("d08-p04.2-m13", "d06-p04.2-m13"),
-  cs1     = c("model",           "rap"),
-  cs2     = c("model",           "model")
+  suffix1 = c("d06-p04.2-m13"),
+  suffix2 = c("d08-p04.2-m13"),
+  cs1     = c("model"       ),
+  cs2     = c("model"      )
 )
 
 # for exploring data sampling
@@ -181,10 +181,24 @@ if(run_predict_rasters & hw_type) {
 if(run_model_diagnostics) {
   #dir.create(file.path(output_dir, 'Evaluate'), recursive = TRUE)
   if(hw_type) {
-    lapply(model_types, function(model_type) {
-      prms_model_diagnostics$model_type <- model_type
-      render_model_diagnostics(prms = prms_model_diagnostics)
-    })
+    for (model_type in model_types) {
+      for (cs in predict_cover_sources) {
+        prms <- prms_model_diagnostics
+        prms$model_type <- model_type
+        prms$cover_source <- cs
+        
+        out_suffix <- make_suffix(prms)
+        if (cs != 'rap') out_suffix <- paste0(out_suffix, "_cov-", cs)
+        
+        rmarkdown::render(
+          "Analysis/BiomassQuantity/Evaluate/01_model_diagnostics_hw.Rmd",
+          knit_root_dir = knit_root_dir,
+          params = prms,
+          output_dir = file.path(output_dir, 'Evaluate'),
+          output_file = paste0("01_model_diagnostics_", out_suffix, ".html")
+        )
+      }
+    }
   } else {
     render_model_diagnostics(
        path = "Analysis/BiomassQuantity/Evaluate/01_model_diagnostics.Rmd",

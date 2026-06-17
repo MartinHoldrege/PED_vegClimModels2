@@ -7,6 +7,7 @@ params:
   data_version: "d05"
   purer_version: 'p04'
   model_version: "m12"
+  cover_source: NULL
   quantile_vars: !r c("MAT", "MAP", "PrecipTempCorr", "awc", "isothermality")
 output:
   html_document:
@@ -38,6 +39,24 @@ vd <- params$data_version
 vp <- params$purer_version
 model_type <- params$model_type
 is_woody <- model_type == 'woody'
+cover_source <- params$cover_source
+
+# --- determine which data to evaluate/predict on ---
+native_cs <- data_specs[[vd]]$cover_source
+
+if (!is.null(cover_source) && cover_source != native_cs) {
+  eval_vd <- data_specs[[vd]]$alt_vd[[cover_source]]
+  if (is.null(eval_vd)) {
+    stop("No alt_vd entry for cover_source '", cover_source,
+         "' in data_specs[['", vd, "']]")
+  }
+  cover_label <- paste0(" [cover: ", cover_source, ", data: ", eval_vd, "]")
+} else {
+  eval_vd <- vd
+  cover_source <- native_cs
+  cover_label <- ""
+}
+
 # --- load fitted model ---
 suffix <- paste0(model_type, "_", paste(vd, vp, vm, sep = "-"))
 
@@ -49,7 +68,7 @@ config <- m1$config
 n_pft <- length(m1$fit$spec$cover_cols)
 # --- load full dataset ---
 
-data_obj <- read_analysis_ready_hw(vd = vd, model_type = model_type,
+data_obj <- read_analysis_ready_hw(vd = eval_vd, model_type = model_type,
                                    only_dataframe = FALSE)
 
 dat_full <- data_obj$data
@@ -80,7 +99,8 @@ dat_full_orig <- unstandardize(dat_full, scale_df)
 ```{r print-config}
 cat("Model type:", model_type, "\n")
 cat("Model version:", vm, "\n")
-cat("Data version:", vd, "\n")
+cat("Data version (model):", vd, "\n")
+cat("Data version (evaluation):", eval_vd, "\n")
 cat("Purer version:", vp, "\n")
 cat("Formula:", deparse(config$model$formula), "\n")
 cat("Cover variables:", paste(config$model$cover_cols, collapse = ", "), "\n")
@@ -406,7 +426,7 @@ ggplot(shrub_obs, aes(shrubBiomass_potential)) +
 
 ```{r shrub-extract, eval=is_woody}
 
-r_pred_all <- load_pred_raster(suffix) 
+r_pred_all <- load_pred_raster(suffix, cover_source = cover_source) 
 
 extracted <- terra::extract(
   r_pred_all[[c("totalShrub", "totalShrub_potential")]],

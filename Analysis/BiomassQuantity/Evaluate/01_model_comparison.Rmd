@@ -308,7 +308,124 @@ for (lyr in potential_lyrs) {
 }
 ```
 
-## 5. Coefficient Comparison
+## 5. Sagebrush Biome Focus
+
+```{r sage-mask-compare}
+r_sage_mask <- load_sagebrush_mask()
+sage_ext <- terra::ext(r_sage_mask)
+
+# crop and mask both models
+r1_sage <- terra::crop(r1, sage_ext) |> terra::mask(r_sage_mask)
+r2_sage <- terra::crop(r2, sage_ext) |> terra::mask(r_sage_mask)
+
+# helper: 95th percentile across both rasters for a given layer
+sage_limits <- function(lyr, quantile_prob = 0.95) {
+  q1 <- raster_quantile(r1_sage[[lyr]], quantile_prob)
+  q2 <- raster_quantile(r2_sage[[lyr]], quantile_prob)
+  c(0, max(q1, q2))
+}
+
+sage_diff_limits <- function(r_diff, quantile_prob = 0.95) {
+  q <- terra::global(abs(r_diff), fun = function(x) quantile(x, quantile_prob, na.rm = TRUE))[[1]]
+  c(-q, q)
+}
+```
+
+### Total Biomass
+
+```{r sage-total-compare, fig.width=14, fig.height=6}
+lims <- sage_limits("predicted_totalBio")
+
+g1 <- plot_map_conus(r1_sage[["predicted_totalBio"]],
+                     colorscale = colorscale_biomass(limits = lims),
+                     title = paste("M1:", label1))
+g2 <- plot_map_conus(r2_sage[["predicted_totalBio"]],
+                     colorscale = colorscale_biomass(limits = lims),
+                     title = paste("M2:", label2))
+g1 + g2
+```
+
+```{r sage-total-diff, fig.width=8, fig.height=6}
+r_diff_sage_total <- r1_sage[["predicted_totalBio"]] - r2_sage[["predicted_totalBio"]]
+names(r_diff_sage_total) <- "difference"
+
+plot_map_conus(
+  r_diff_sage_total,
+  colorscale = colorscale_diverging(
+    name = "M1 − M2\n(Mg/ha)",
+    limits = sage_diff_limits(r_diff_sage_total)
+  ),
+  title = "Sagebrush biome: difference in total biomass"
+)
+```
+
+### Per-PFT Cover-Weighted {.tabset}
+
+```{r sage-pft-weighted-compare, fig.width=14, fig.height=6, results='asis'}
+for (lyr in weighted_lyrs) {
+  lims <- sage_limits(lyr)
+  
+  r_diff_lyr <- r1_sage[[lyr]] - r2_sage[[lyr]]
+  
+  cat("\n####", lyr, "\n\n")
+  
+  g1 <- plot_map_conus(r1_sage[[lyr]],
+                       colorscale = colorscale_biomass(limits = lims),
+                       title = paste("M1:", label1))
+  g2 <- plot_map_conus(r2_sage[[lyr]],
+                       colorscale = colorscale_biomass(limits = lims),
+                       title = paste("M2:", label2))
+  print(g1 + g2)
+  cat("\n\n")
+  
+  print(plot_map_conus(
+    r_diff_lyr,
+    colorscale = colorscale_diverging(
+      name = "M1−M2",
+      limits = sage_diff_limits(r_diff_lyr)
+    ),
+    title = paste("Difference:", lyr)
+  ))
+  cat("\n\n")
+}
+```
+
+### Per-PFT Potential {.tabset}
+
+```{r sage-pft-potential-compare, fig.width=14, fig.height=6, results='asis'}
+for (lyr in potential_lyrs) {
+  lims <- sage_limits(lyr)
+  
+  r_diff_lyr <- r1_sage[[lyr]] - r2_sage[[lyr]]
+  clean_name <- gsub("_potential$", " (potential)", lyr)
+  
+  cat("\n####", clean_name, "\n\n")
+  
+  g1 <- plot_map_conus(r1_sage[[lyr]],
+                       colorscale = colorscale_biomass(limits = lims, option = "magma"),
+                       title = paste("M1:", label1))
+  g2 <- plot_map_conus(r2_sage[[lyr]],
+                       colorscale = colorscale_biomass(limits = lims, option = "magma"),
+                       title = paste("M2:", label2))
+  print(g1 + g2)
+  cat("\n\n")
+  
+  print(plot_map_conus(
+    r_diff_lyr,
+    colorscale = colorscale_diverging(
+      name = "M1−M2",
+      limits = sage_diff_limits(r_diff_lyr)
+    ),
+    title = paste("Difference:", clean_name)
+  ))
+  cat("\n\n")
+}
+```
+
+Key differences from the CONUS sections: 95th percentile color limits (not 99th) since the sagebrush region has lower biomass values and needs tighter scaling to visualize.
+
+
+## 6. Coefficient Comparison
 
 ```{r coef-comparison}
 cat("--- Model 1:", label1, "---\n")
@@ -326,7 +443,7 @@ print(round(m2$fit$par$B, 3))
 cat("\nSigma:", round(m2$fit$par$sigma, 3), "\n")
 ```
 
-## 6. External Validation: BIGMAP AGB (Treed Areas)
+## 7. External Validation: BIGMAP AGB (Treed Areas)
 
 Comparison of each model's tree cover-weighted biomass predictions against the
 FIA BIGMAP AGB dataset, restricted to treed pixels.
