@@ -30,14 +30,6 @@
 #' length. By default the denominator is `sum(weights)` (365.5), giving a
 #' properly normalised weighted mean.
 #'
-#' Note on consistency: the Daymet training pipeline effectively used a
-#' denominator of 372 (= 31 * 12), because it divided each weight by 31 and
-#' then called `mean()` (which divides by 12). This makes training values
-#' ~1.8% smaller than the correct weighted mean (372 / 365.5 ≈ 1.018). Pass
-#' `denom = 31 * 12` (i.e. 372) to reproduce the training behaviour exactly.
-#' The projection scripts use the default (correct) denominator, which
-#' introduces a known, documented ~1.8% offset relative to the current fitted
-#' model's inputs.
 #'
 #' @param x12 Numeric vector of 12 monthly values (Jan..Dec). May contain NA.
 #' @param weights Numeric vector of 12 month-length weights.
@@ -115,10 +107,7 @@ last_above_freezing <- function(tmin12) {
 #' Duration of the frost-free period, in days
 #'
 #' Defined as (last day of the last above-freezing month) minus (first day of
-#' the first above-freezing month). This is a robust reimplementation of the
-#' training-code metric: it uses a month -> day-of-year lookup rather than
-#' building and parsing date strings, so it behaves correctly for first-thaw
-#' months >= 10 (which the original string construction mis-parsed to NA).
+#' the first above-freezing month). 
 #'
 #' @param above_month First above-freezing month (1-12) or NA.
 #' @param last_above_month Last above-freezing month (1-12) or NA.
@@ -129,32 +118,28 @@ frost_free_days <- function(above_month, last_above_month) {
   .last_doy[last_above_month] - .first_doy[above_month]
 }
 
+# saturation vapor pressure
+svp <- function(x) {
+  # constants for SVP calculation
+  #calculate SVP according to Williams et al NatCC 2012 supplementary material -  units haPa
+  # https://static-content.springer.com/esm/art%3A10.1038%2Fnclimate1693/MediaObjects/41558_2013_BFnclimate1693_MOESM272_ESM.pdf
+  a0<-6.107799961
+  a1<-0.4436518521
+  a2<-0.01428945805
+  a3<-0.0002650648471
+  a4<-0.000003031240396
+  a5<-0.00000002034080948
+  a6<-0.00000000006136820929
+  svp_hapa <- (a0+ x*(a1+ x *(a2+ x *(a3+ x *(a4	+ x *(a5	+ x *a6)))))) # eq S1
+  svp_hapa
+}
 
-# Constants for saturation vapour pressure (SVP), from Williams et al. 2012
-# (Nature Climate Change) supplementary material. Ported verbatim from the
-# training pipeline. Output units below are Pascals.
-.svp_a0 <- 6.107799961
-.svp_a1 <- 0.4436518521
-.svp_a2 <- 0.01428945805
-.svp_a3 <- 0.0002650648471
-.svp_a4 <- 0.000003031240396
-.svp_a5 <- 0.00000002034080948
-.svp_a6 <- 0.00000000006136820929
-
-
-#' Monthly vapour pressure deficit (VPD)--this is a stand in function,
-#' to recreate existing result--this isn't actually vpd at the moment. 
-#'
-#' Williams et al. 2012 SVP polynomial. Ported verbatim from the training
-#' pipeline, including the `*100 - tmean` term and `/1000` scaling. Operates
-#' elementwise, so it accepts either a scalar or a vector of mean temperatures.
-#'
-#' @param tmean Mean monthly temperature(s), degrees C.
-#' @return VPD in the same (inherited) units as the training pipeline.
-vpd_monthly <- function(tmean) {
-  svp <- .svp_a0 + tmean * (.svp_a1 + tmean * (.svp_a2 + tmean *
-          (.svp_a3 + tmean * (.svp_a4 + tmean * (.svp_a5 + tmean * .svp_a6)))))
-  (svp * 100 - tmean) / 1000
+vpd <- function(tmean, tmin) {
+  t_dewpoint <- tmin # approximation
+  svp_mean <- svp(tmean)
+  svp_dew_approx <- svp(t_dewpoint) # approximate actual vapor pressure
+  vpd <- (svp_mean - svp_dew_approx)
+  vpd
 }
 
 
@@ -178,7 +163,9 @@ calc_annual_metrics <- function(tmin12, tmax12, prcp12,
 
   # ---- monthly mean temperature and monthly VPD (12-layer stacks) ----
   tmean12 <- (tmax12 + tmin12) / 2
-  vpd12   <- terra::app(tmean12, fun = vpd_monthly)
+  # svp() is polynomial arithmetic that works directly on SpatRasters,
+  # avoiding the per-pixel R function overhead of app().
+  vpd12 <- svp(tmean12) - svp(tmin12)
 
   # ---- simple monthly reductions ----
   totalAnnPrecip   <- sum(prcp12)
@@ -187,11 +174,16 @@ calc_annual_metrics <- function(tmin12, tmax12, prcp12,
   precip_wettest   <- max(prcp12)
   precip_driest    <- min(prcp12)
 
-  # ---- day-weighted annual means ----
-  Tmin_annAvg  <- terra::app(tmin12,  fun = function(x) weighted_annual_mean(x, denom = denom))
-  Tmax_annAvg  <- terra::app(tmax12,  fun = function(x) weighted_annual_mean(x, denom = denom))
-  tmean_annAvg <- terra::app(tmean12, fun = function(x) weighted_annual_mean(x, denom = denom))
-  annVPD_mean  <- terra::app(vpd12,   fun = function(x) weighted_annual_mean(x, denom = denom))
+  # ---- day-weighted annual means (direct raster math, avoids app() overhead) ----
+  weighted_raster_mean <- function(r12, weights = .month_weights, d = denom) {
+    out <- r12[[1]] * weights[1]
+    for (i in 2:12) out <- out + r12[[i]] * weights[i]
+    out / d
+  }
+  Tmin_annAvg  <- weighted_raster_mean(tmin12)
+  Tmax_annAvg  <- weighted_raster_mean(tmax12)
+  tmean_annAvg <- weighted_raster_mean(tmean12)
+  annVPD_mean  <- weighted_raster_mean(vpd12)
 
   # ---- VPD extremes ----
   annVPD_max <- max(vpd12)
@@ -207,10 +199,8 @@ calc_annual_metrics <- function(tmin12, tmax12, prcp12,
                                fun = function(x) precip_temp_corr(x[1:12], x[13:24]))
   PrecipTempCorr <- terra::ifel(is.na(PrecipTempCorr), -0.25, PrecipTempCorr)
 
-  # ---- isothermality ----
-  # app over a 24-layer stack: first 12 = tmin, last 12 = tmax.
-  isotherm <- terra::app(c(tmin12, tmax12),
-                         fun = function(x) isothermality(x[1:12], x[13:24]))
+  # ---- isothermality (direct raster math) ----
+  isotherm <- mean(tmax12 - tmin12) / (max(tmax12) - min(tmin12)) * 100
 
   # ---- thaw timing and frost-free duration ----
   aboveFreezing_month     <- terra::app(tmin12, fun = first_above_freezing)

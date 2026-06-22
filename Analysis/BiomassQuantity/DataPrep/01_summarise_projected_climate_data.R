@@ -95,7 +95,6 @@ maca_path <- function(maca_var, chunk) {
 read_maca_var <- function(maca_var) {
   parts <- lapply(maca_chunks, function(chunk) {
     r <- terra::rast(maca_path(maca_var, chunk))
-    r <- terra::project(r, daymet_grid)   # bilinear (default for continuous)
     names(r) <- terra::time(r)
     r
   })
@@ -202,6 +201,10 @@ clim_layers <- lapply(reductions, function(spec) {
 
 clim <- do.call(c, clim_layers)
 
+
+# * project to daymet grid --------------------------------------------------
+
+clim <- terra::project(clim, daymet_grid)   # bilinear (default for continuous)
 
 # 4. Write final per-model raster -----------------------------------------
 

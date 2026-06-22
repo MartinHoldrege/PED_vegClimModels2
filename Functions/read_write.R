@@ -78,16 +78,31 @@ read_prepare_d01 <- function(root = paths$large,
               trim_shrub_cov = trim_shrub_cov)
 } 
 
-# renames layers to shorter names
+#' Read a climate raster (current or projected) and rename layers
+#'
+#' @param scenario One of "current" (Daymet), "BNU-ESM", or "IPSL-CM5A-MR".
+#' @param path Optional explicit path; overrides `scenario` for the climate file.
+#' @param path_soil Path to soil AWC raster, or NULL to skip.
+#' @return SpatRaster with short-named climate layers (and soil if provided).
 read_climate_raster <- function(
-    path = file.path(paths$large, "Data_processed/BiomassQuantityData", 
-                     "DayMetData_allCONUS_2023ClimateValues_raster.tif"),
-    
-    # created in 01_soils_calculate_awc
+    scenario = c("current", "BNU-ESM", "IPSL-CM5A-MR"),
+    path = NULL,
     path_soil = file.path(paths$large, 
               "./Data_processed/soils/", 
               "awc_SOLUS100_1000m.tif")
     ) {
+  scenario <- match.arg(scenario)
+  
+  if (is.null(path)) {
+    path <- if (scenario == "current") {
+      file.path(paths$large, "Data_processed/BiomassQuantityData", 
+                "DayMetData_allCONUS_2023ClimateValues_raster.tif")
+    } else {
+      file.path(paths$large, "Data_processed/WallToWallClimateData",
+                paste0("ForecastedClimateData_", scenario, "_rcp85_CLIM.tif"))
+    }
+  }
+  
   r <- terra::rast(path)
   names(r) <- climate_name_lookup(names(r))
   
