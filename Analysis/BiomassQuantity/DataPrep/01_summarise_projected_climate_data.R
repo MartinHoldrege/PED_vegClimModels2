@@ -47,7 +47,7 @@ source_functions()         # sources climate_functions.R
 # Parameters --------------------------------------------------------------
 
 # Which climate model to process: "BNU-ESM" or "IPSL-CM5A-MR".
-climate_model <- "IPSL-CM5A-MR" # "BNU-ESM"
+climate_model <- "BNU-ESM" # "IPSL-CM5A-MR" # 
 
 rcp        <- "rcp85"
 year_start <- 2068        # first year of the climate-normal window

@@ -319,6 +319,66 @@ colorscale_cover <- function(name = "Cover",
   )
 }
 
+#' Overlaid density panel for climate scenarios
+#'
+#' Builds a single small density plot overlaying the values of several
+#' single-layer rasters (e.g. current + two future scenarios, or two
+#' difference rasters). Intended for the empty cell of a multi-map figure.
+#'
+#' @param rast_list Named list of single-layer SpatRasters. List names are
+#'   used as the legend labels and mapped to `colors`.
+#' @param colors Named character vector mapping each `rast_list` name to a
+#'   color. Names must match `names(rast_list)`.
+#' @param xlim Numeric length-2; x-limits for the density plot. If NULL,
+#'   uses the full range of the combined values.
+#' @param vline Numeric or NULL; if not NULL, draw a dashed vertical line
+#'   here (e.g. 0 for difference panels).
+#' @param xlab Character; x-axis label.
+#'
+#' @return A ggplot object.
+#' @export
+climate_density_panel <- function(rast_list,
+                                  colors,
+                                  xlim = NULL,
+                                  vline = NULL,
+                                  xlab = NULL) {
+  stopifnot(
+    is.list(rast_list),
+    !is.null(names(rast_list)),
+    all(names(rast_list) %in% names(colors))
+  )
+  
+  # long data frame of values, tagged by scenario (list name)
+  df <- purrr::imap_dfr(rast_list, function(r, nm) {
+    tibble::tibble(value = terra::values(r, na.rm = TRUE)[, 1],
+                   scenario = nm)
+  })
+  df$scenario <- factor(df$scenario, levels = names(rast_list))
+  
+  g <- ggplot2::ggplot(df, ggplot2::aes(x = .data$value, color = .data$scenario)) +
+    ggplot2::geom_density(linewidth = 0.4) +
+    ggplot2::scale_color_manual(values = colors, name = NULL) +
+    ggplot2::coord_cartesian(xlim = xlim) +
+    ggplot2::labs(x = xlab, y = "Density") +
+    ggplot2::theme_classic(base_size = 8) +
+    ggplot2::theme(
+      legend.position = "inside",
+      legend.position.inside = c(0.98, 0.98),
+      legend.justification = c(1, 1),
+      legend.key.size = ggplot2::unit(0.3, "lines"),
+      legend.background = ggplot2::element_rect(fill = "white", color = NA),
+      axis.text.y = ggplot2::element_blank(),
+      axis.ticks.y = ggplot2::element_blank()
+    )
+  
+  if (!is.null(vline)) {
+    g <- g + ggplot2::geom_vline(xintercept = vline,
+                                 linetype = "dashed", linewidth = 0.3)
+  }
+  
+  g
+}
+
 # example usage
 if(FALSE) {
   # quick test of plot_map_conus using load_conus_rasters output
