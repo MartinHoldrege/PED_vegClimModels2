@@ -17,6 +17,7 @@ source_functions()
 
 # params ------------------------------------------------------------------
 test_run <- FALSE
+run_vpd_only <- FALSE
 trunc_probs <- c(0.05, 0.95)   # color-limit truncation (squished by colorscale)
 dens_probs  <- c(0.01, 0.99)   # density-panel x-limit truncation
 rcp         <- "rcp85"
@@ -43,7 +44,11 @@ r_m1  <- read_climate_raster(models[1],   path_soil = NULL)
 r_m2  <- read_climate_raster(models[2],   path_soil = NULL)
 
 vars <- Reduce(intersect, list(names(r_cur), names(r_m1), names(r_m2)))
+
 if(test_run) vars <- vars[1]
+
+if(run_vpd_only) vars <- str_subset(vars, 'VPD')
+
 # helpers -----------------------------------------------------------------
 
 # Pooled limits across layers: min of lower-prob quantiles, max of upper.

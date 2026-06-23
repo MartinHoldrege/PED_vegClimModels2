@@ -10,13 +10,8 @@
 #   - durationFrostFreeDays uses a robust month -> day-of-year lookup instead of
 #     the fragile string-date construction in the training code.
 #   - weighted_annual_mean() defaults to the mathematically correct denominator
-#     sum(weights); the training code used a fixed denominator of 12 (see note
-#     in that function).
+#     sum(weights)
 #
-# Per-pixel cross-month reductions are implemented with terra::app() applied to
-# 12-layer stacks, so each function receives the 12 monthly values for a pixel as
-# a plain numeric vector. This is slower than fully vectorised raster math but
-# keeps the metric logic transparent and easy to check against the source.
 # //////////////////////////////////////////////////////////////////////////
 
 # Day-of-month weights used for monthly -> annual averaging. February is given
@@ -189,15 +184,17 @@ calc_annual_metrics <- function(tmin12, tmax12, prcp12,
   annVPD_max <- max(vpd12)
   annVPD_min <- min(vpd12)
 
+  r_not_na <- !is.na(Tmin_annAvg)
+  
   # ---- precipitation seasonality (CV), NA -> 2 ----
   precip_Seasonality <- terra::app(prcp12, fun = precip_seasonality)
-  precip_Seasonality <- terra::ifel(is.na(precip_Seasonality), 2, precip_Seasonality)
+  precip_Seasonality <- terra::ifel(is.na(precip_Seasonality) & r_not_na, 2, precip_Seasonality)
 
   # ---- precip-temp correlation (NA -> -0.25) ----
   # app over a 24-layer stack: first 12 = prcp, last 12 = tmax.
   PrecipTempCorr <- terra::app(c(prcp12, tmax12),
                                fun = function(x) precip_temp_corr(x[1:12], x[13:24]))
-  PrecipTempCorr <- terra::ifel(is.na(PrecipTempCorr), -0.25, PrecipTempCorr)
+  PrecipTempCorr <- terra::ifel(is.na(PrecipTempCorr) & r_not_na, -0.25, PrecipTempCorr)
 
   # ---- isothermality (direct raster math) ----
   isotherm <- mean(tmax12 - tmin12) / (max(tmax12) - min(tmin12)) * 100
@@ -210,10 +207,10 @@ calc_annual_metrics <- function(tmin12, tmax12, prcp12,
     c(aboveFreezing_month, lastAboveFreezing_month),
     fun = function(a, l) mapply(frost_free_days, a, l)
   )
-  durationFrostFreeDays <- terra::ifel(is.na(durationFrostFreeDays), 0, durationFrostFreeDays)
+  durationFrostFreeDays <- terra::ifel(is.na(durationFrostFreeDays) & r_not_na, 0, durationFrostFreeDays)
 
   # aboveFreezing_month NA -> 8 (after it has been used for frost-free days)
-  aboveFreezing_month <- terra::ifel(is.na(aboveFreezing_month), 8, aboveFreezing_month)
+  aboveFreezing_month <- terra::ifel(is.na(aboveFreezing_month) & r_not_na, 8, aboveFreezing_month)
 
   # ---- monthly water deficit and wet degree days ----
   # awd = tmean*2 - prcp (Thornthwaite-style approximation, ported as-is).
