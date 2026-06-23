@@ -83,6 +83,11 @@ dat_full$predicted <- predict(fit, dat_full, type = "mu")
 
 dat_full$observed <- dat_full$totalBio
 set.seed(123)
+
+# --- training (purer) subset ---
+dat_train <- data_obj$data[m1$train_idx, ]
+dat_train$predicted <- predict(fit, dat_train, type = "mu")
+dat_train$observed <- dat_train$totalBio
 ```
 
 ```{r}
@@ -94,6 +99,7 @@ dat_full$predicted_cv <- cv_holdout_predictions(m1, data = dat_full)
 
 ```{r unstandardize}
 dat_full_orig <- unstandardize(dat_full, scale_df)
+dat_train_orig <- unstandardize(dat_train, scale_df)
 ```
 
 ```{r print-config}
@@ -249,6 +255,59 @@ for (f in fns) {
 
 quant_df <- quant_dfs$mean
 ```
+
+### Training (purer) subset
+
+Same quantile plots but restricted to the purer training pixels 
+(n = `r nrow(dat_train)`).
+
+```{r quantile-train-setup}
+dat_quant_train <- dat_train_orig |>
+  dplyr::rename(totalBio_pred = predicted)
+```
+
+```{r quantile-train-total-bio, fig.width=10, fig.height=7}
+
+for (f in fns) {
+  quant_df_train <- predvars2deciles(
+    df = dat_quant_train,
+    response_vars = c("totalBio", "totalBio_pred"),
+    pred_vars = quantile_vars,
+    summary_fun = f
+  )
+  g <- decile_dotplot(
+    yvar = "totalBio",
+    df = quant_df_train,
+    add_predicted = TRUE,
+    ylab = paste0("Total Biomass (", f, ")"),
+    xlab = paste(f, "of quantile of predictor variable"),
+    title = paste0("Training subset: Observed vs Predicted totalBio (", f, ")")
+  )
+  print(g)
+}
+```
+
+```{r quantile-train-filtered, fig.width=12, fig.height=7}
+
+quant_df_train_filt <- predvars2deciles(
+  df = dat_quant_train,
+  response_vars = c("totalBio", "totalBio_pred"),
+  pred_vars = quantile_vars,
+  filter_var = TRUE,
+  filter_vars = filter_vars,
+  summary_fun = 'mean'
+)
+
+g <- decile_dotplot_filtered(
+  yvar = "totalBio",
+  df = quant_df_train_filt,
+  ylab = "Total Biomass (mean)",
+  xlab = "mean of quantile of predictor variable",
+  title = "Training subset: Observed vs Predicted totalBio (filtered)"
+)
+print(g)
+```
+
 
 ```{r quantile-filtered, fig.width=12, fig.height=7}
 
