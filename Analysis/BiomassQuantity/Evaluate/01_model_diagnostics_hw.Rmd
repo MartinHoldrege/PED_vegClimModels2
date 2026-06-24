@@ -4,9 +4,9 @@ author: "Martin Holdrege"
 date: "`r Sys.Date()`"
 params:
   model_type: "woody"
-  data_version: "d05"
-  purer_version: 'p04'
-  model_version: "m12"
+  data_version: "d06"
+  purer_version: 'p04.2'
+  model_version: "m13"
   cover_source: NULL
   quantile_vars: !r c("MAT", "MAP", "PrecipTempCorr", "awc", "isothermality")
 output:
@@ -85,7 +85,21 @@ dat_full$observed <- dat_full$totalBio
 set.seed(123)
 
 # --- training (purer) subset ---
-dat_train <- data_obj$data[m1$train_idx, ]
+if(eval_vd == vd) {
+  stopifnot(max(m1$train_idx) <= nrow(data_obj$data))
+  dat_train <- data_obj$data[m1$train_idx, ]
+} else {
+  # the eval vd might have slightly different rows b/ masking
+  # etc. so need to base on the actual coordinates
+  data_vd <- read_analysis_ready_hw(vd = vd, 
+                                    model_type = model_type,
+                                    only_dataframe = TRUE)
+  stopifnot(max(m1$train_idx) <= nrow(data_vd$data))
+  train_xy <- data_vd[m1$train_idx, c("x", "y")]
+  dat_train <- data_obj$data |> 
+    inner_join(train_xy, by = c('x', 'y'))
+}
+
 dat_train$predicted <- predict(fit, dat_train, type = "mu")
 dat_train$observed <- dat_train$totalBio
 ```
@@ -288,7 +302,7 @@ for (f in fns) {
 ```
 
 ```{r quantile-train-filtered, fig.width=12, fig.height=7}
-
+filter_vars <- c('MAT', 'MAP', 'PrecipTempCorr', 'isothermality', 'awc')
 quant_df_train_filt <- predvars2deciles(
   df = dat_quant_train,
   response_vars = c("totalBio", "totalBio_pred"),
@@ -308,11 +322,12 @@ g <- decile_dotplot_filtered(
 print(g)
 ```
 
+### filtered
 
-```{r quantile-filtered, fig.width=12, fig.height=7}
+```{r quantile-filtered, fig.width=12, fig.height=9}
 
 f <- 'mean'
-filter_vars <- c('MAT', 'MAP', 'PrecipTempCorr')
+
 
 quant_df_filt <- predvars2deciles(
   df = dat_quant,

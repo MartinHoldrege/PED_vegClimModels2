@@ -8,9 +8,9 @@ source('Functions/general.R')
 
 run_fit_model <- FALSE
 run_predict_rasters <- FALSE
-run_model_diagnostics <- FALSE
-run_spatial_diagnostics <- TRUE
-run_model_comparison <-  TRUE
+run_model_diagnostics <- TRUE
+run_spatial_diagnostics <- FALSE
+run_model_comparison <-  FALSE
 run_explore_dat_samp <- FALSE
 
 # if TRUE, only predict with the cover source used for fitting;
@@ -189,7 +189,6 @@ if(run_model_diagnostics) {
         
         out_suffix <- make_suffix(prms)
         if (cs != 'rap') out_suffix <- paste0(out_suffix, "_cov-", cs)
-        
         rmarkdown::render(
           "Analysis/BiomassQuantity/Evaluate/01_model_diagnostics_hw.Rmd",
           knit_root_dir = knit_root_dir,
