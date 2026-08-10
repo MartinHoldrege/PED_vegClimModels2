@@ -1,29 +1,72 @@
 
 
-// CRS for daymet data
-// exports.crs="PROJCRS[\"unnamed\",\n    BASEGEOGCRS[\"unknown\",\n        DATUM[\"unknown\",\n            ELLIPSOID[\"Spheroid\",6378137,298.257223563,\n                LENGTHUNIT[\"metre\",1,\n                    ID[\"EPSG\",9001]]]],\n        PRIMEM[\"Greenwich\",0,\n            ANGLEUNIT[\"degree\",0.0174532925199433,\n                ID[\"EPSG\",9122]]]],\n    CONVERSION[\"Lambert Conic Conformal (2SP)\",\n        METHOD[\"Lambert Conic Conformal (2SP)\",\n            ID[\"EPSG\",9802]],\n        PARAMETER[\"Latitude of false origin\",42.5,\n            ANGLEUNIT[\"degree\",0.0174532925199433],\n            ID[\"EPSG\",8821]],\n        PARAMETER[\"Longitude of false origin\",-100,\n            ANGLEUNIT[\"degree\",0.0174532925199433],\n            ID[\"EPSG\",8822]],\n        PARAMETER[\"Latitude of 1st standard parallel\",25,\n            ANGLEUNIT[\"degree\",0.0174532925199433],\n            ID[\"EPSG\",8823]],\n        PARAMETER[\"Latitude of 2nd standard parallel\",60,\n            ANGLEUNIT[\"degree\",0.0174532925199433],\n            ID[\"EPSG\",8824]],\n        PARAMETER[\"Easting at false origin\",0,\n            LENGTHUNIT[\"metre\",1],\n            ID[\"EPSG\",8826]],\n        PARAMETER[\"Northing at false origin\",0,\n            LENGTHUNIT[\"metre\",1],\n            ID[\"EPSG\",8827]]],\n    CS[Cartesian,2],\n        AXIS[\"easting\",east,\n            ORDER[1],\n            LENGTHUNIT[\"metre\",1,\n                ID[\"EPSG\",9001]]],\n        AXIS[\"northing\",north,\n            ORDER[2],\n            LENGTHUNIT[\"metre\",1,\n                ID[\"EPSG\",9001]]]]";
 
-exports.resolution = 1000; // resolution of daymet data
 
-exports.crs = "PROJCS[\"unnamed\",    GEOGCS[\"NAD83\",      DATUM[\"WGS_1984\",        SPHEROID[\"WGS 84\", 6378137.0, 298.257223563, AUTHORITY[\"EPSG\",\"7030\"]],        AUTHORITY[\"EPSG\",\"6326\"]],      PRIMEM[\"Greenwich\", 0.0],      UNIT[\"degree\", 0.017453292519943295],      AXIS[\"Longitude\", EAST],      AXIS[\"Latitude\", NORTH]],    PROJECTION[\"Lambert_Conformal_Conic_2SP\"],    PARAMETER[\"central_meridian\", -100.0],    PARAMETER[\"latitude_of_origin\", 42.5],    PARAMETER[\"standard_parallel_1\", 60.0],    PARAMETER[\"false_easting\", 0.0],    PARAMETER[\"false_northing\", 0.0],    PARAMETER[\"scale_factor\", 1.0],    PARAMETER[\"standard_parallel_2\", 25.0],    UNIT[\"m\", 1.0],    AXIS[\"x\", EAST],    AXIS[\"y\", NORTH]]";
-var crsTransform = [1000, 0, -5802750, 0, -1000, 4984500];
-exports.crsTransform = crsTransform;
-     
-// conus extent to match extent of Alice's workflow     
-exports.region = ee.Geometry.Rectangle({
-  coords: [-1950750, -1785500, 2428250, 945500],
-  proj: exports.crs,
-  geodesic: false
-});
-  
-
-var scale = Math.abs(crsTransform[0]);
-exports.resLabel = '_' + scale + 'm';  // '1000m'
-
-// constants ---
+// grid definition ----------------------------------
+// Everything in this repo is exported on the grid of the snap raster.
+// These values are read off the asset itself (print(fg.maskConus) -> bands[0]).
+// Do not hardcode a grid anywhere else.
 
 exports.pathAsset = 'projects/ee-martinholdrege/assets/PED_vegClimModels2/';
 
+exports.maskConus = ee.Image(exports.pathAsset + 'masks/daymet_conus_snap_1000m')
+  .rename('cell_id');  // asset ingests as 'b1'
+
+exports.crs = "PROJCS[\"unnamed\",    GEOGCS[\"unknown\",      DATUM[\"unknown\",        SPHEROID[\"Spheroid\", 6378137.0, 298.257223563]],      PRIMEM[\"Greenwich\", 0.0],      UNIT[\"degree\", 0.017453292519943295],      AXIS[\"Longitude\", EAST],      AXIS[\"Latitude\", NORTH]],    PROJECTION[\"Lambert_Conformal_Conic_2SP\"],    PARAMETER[\"central_meridian\", -100.0],    PARAMETER[\"latitude_of_origin\", 42.5],    PARAMETER[\"standard_parallel_1\", 60.0],    PARAMETER[\"false_easting\", 0.0],    PARAMETER[\"false_northing\", 0.0],    PARAMETER[\"scale_factor\", 1.0],    PARAMETER[\"standard_parallel_2\", 25.0],    UNIT[\"m\", 1.0],    AXIS[\"Easting\", EAST],    AXIS[\"Northing\", NORTH]]";
+
+exports.crsTransform = [1000, 0, -1951750, 0, -1000, 946500];
+
+exports.resolution = 1000;
+exports.resLabel = '_1000m';
+
+// region = the snap raster footprint, in the snap raster's own projection
+exports.region = ee.Geometry.Rectangle({
+  coords: [-1951750, -1786500, 2429250, 946500],
+  proj: exports.crs,
+  geodesic: false
+});
+
+// export helpers -----------------------------------
+// Use these instead of calling Export.image.* directly, so that crs,
+// crsTransform, and region can never diverge between scripts.
+
+/**
+ * Export an image to Drive on the snap grid.
+ * @param {ee.Image} image
+ * @param {string} name - used for both description and file name
+ * @param {string} folder - Drive folder
+ */
+exports.exportDrive = function(image, name, folder) {
+  Export.image.toDrive({
+    image: image,
+    description: name,
+    folder: folder,
+    fileNamePrefix: name,
+    crs: exports.crs,
+    crsTransform: exports.crsTransform,
+    region: exports.region,
+    maxPixels: 1e12,
+    fileFormat: 'GeoTIFF'
+  });
+};
+
+/**
+ * Export an image to an asset on the snap grid.
+ * @param {ee.Image} image
+ * @param {string} name
+ * @param {string} subDir - subdirectory under pathAsset, e.g. 'rap/'
+ */
+exports.exportAsset = function(image, name, subDir) {
+  Export.image.toAsset({
+    image: image,
+    description: name,
+    assetId: exports.pathAsset + subDir + name,
+    crs: exports.crs,
+    crsTransform: exports.crsTransform,
+    region: exports.region,
+    maxPixels: 1e12
+  });
+};
 // biomass related functions -------------------------------------
 
 // rap biomass code adapted from: 
@@ -98,3 +141,9 @@ exports.lcmapMask = lcmap2021.remap(
   [1, 2, 3, 4, 5, 6, 7, 8],
   [0, 0, 1, 1, 0, 1, 1, 1]
 );
+
+var fg = exports
+// force a planar rectangle in the daymet CRS
+print(fg.maskConus)
+print('bounds', fg.maskConus.geometry(1, fg.crs, false).bounds(1, fg.crs));
+print('transform', fg.maskConus.projection().transform());
