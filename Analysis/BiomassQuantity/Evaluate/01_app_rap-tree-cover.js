@@ -255,7 +255,7 @@ var buildPanel = function(map, position) {
     ui.Label('Dataset:', {fontSize: '11px', margin: '4px 0px 0px 0px'}),
     dropdown,
     makeSlider('Min tree cover (%), or min % of 1km >= x% trees (below is black)', 0, 100, 1, defaults.minTree, 'minTree'),
-    makeSlider('Max tree cover (%), or max % of 1km >= x% trees (above is black)', 0, 100, 1, defaults.maxTree, 'maxTree'),
+    makeSlider('Max tree cover (%), or max % of 1km >= x% trees (above is grey)', 0, 100, 1, defaults.maxTree, 'maxTree'),
     makeSlider('Color saturation (%)', 1, 100, 1, defaults.colorMax, 'colorMax'),
     ui.Label('Masking', {fontWeight: 'bold', fontSize: '11px', margin: '8px 0px 2px 0px'}),
     maskFireCheck,
