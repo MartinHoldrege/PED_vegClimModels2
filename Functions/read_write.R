@@ -449,6 +449,14 @@ load_sagebrush_mask <- function(
   r_mask
 }
 
+read_mask <- function() {
+  # file created in 
+  # Analysis/Cover/00_create_snap_raster.R
+  # this is the reference grid/mask to be used downstream
+  # cell values are integers (or NA)
+  terra::rast("Data_processed/daymet_conus_snap_1000m.tif")
+}
+
 # downloading files -----------------------------------------
 
 #' Download a file from Drive if it is newer than the local copy
