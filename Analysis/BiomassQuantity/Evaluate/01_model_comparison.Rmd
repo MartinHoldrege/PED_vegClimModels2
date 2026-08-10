@@ -143,6 +143,7 @@ knitr::kable(cv_compare, caption = "CV performance at selected lambda")
 ```
 
 
+
 ## 2. Total Biomass: Maps
 
 ### Side by Side
@@ -442,6 +443,65 @@ cat("B:\n")
 print(round(m2$fit$par$B, 3))
 cat("\nSigma:", round(m2$fit$par$sigma, 3), "\n")
 ```
+
+## 6b. Coefficient Scatterplot
+
+```{r coef-scatter, fig.width=7, fig.height=6}
+# align B matrices
+aligned <- align_B_matrices(m1$fit$par$B, m2$fit$par$B)
+
+n_extra <- length(aligned$extra_in_fit)
+n_missing <- length(aligned$missing_in_fit)
+
+if (n_extra > 0) {
+  cat("Coefficients only in M1 (compared against 0 in M2):",
+      paste(aligned$extra_in_fit, collapse = ", "), "\n")
+}
+if (n_missing > 0) {
+  cat("Coefficients only in M2 (compared against 0 in M1):",
+      paste(aligned$missing_in_fit, collapse = ", "), "\n")
+}
+
+# build coefficient comparison data frame
+# B coefficients
+b_df <- tibble::tibble(
+  name = rep(rownames(aligned$true), ncol(aligned$true)),
+  group = rep(colnames(aligned$true), each = nrow(aligned$true)),
+  m1 = as.vector(aligned$true),
+  m2 = as.vector(aligned$fit),
+  type = "B"
+)
+
+# alpha coefficients (align by name)
+shared_alpha <- intersect(names(m1$fit$par$alpha), names(m2$fit$par$alpha))
+alpha_df <- tibble::tibble(
+  name = shared_alpha,
+  group = shared_alpha,
+  m1 = m1$fit$par$alpha[shared_alpha],
+  m2 = m2$fit$par$alpha[shared_alpha],
+  type = "alpha"
+)
+
+coef_df <- dplyr::bind_rows(b_df, alpha_df)
+
+# scatterplot
+ggplot(coef_df, aes(x = m1, y = m2, color = type, shape = type)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey40") +
+  geom_hline(yintercept = 0, color = "grey80", linewidth = 0.3) +
+  geom_vline(xintercept = 0, color = "grey80", linewidth = 0.3) +
+  ggrepel::geom_text_repel(aes(label = name), size = 2.5, max.overlaps = 20,
+                            show.legend = FALSE) +
+  scale_color_manual(values = c("B" = "steelblue", "alpha" = "darkred")) +
+  scale_shape_manual(values = c("B" = 16, "alpha" = 17)) +
+  labs(x = paste("M1:", label1),
+       y = paste("M2:", label2),
+       title = "Coefficient comparison",
+       color = "Type", shape = "Type") +
+  coord_equal()
+```
+
+Note:  `ggrepel` is used for labeling — if not installed, remove the `geom_text_repel` line and the labels will just be absent.
 
 ## 7. External Validation: BIGMAP AGB (Treed Areas)
 

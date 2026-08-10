@@ -22,19 +22,7 @@
 #       weighted_annual_mean(), calc_annual_metrics(), and the metric helpers.
 #   - packages: terra, stringr (via tidyverse), and the repo's standard set.
 #
-# Consistency note (weighted means / VPD mean):
-#   This script uses the mathematically correct day-length denominator
-#   (sum of month weights, 365.5) via the default of weighted_annual_mean().
-#   The Daymet training pipeline effectively used a denominator of 372
-#   (= 31 * 12), because it divided each weight by 31 and then called mean()
-#   (which divides by 12). This makes the four affected inputs
-#   (tmin/tmax/tmean annual means and annVPD_mean) ~1.8% larger in training
-#   than here (372 / 365.5 ≈ 1.018). This is a known, accepted offset for
-#   the current fitted model. To reproduce training exactly, pass
-#   denom = 31 * 12 (i.e. 372) to calc_annual_metrics() below.
 
-# VPD--currently vpd isn't calculated correctly (for consistency with other dataset)
-# it is closely related to saturation vapor pressure 
 # //////////////////////////////////////////////////////////////////////////
 
 library(terra)

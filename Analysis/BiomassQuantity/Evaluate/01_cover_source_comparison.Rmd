@@ -1,0 +1,331 @@
+---
+title: "Cover Source Comparison: RAP vs Modelled Cover"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  model_type: "herb"
+  data_version: "d05"
+  purer_version: "p04"
+  model_version: "m12"
+  cover_source: "glm_v01"
+  n_sample: 50000
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 10, fig.height = 6)
+is_woody <- params$model_type == "woody"
+fig_height_pft <- if (is_woody) 10 else 6
+```
+
+## Purpose
+
+Compare biomass predictions using RAP cover vs modelled (GLM) cover as the
+cover multiplier. The model coefficients are identical — only the cover
+input differs. This helps assess the impact of using modelled cover
+(as will be done in SOILWAT2 projections) vs observed RAP cover.
+
+## Setup
+
+```{r source-and-load}
+source("Functions/init.R")
+library(patchwork)
+source_functions()
+theme_set(theme_bw())
+
+model_type <- params$model_type
+vd <- params$data_version
+vp <- params$purer_version
+vm <- params$model_version
+cover_source <- params$cover_source
+
+suffix <- paste0(model_type, "_", paste(vd, vp, vm, sep = "-"))
+```
+
+```{r load-model}
+# --- load fitted model ---
+p_fit <- file.path(
+  paths$large,
+  "Data_processed/BiomassQuantityData/Fit",
+  paste0("fitted_model_", suffix, ".rds")
+)
+stopifnot(file.exists(p_fit))
+m <- readRDS(p_fit)
+fit <- m$fit
+config <- m$config
+cover_cols <- config$model$cover_cols
+pred_vars <- config$model$pred_vars
+```
+
+```{r load-rasters}
+# --- load CONUS rasters ---
+rasters <- load_conus_rasters()
+scale_df <- rasters$scale_df
+# RAP cover
+r_cover_rap <- rasters$cover[cover_cols]
+
+# modelled cover
+r_cover_mod <- load_modeled_cover(cover_source = cover_source,
+                                   cover_cols = cover_cols)
+
+# standardize climate
+r_climate_std <- standardize_raster(rasters$climate[[pred_vars]],
+                                     scale_df, vars = pred_vars)
+```
+
+```{r load-rap-predictions}
+# --- load pre-computed RAP predictions ---
+r_pred_rap <- load_pred_raster(suffix)
+```
+
+```{r predict-modelled-cover}
+# --- predict with modelled cover ---
+r_pred_stack_mod <- c(r_climate_std, r_cover_mod)
+
+r_total_mod <- predict_raster(fit, r_pred_stack_mod, type = "total")
+r_weighted_mod <- predict_raster(fit, r_pred_stack_mod, type = "by_group")
+r_potential_mod <- predict_raster(fit, r_pred_stack_mod, type = "potential")
+names(r_potential_mod) <- paste0(names(r_potential_mod), "_potential")
+
+# extract RAP prediction layers
+r_total_rap <- r_pred_rap[["predicted_totalBio"]]
+
+weighted_lyrs <- names(r_pred_rap)[!grepl("_potential|predicted_totalBio",
+                                          names(r_pred_rap))]
+r_weighted_rap <- if (length(weighted_lyrs) > 0) r_pred_rap[[weighted_lyrs]] else NULL
+
+potential_lyrs <- names(r_pred_rap)[grepl("_potential", names(r_pred_rap))]
+r_potential_rap <- if (length(potential_lyrs) > 0) r_pred_rap[[potential_lyrs]] else NULL
+```
+
+```{r sample-for-scatterplots}
+# --- sample from rasters for scatterplots ---
+set.seed(42)
+
+# cover comparison stack
+r_cov_stack <- c(r_cover_rap, r_cover_mod)
+rap_names <- paste0(cover_cols, "_rap")
+mod_names <- paste0(cover_cols, "_mod")
+names(r_cov_stack) <- c(rap_names, mod_names)
+
+# prediction comparison stack
+r_pred_stack <- c(r_total_rap, r_total_mod)
+names(r_pred_stack) <- c("total_rap", "total_mod")
+
+# add per-group if available
+if (!is.null(r_weighted_rap)) {
+  r_w_rap <- r_weighted_rap
+  r_w_mod <- r_weighted_mod
+  names(r_w_rap) <- paste0(names(r_w_rap), "_rap")
+  names(r_w_mod) <- paste0(names(r_w_mod), "_mod")
+  r_pred_stack <- c(r_pred_stack, r_w_rap, r_w_mod)
+}
+
+r_all <- c(r_cov_stack, r_pred_stack)
+df_sample <- terra::spatSample(r_all, size = params$n_sample,
+                                method = "random", na.rm = TRUE, xy = FALSE)
+```
+
+```{r print-config}
+cat("Model type:", model_type, "\n")
+cat("Model version:", vm, "\n")
+cat("Cover source:", cover_source, "\n")
+cat("Formula:", deparse(config$model$formula), "\n")
+cat("Cover cols:", paste(cover_cols, collapse = ", "), "\n")
+```
+
+## 1. Cover Comparison: RAP vs Modelled {.tabset}
+
+```{r cover-comparison, fig.width=14, fig.height=6, results='asis'}
+for (i in seq_along(cover_cols)) {
+  col <- cover_cols[i]
+  rap_col <- paste0(col, "_rap")
+  mod_col <- paste0(col, "_mod")
+  
+  cat("\n###", col, "\n\n")
+  
+  # maps side by side
+  r_rap_i <- r_cover_rap[[col]]
+  r_mod_i <- r_cover_mod[[col]]
+  r_diff_cov <- r_mod_i - r_rap_i
+  names(r_diff_cov) <- "difference"
+  
+  cov_q99 <- max(
+    terra::global(r_rap_i, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]],
+    terra::global(r_mod_i, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]]
+  )
+  
+  diff_cov_q99 <- terra::global(
+    abs(r_diff_cov),
+    fun = function(x) quantile(x, 0.99, na.rm = TRUE)
+  )[[1]]
+  
+  g1 <- plot_map_conus(r_rap_i,
+                       colorscale = colorscale_cover(name = "Cover (%)",
+                                                      limits = c(0, cov_q99)),
+                       title = paste(col, "— RAP"))
+  g2 <- plot_map_conus(r_mod_i,
+                       colorscale = colorscale_cover(name = "Cover (%)",
+                                                      limits = c(0, cov_q99)),
+                       title = paste(col, "— Modelled"))
+  g_diff <- plot_map_conus(r_diff_cov,
+                           colorscale = colorscale_diverging(
+                             name = "Mod − RAP",
+                             limits = c(-diff_cov_q99, diff_cov_q99)),
+                           title = paste(col, "— Difference (Mod − RAP)"))
+  
+  print(g1 + g2)
+  print(g_diff)
+  cat("\n\n")
+  
+  # scatterplot
+  g_scatter <- ggplot(df_sample, aes(x = .data[[rap_col]],
+                                      y = .data[[mod_col]])) +
+    geom_hex(bins = 80) +
+    scale_fill_viridis_c(trans = "log10") +
+    geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+    labs(x = "RAP cover", y = "Modelled cover",
+         title = paste(col, "— RAP vs Modelled")) +
+    coord_equal()
+  print(g_scatter)
+  cat("\n\n")
+}
+```
+
+## 2. Total Biomass Predictions
+
+### Maps
+
+```{r total-maps, fig.width=14, fig.height=6}
+total_q99 <- max(
+  terra::global(r_total_rap, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]],
+  terra::global(r_total_mod, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]]
+)
+total_limits <- c(0, total_q99)
+
+g1 <- plot_map_conus(r_total_rap,
+                     colorscale = colorscale_biomass(limits = total_limits),
+                     title = "Total biomass — RAP cover")
+g2 <- plot_map_conus(r_total_mod,
+                     colorscale = colorscale_biomass(limits = total_limits),
+                     title = "Total biomass — Modelled cover")
+g1+g2
+```
+
+### Difference (Modelled − RAP cover)
+
+```{r total-diff-map, fig.width=10, fig.height=6}
+r_diff_total <- r_total_mod - r_total_rap
+names(r_diff_total) <- "difference"
+
+diff_q99 <- terra::global(
+  abs(r_diff_total),
+  fun = function(x) quantile(x, 0.99, na.rm = TRUE)
+)[[1]]
+
+plot_map_conus(
+  r_diff_total,
+  colorscale = colorscale_diverging(
+    name = "Mod − RAP\n(Mg/ha)",
+    limits = c(-diff_q99, diff_q99)
+  ),
+  title = "Difference in total biomass (Modelled − RAP cover)"
+)
+```
+
+### Scatterplot
+
+```{r total-scatter, fig.width=6, fig.height=6}
+ggplot(df_sample, aes(x = total_rap, y = total_mod)) +
+  geom_hex(bins = 100) +
+  scale_fill_viridis_c(trans = "log10") +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(x = "Predicted biomass (RAP cover)",
+       y = "Predicted biomass (Modelled cover)",
+       title = "Total biomass: RAP vs Modelled cover") +
+  coord_equal()
+```
+
+## 3. Per-PFT Biomass: Cover-Weighted {.tabset}
+
+```{r pft-weighted-cover, fig.width=14, fig.height=6, eval=!is.null(r_weighted_rap), results='asis'}
+for (lyr in weighted_lyrs) {
+  r_rap_lyr <- r_weighted_rap[[lyr]]
+  r_mod_lyr <- r_weighted_mod[[lyr]]
+  r_diff_lyr <- r_mod_lyr - r_rap_lyr
+  
+  lyr_q99 <- max(
+    terra::global(r_rap_lyr, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]],
+    terra::global(r_mod_lyr, fun = function(x) quantile(x, 0.99, na.rm = TRUE))[[1]]
+  )
+  
+  diff_lyr_q99 <- terra::global(
+    abs(r_diff_lyr),
+    fun = function(x) quantile(x, 0.99, na.rm = TRUE)
+  )[[1]]
+  
+  cat("\n###", lyr, "\n\n")
+  
+  g1 <- plot_map_conus(r_rap_lyr,
+                       colorscale = colorscale_biomass(limits = c(0, lyr_q99)),
+                       title = paste(lyr, "— RAP cover"))
+  g2 <- plot_map_conus(r_mod_lyr,
+                       colorscale = colorscale_biomass(limits = c(0, lyr_q99)),
+                       title = paste(lyr, "— Modelled cover"))
+  g_diff <- plot_map_conus(r_diff_lyr,
+                           colorscale = colorscale_diverging(
+                             name = "Mod-RAP",
+                             limits = c(-diff_lyr_q99, diff_lyr_q99)),
+                           title = paste(lyr, "— Difference"))
+  
+  print(g1)
+  cat("\n\n")
+  print(g2)
+  cat("\n\n")
+  print(g_diff)
+  cat("\n\n")
+  
+  # scatterplot
+  rap_col <- paste0(lyr, "_rap")
+  mod_col <- paste0(lyr, "_mod")
+  if (all(c(rap_col, mod_col) %in% names(df_sample))) {
+    g_scatter <- ggplot(df_sample, aes(x = .data[[rap_col]],
+                                        y = .data[[mod_col]])) +
+      geom_hex(bins = 80) +
+      scale_fill_viridis_c(trans = "log10") +
+      geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+      labs(x = paste(lyr, "(RAP)"), y = paste(lyr, "(Modelled)"),
+           title = paste(lyr, "— RAP vs Modelled cover")) +
+      coord_equal()
+    print(g_scatter)
+    cat("\n\n")
+  }
+}
+```
+
+## 4. Per-PFT Biomass: Potential (Cover = 100%)
+
+Potential biomass is identical between RAP and modelled cover since it
+uses cover = 100%. This section confirms that — any differences indicate a bug.
+
+```{r potential-check, fig.width=6, fig.height=6, eval=!is.null(r_potential_rap)}
+# potential should be identical since cover is not used
+r_diff_pot <- r_potential_mod - r_potential_rap
+max_diff <- terra::global(abs(r_diff_pot), "max", na.rm = TRUE)
+cat("Max absolute difference in potential biomass:", max(max_diff$max), "\n")
+cat("(Should be ~0 — potential biomass doesn't depend on cover source)\n")
+```
+
+## Session Info
+
+```{r session-info}
+cat("Model:", suffix, "\n")
+cat("Cover source:", cover_source, "\n")
+cat("N sampled:", params$n_sample, "\n")
+cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+```

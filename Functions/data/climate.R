@@ -15,8 +15,8 @@
 # //////////////////////////////////////////////////////////////////////////
 
 # Day-of-month weights used for monthly -> annual averaging. February is given
-# 28.5 days, matching the training pipeline. Order is Jan..Dec.
-.month_weights <- c(31, 28.5, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+# 28.25 days, matching the training pipeline. Order is Jan..Dec.
+.month_weights <- c(31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
 
 #' Day-weighted monthly-to-annual mean
