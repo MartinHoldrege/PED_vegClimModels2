@@ -18,8 +18,6 @@ var yearEnd = 2023;
 // dependencies -------------------------------------
 var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.js');
 
-
-
 // read in data -------------------------------------
 var rap = ee.ImageCollection('projects/rap-data-365417/assets/vegetation-cover-v3')
   .filter(ee.Filter.calendarRange(yearStart, yearEnd, 'year'));
