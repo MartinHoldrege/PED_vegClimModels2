@@ -12,7 +12,6 @@
 # polygon touches (permissive coastal edge)
 touches <- TRUE
 
-
 # dependencies ------------------------------------------------------------
 
 source("Functions/init.R")
@@ -29,7 +28,7 @@ p_shp <- file.path(paths$large, "Data_raw/Level3Ecoregions/us_eco_l3.shp")
 
 stopifnot(file.exists(p_daymet), file.exists(p_shp))
 
-out_dir <- file.path("Data_processed")
+out_dir <- file.path(paths$large, "Data_processed", 'masks')
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 p_out <- file.path(out_dir, "daymet_conus_snap_1000m.tif")
@@ -81,6 +80,33 @@ cat("  dim:   ", dim(r_snap)[1:2], "\n")
 cat("  extent:", as.vector(terra::ext(r_snap)), "\n")
 cat("  n cells with data:", n_cell, "\n")
 
+
+# create sparse grid ------------------------------------------------------
+# this is for extracting rap data at a lower
+# thinning factor: keep every 5th row and every 5th column
+thin_by <- 5
+
+r_row <- terra::init(terra::rast(r_snap), "row")
+r_col <- terra::init(terra::rast(r_snap), "col")
+
+keep <- (r_row %% thin_by == 1) & (r_col %% thin_by == 1)
+
+r_sparse <- terra::mask(r_snap, keep, maskvalues = c(0, NA))
+names(r_sparse) <- "cell_id"
+
+p_sparse <- file.path(out_dir,
+                      paste0("daymet_conus_snap_1000m_thin", thin_by, ".tif"))
+
+if(FALSE) {
+  # zoom in to a section of the sparse raster to see what it actually looks like
+  e <- terra::ext(r_sparse)
+  xc <- mean(e[1:2]); yc <- mean(e[3:4])
+  e_zoom <- terra::ext(xc, xc + 100000, yc, yc + 100000)
+  terra::plot(terra::crop(r_sparse, e_zoom))
+}
+
 # save --------------------------------------------------------------------
+
+terra::writeRaster(r_sparse, p_sparse, overwrite = TRUE, datatype = "INT4S")
 
 terra::writeRaster(r_snap, p_out, overwrite = TRUE, datatype = "INT4S")
