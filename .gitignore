@@ -51,7 +51,6 @@
 # Web / rendered artifacts
 *.html
 *.css
-*.js
 *.map
 *.woff*
 *.eot
