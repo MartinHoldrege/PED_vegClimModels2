@@ -22,7 +22,7 @@ var burnedThreshold = 0.1; // keep cells with less than this burned fraction
 var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.js');
 
 // read in data -------------------------------------
-// objected created by Cover/DataPrep/01_everBurned_windows.js
+// objected created by Cover/DataPrep/01_fire_everBurned_windows.js
 var inName = 'MTBS_burned' + windowLength + 'yr_' + scaleIn + 'm_' +
   yearStart + '-' + yearEnd;
 
