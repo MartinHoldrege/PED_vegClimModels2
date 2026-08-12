@@ -36,7 +36,7 @@ var fracKeep = fracKeep.rename('fracKeep');
 
 Map.addLayer(fracKeep.geometry(), {}, '');
 
-fg.exportAsset(fracKeep, 'LCMAP_fracKeep_daymet' + fg.resLabel, 'masks/');
+fg.exportAsset(fracKeep, 'LCMAP_fracKeep' + fg.resLabel, 'masks/');
 
 
 
