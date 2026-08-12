@@ -28,10 +28,7 @@ var rap = ee.ImageCollection('projects/rap-data-365417/assets/vegetation-cover-v
   .filter(ee.Filter.calendarRange(yearStart, yearEnd, 'year'));
 
 // process ------------------------------------------
-var viz = {min: 0, max: 1, palette:['white', 'black']};
-Map.addLayer(fg.fireMaskYear(2020), viz, 'fire mask', false);
-Map.addLayer(snapMask, viz, 'thin mask', false);
-Map.addLayer(lcmapMask, viz, 'lcmap mask', false);
+
 
 // pull the three functional groups out of a single year's image
 var pftBands = function(image) {
@@ -73,6 +70,9 @@ for (var k = 0; k < pfts.length; k++) {
 }
 
 // visualize ----------------------------------------
-
+var viz = {min: 0, max: 1, palette:['white', 'black']};
+Map.addLayer(fg.fireMaskYear(2020), viz, 'fire mask', false);
+Map.addLayer(snapMask, viz, 'thin mask', false);
+Map.addLayer(lcmapMask, viz, 'lcmap mask', false);
 Map.addLayer(stacks.shrub.select(bandPrefix + yearEnd),
   {min: 0, max: 40, palette: ['white', 'black']}, 'shrub ' + yearEnd, false);
