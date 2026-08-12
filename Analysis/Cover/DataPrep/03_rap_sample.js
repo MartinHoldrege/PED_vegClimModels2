@@ -22,6 +22,7 @@ var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.
 var snapMask = ee.Image(fg.pathAsset + 'masks/daymet_conus_snap_1000m_thin5')
   .gt(0);
 
+var lcmapMask = fg.lcmapMaskBinary();  // 90% keep threshold
 
 var rap = ee.ImageCollection('projects/rap-data-365417/assets/vegetation-cover-v3')
   .filter(ee.Filter.calendarRange(yearStart, yearEnd, 'year'));
@@ -45,9 +46,12 @@ for (var year = yearStart; year <= yearEnd; year++) {
     ee.Image(rap.filter(ee.Filter.calendarRange(year, year, 'year')).first())
   );
 
+  // fire mask is year-specific: 2011 cover uses the 1992-2011 window
+  var keep = snapMask.and(lcmapMask).and(fg.fireMaskYear(year));
+
   for (var j = 0; j < pfts.length; j++) {
     var pft = pfts[j];
-    var band = yearImage.select(pft).rename(bandPrefix + year);
+    var band = yearImage.select(pft).updateMask(keep).rename(bandPrefix + year);
     stacks[pft] = (stacks[pft] === null) ? band : stacks[pft].addBands(band);
   }
 }
@@ -55,7 +59,7 @@ for (var year = yearStart; year <= yearEnd; year++) {
 // export -------------------------------------------
 for (var k = 0; k < pfts.length; k++) {
   var pftName = pfts[k];
-  var out = stacks[pftName].updateMask(snapMask).toFloat();
+  var out = stacks[pftName].toFloat();
 
   var fileName = 'RAP_v3_cover-' + pftName + '_' + yearStart + '-' + yearEnd +
     '_thin5' + fg.resLabel;
