@@ -12,7 +12,7 @@ var yearStart = 2011;
 var yearEnd = 2023;
 
 var driveFolder = 'PED_vegClimModels2';
-var bandPrefix = '';  // set to 'y' if leading-digit band names cause trouble
+var bandPrefix = 'year_';  // set to 'y' if leading-digit band names cause trouble
 
 // dependencies -------------------------------------
 var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.js');
@@ -28,6 +28,11 @@ var rap = ee.ImageCollection('projects/rap-data-365417/assets/vegetation-cover-v
   .filter(ee.Filter.calendarRange(yearStart, yearEnd, 'year'));
 
 // process ------------------------------------------
+var viz = {min: 0, max: 1, palette:['white', 'black']};
+Map.addLayer(fg.fireMaskYear(2020), viz, 'fire mask', false);
+Map.addLayer(snapMask, viz, 'thin mask', false);
+Map.addLayer(lcmapMask, viz, 'lcmap mask', false);
+
 // pull the three functional groups out of a single year's image
 var pftBands = function(image) {
   return ee.Image.cat([
@@ -68,6 +73,6 @@ for (var k = 0; k < pfts.length; k++) {
 }
 
 // visualize ----------------------------------------
-Map.addLayer(snapMask.selfMask(), {palette: 'red'}, 'thin5 mask', false);
-Map.addLayer(stacks.shrub.select(bandPrefix + yearEnd).updateMask(snapMask),
+
+Map.addLayer(stacks.shrub.select(bandPrefix + yearEnd),
   {min: 0, max: 40, palette: ['white', 'black']}, 'shrub ' + yearEnd, false);
