@@ -142,8 +142,40 @@ exports.lcmapMask = lcmap2021.remap(
   [0, 0, 1, 1, 0, 1, 1, 1]
 );
 
-var fg = exports
-// force a planar rectangle in the daymet CRS
-print(fg.maskConus)
-print('bounds', fg.maskConus.geometry(1, fg.crs, false).bounds(1, fg.crs));
-print('transform', fg.maskConus.projection().transform());
+// mask helpers -------------------------------------
+// All return single-band binary images on the snap grid, 1 = keep.
+
+exports.lcmapThresholdDefault = 0.9;
+
+/**
+ * Binary LCMAP mask: 1 where at least `threshold` of the daymet cell is
+ * non-developed, non-crop, non-water. Reads the fracKeep asset created in
+ * Cover/DataPrep/01_create_lcmap_mask.js.
+ * @param {number} threshold - minimum keep fraction (default 0.9)
+ * @returns {ee.Image} single band 'lcmapKeep'
+ */
+exports.lcmapMaskBinary = function(threshold) {
+  threshold = (threshold === undefined) ?
+    exports.lcmapThresholdDefault : threshold;
+
+  return ee.Image(exports.pathAsset + 'masks/LCMAP_fracKeep' + exports.resLabel)
+    .gte(threshold)
+    .rename('lcmapKeep');
+};
+
+/**
+ * Fire mask for a single year: 1 where less than 10% of the daymet cell
+ * burned in the preceding 20 years. Reads the asset created in
+ * Cover/DataPrep/02_fire_fracUnburned.js.
+ * @param {number} year - between 2000 and 2024
+ * @returns {ee.Image} single band 'fireKeep'
+ */
+exports.fireMaskYear = function(year) {
+  var name = 'MTBS_fracUnburned_gte90_20yr_2000-2024' + exports.resLabel;
+
+  return ee.Image(exports.pathAsset + 'fire/' + name)
+    .select('year_' + year)
+    .rename('fireKeep');
+};
+
+
