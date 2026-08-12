@@ -28,8 +28,6 @@ var inName = 'MTBS_burned' + windowLength + 'yr_' + scaleIn + 'm_' +
 
 var burnedFrac = ee.Image(fg.pathAsset + 'fire/' + inName);
 
-print('input bands', burnedFrac.bandNames());
-
 // process ------------------------------------------
 // 1 = keep (burned fraction below threshold), 0 = drop
 var mask = burnedFrac.lt(burnedThreshold).toByte()
