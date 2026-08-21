@@ -238,3 +238,36 @@ calc_annual_metrics <- function(tmin12, tmax12, prcp12,
                   "durationFrostFreeDays")
   out
 }
+
+
+# Most metrics: mean across years. A few use percentiles, matching training.
+
+mean_fun <- function(r) terra::app(r, fun = mean, na.rm = TRUE)
+q95_fun  <- function(r) terra::app(r, fun = function(x) stats::quantile(x, 0.95, na.rm = TRUE))
+q05_fun  <- function(r) terra::app(r, fun = function(x) stats::quantile(x, 0.05, na.rm = TRUE))
+
+# Map: per-year metric name -> list(output _CLIM name, reduction function).
+climate_reductions <- list(
+  list("tmin_annAvg",            "tmin_meanAnnAvg_CLIM",                  mean_fun),
+  list("tmax_annAvg",            "tmax_meanAnnAvg_CLIM",                  mean_fun),
+  list("tmean",                  "tmean_meanAnnAvg_CLIM",                 mean_fun),
+  list("totalAnnPrecip",         "prcp_meanAnnTotal_CLIM",                mean_fun),
+  list("T_warmestMonth",         "T_warmestMonth_meanAnnAvg_CLIM",        mean_fun),
+  list("T_coldestMonth",         "T_coldestMonth_meanAnnAvg_CLIM",        mean_fun),
+  list("precip_wettestMonth",    "precip_wettestMonth_meanAnnAvg_CLIM",   mean_fun),
+  list("precip_driestMonth",     "precip_driestMonth_meanAnnAvg_CLIM",    mean_fun),
+  list("precip_Seasonality",     "precip_Seasonality_meanAnnAvg_CLIM",    mean_fun),
+  list("PrecipTempCorr",         "PrecipTempCorr_meanAnnAvg_CLIM",        mean_fun),
+  list("aboveFreezing_month",    "aboveFreezing_month_meanAnnAvg_CLIM",   mean_fun),
+  list("isothermality",          "isothermality_meanAnnAvg_CLIM",         mean_fun),
+  list("annWaterDeficit",        "annWaterDeficit_meanAnnAvg_CLIM",       mean_fun),
+  list("annWetDegDays",          "annWetDegDays_meanAnnAvg_CLIM",         mean_fun),
+  list("annVPD_mean",            "annVPD_mean_meanAnnAvg_CLIM",           mean_fun),
+  list("annVPD_max",             "annVPD_max_meanAnnAvg_CLIM",            mean_fun),
+  list("annVPD_min",             "annVPD_min_meanAnnAvg_CLIM",            mean_fun),
+  list("annVPD_max",             "annVPD_max_95percentile_CLIM",          q95_fun),
+  list("annWaterDeficit",        "annWaterDeficit_95percentile_CLIM",     q95_fun),
+  list("annWetDegDays",          "annWetDegDays_5percentile_CLIM",        q05_fun),
+  list("durationFrostFreeDays",  "durationFrostFreeDays_5percentile_CLIM", q05_fun),
+  list("durationFrostFreeDays",  "durationFrostFreeDays_meanAnnAvg_CLIM", mean_fun)
+)

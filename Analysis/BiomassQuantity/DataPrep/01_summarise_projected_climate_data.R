@@ -136,37 +136,12 @@ for (yr in years) {
 
 # Reductions keyed by the per-year metric name. Each entry is a function taking
 # a multi-year SpatRaster (one layer per year) and returning a single layer.
-mean_fun  <- function(r) terra::app(r, fun = mean, na.rm = TRUE)
-q95_fun   <- function(r) terra::app(r, fun = function(x) stats::quantile(x, 0.95, na.rm = TRUE))
-q05_fun   <- function(r) terra::app(r, fun = function(x) stats::quantile(x, 0.05, na.rm = TRUE))
+
 
 # Map: per-year metric name -> list(output _CLIM name, reduction function).
 # Note durationFrostFreeDays and a few others appear in BOTH a mean and a
 # percentile output, matching the training variable set.
-reductions <- list(
-  list("tmin_annAvg",            "tmin_meanAnnAvg_CLIM",                  mean_fun),
-  list("tmax_annAvg",            "tmax_meanAnnAvg_CLIM",                  mean_fun),
-  list("tmean",                  "tmean_meanAnnAvg_CLIM",                 mean_fun),
-  list("totalAnnPrecip",         "prcp_meanAnnTotal_CLIM",                mean_fun),
-  list("T_warmestMonth",         "T_warmestMonth_meanAnnAvg_CLIM",        mean_fun),
-  list("T_coldestMonth",         "T_coldestMonth_meanAnnAvg_CLIM",        mean_fun),
-  list("precip_wettestMonth",    "precip_wettestMonth_meanAnnAvg_CLIM",   mean_fun),
-  list("precip_driestMonth",     "precip_driestMonth_meanAnnAvg_CLIM",    mean_fun),
-  list("precip_Seasonality",     "precip_Seasonality_meanAnnAvg_CLIM",    mean_fun),
-  list("PrecipTempCorr",         "PrecipTempCorr_meanAnnAvg_CLIM",        mean_fun),
-  list("aboveFreezing_month",    "aboveFreezing_month_meanAnnAvg_CLIM",   mean_fun),
-  list("isothermality",          "isothermality_meanAnnAvg_CLIM",         mean_fun),
-  list("annWaterDeficit",        "annWaterDeficit_meanAnnAvg_CLIM",       mean_fun),
-  list("annWetDegDays",          "annWetDegDays_meanAnnAvg_CLIM",         mean_fun),
-  list("annVPD_mean",            "annVPD_mean_meanAnnAvg_CLIM",           mean_fun),
-  list("annVPD_max",             "annVPD_max_meanAnnAvg_CLIM",            mean_fun),
-  list("annVPD_min",             "annVPD_min_meanAnnAvg_CLIM",            mean_fun),
-  list("annVPD_max",             "annVPD_max_95percentile_CLIM",          q95_fun),
-  list("annWaterDeficit",        "annWaterDeficit_95percentile_CLIM",     q95_fun),
-  list("annWetDegDays",          "annWetDegDays_5percentile_CLIM",        q05_fun),
-  list("durationFrostFreeDays",  "durationFrostFreeDays_5percentile_CLIM", q05_fun),
-  list("durationFrostFreeDays",  "durationFrostFreeDays_meanAnnAvg_CLIM", mean_fun)
-)
+
 
 message("Loading intermediate rasters and reducing across years ...")
 year_files <- file.path(intermediate_dir, paste0("annualMetrics_", years, ".tif"))
@@ -178,7 +153,7 @@ stack_metric <- function(metric_name) {
   do.call(c, layers)
 }
 
-clim_layers <- lapply(reductions, function(spec) {
+clim_layers <- lapply(climate_reductions, function(spec) {
   metric_name <- spec[[1]]
   out_name    <- spec[[2]]
   fun         <- spec[[3]]
@@ -192,7 +167,7 @@ clim <- do.call(c, clim_layers)
 
 # * project to daymet grid --------------------------------------------------
 
-clim <- terra::project(clim, daymet_grid)   # bilinear (default for continuous)
+clim <- terra::project(clim, read_mask())   # bilinear (default for continuous)
 
 # 4. Write final per-model raster -----------------------------------------
 

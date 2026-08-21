@@ -454,7 +454,8 @@ read_mask <- function() {
   # Analysis/Cover/00_create_snap_raster.R
   # this is the reference grid/mask to be used downstream
   # cell values are integers (or NA)
-  terra::rast("Data_processed/daymet_conus_snap_1000m.tif")
+  terra::rast(file.path(paths$large, "Data_processed", 'masks', 
+              "daymet_conus_snap_1000m.tif"))
 }
 
 # downloading files -----------------------------------------
