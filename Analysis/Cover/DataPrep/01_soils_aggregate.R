@@ -12,11 +12,12 @@ source_functions()
 out_dir <- file.path(paths$large, "data_processed/soils")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-properties <- c("sandtotal", "claytotal", "fragvol")
+properties <- c("sandtotal", "claytotal", "fragvol", "dbovendry", "soc")
 depths     <- c(0, 5, 15, 30, 60, 100, 150)
 
 base_url <- "https://storage.googleapis.com/solus100pub/"
-
+rerun <- TRUE # recreate tifs even if the already exist
+target <- read_mask()
 
 #' Stream + project a single SOLUS100 layer to Daymet 1 km grid
 #'
@@ -40,7 +41,7 @@ aggregate_solus_layer <- function(property, depth, target, unit_name = 'cm') {
 build_property_stack <- function(property, depths, target, out_dir, ...) {
   out_path <- file.path(out_dir, paste0(property, "_solus100_1000m.tif"))
   
-  if (file.exists(out_path)) {
+  if (file.exists(out_path) & !rerun) {
     message("Skipping (exists): ", basename(out_path))
     return(rast(out_path))
   }
@@ -58,9 +59,9 @@ options(timeout = 3600)
 
 stacks <- purrr::map(
   properties,
-  ~ build_property_stack(.x, depths, daymet_grid, out_dir)
+  ~ build_property_stack(.x, depths, target, out_dir)
 ) |>
   set_names(properties)
 
 # download resdept
-build_property_stack('resdept', 'all', daymet_grid, out_dir, unit_name = '')
+build_property_stack('resdept', 'all', target, out_dir, unit_name = '')

@@ -8,7 +8,7 @@ crs_daymet <-  "PROJCRS[\"unnamed\",\n    BASEGEOGCRS[\"unknown\",\n        DATU
 # same extent as used for exports in GEE
 daymet_grid <- terra::rast(
   xmin = -1950750, xmax = 2428250,
-  ymin = -1785500, ymax = 945500,
+  ymin = -1786500, ymax = 946500,
   resolution = 1000,        # 1 km
   crs = crs_daymet
 )
