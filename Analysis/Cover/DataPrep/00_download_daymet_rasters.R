@@ -22,9 +22,7 @@
 # July 2, 2026
 #///////////////////////////////////////////////////////////////////////////
 
-library(stringr)
-library(purrr)
-library(dplyr)
+source('Functions/init.R')
 if (!requireNamespace("jsonlite", quietly = TRUE)) install.packages("jsonlite")
 
 # --- settings ---------------------------------------------------------------
@@ -41,11 +39,11 @@ concept_annual <- "C2531982907-ORNL_CLOUD"
 short_annual    <- "Daymet_Annual_V4R1" # used only if concept_annual is NA
 
 # Destination directories (must match the processing script's paths)
-monthly_dir <- "./Data_raw/dayMet/rawMonthlyData/orders/70e0da02b9d2d6e8faa8c97d211f3546/Daymet_Monthly_V4R1/data"
-annual_dir  <- "./Data_raw/dayMet/yearly"
+monthly_dir <- file.path(paths$large, "Data_raw/dayMet/rawMonthlyData/orders/70e0da02b9d2d6e8faa8c97d211f3546/Daymet_Monthly_V4R1/data")
+annual_dir  <- file.path(paths$large, "Data_raw/dayMet/yearly")
 
 # Variable tokens the PROCESSING script's regex expects in the saved filenames
-monthly_vars <- c("prcp_monttl", "tmax_monavg", "tmin_monavg")
+monthly_vars <- c("prcp_monttl", "tmax_monavg", "tmin_monavg", "vp_monavg")
 annual_vars  <- c("prcp_annttl", "tmax_annavg", "tmin_annavg")
 
 cmr_base <- "https://cmr.earthdata.nasa.gov/search/granules.json"
@@ -92,20 +90,29 @@ pick_url <- function(urls, var, year) {
 #' @return Logical success.
 download_one <- function(url, dest_dir, var, year) {
   if (is.na(url)) { message("no URL: ", var, " ", year); return(FALSE) }
-  fname <- str_glue("daymet_v4_{var}_na_{year}.tif")  # name the processor expects
+  fname <- str_glue("daymet_v4_{var}_na_{year}.tif")
   dest  <- file.path(dest_dir, fname)
+  part  <- paste0(dest, ".part")
+  
   if (file.exists(dest) && file.info(dest)$size > 0) {
     message("skip (exists): ", fname); return(TRUE)
   }
+  
   ok <- tryCatch({
-    download.file(url, dest, method = "curl", quiet = TRUE,
-                  extra = "-n -L -c ~/.urs_cookies -b ~/.urs_cookies --fail --silent --show-error")
-    file.exists(dest) && file.info(dest)$size > 0
+    download.file(url, part, method = "curl", quiet = TRUE,
+                  extra = paste("-n -L -c ~/.urs_cookies -b ~/.urs_cookies",
+                                "--fail --silent --show-error",
+                                "--retry 10 --retry-delay 5 --retry-all-errors -C -"))
+    isTRUE(file.exists(part) && file.info(part)$size > 0)
   }, error = function(e) {
     message("FAILED: ", fname, " -- ", conditionMessage(e))
-    if (file.exists(dest)) file.remove(dest); FALSE
+    FALSE
   })
-  if (ok) message("ok: ", fname)
+  
+  if (ok) {
+    file.rename(part, dest)
+    message("ok: ", fname)
+  }
   ok
 }
 

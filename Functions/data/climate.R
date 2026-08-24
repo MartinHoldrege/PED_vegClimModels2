@@ -116,8 +116,9 @@ frost_free_days <- function(above_month, last_above_month) {
 # saturation vapor pressure
 svp <- function(x) {
   # constants for SVP calculation
-  #calculate SVP according to Williams et al NatCC 2012 supplementary material -  units haPa
+  #calculate SVP according to Williams et al NatCC 2012 supplementary material -  units Pa (Pascals)
   # https://static-content.springer.com/esm/art%3A10.1038%2Fnclimate1693/MediaObjects/41558_2013_BFnclimate1693_MOESM272_ESM.pdf
+  # this is Horner's method
   a0<-6.107799961
   a1<-0.4436518521
   a2<-0.01428945805
@@ -125,18 +126,9 @@ svp <- function(x) {
   a4<-0.000003031240396
   a5<-0.00000002034080948
   a6<-0.00000000006136820929
-  svp_hapa <- (a0+ x*(a1+ x *(a2+ x *(a3+ x *(a4	+ x *(a5	+ x *a6)))))) # eq S1
-  svp_hapa
+  svp_hpa <- (a0+ x*(a1+ x *(a2+ x *(a3+ x *(a4	+ x *(a5	+ x *a6)))))) # eq S1
+  svp_hpa*100 # convert hPa to Pa
 }
-
-vpd <- function(tmean, tmin) {
-  t_dewpoint <- tmin # approximation
-  svp_mean <- svp(tmean)
-  svp_dew_approx <- svp(t_dewpoint) # approximate actual vapor pressure
-  vpd <- (svp_mean - svp_dew_approx)
-  vpd
-}
-
 
 #' Calculate all per-year annual climate metrics for one year
 #'
@@ -150,17 +142,28 @@ vpd <- function(tmean, tmin) {
 #' @param tmin12 SpatRaster, 12 layers of monthly tmin (Jan..Dec), deg C.
 #' @param tmax12 SpatRaster, 12 layers of monthly tmax (Jan..Dec), deg C.
 #' @param prcp12 SpatRaster, 12 layers of monthly precip (Jan..Dec), mm.
+#' @param vp12 SpatRaster, 12 layers of monthly vapor pressure, Pa (optional)
 #' @param denom Denominator passed to `weighted_annual_mean()` for the
 #'   day-weighted temperature/VPD means. Defaults to the correct `sum(weights)`.
 #' @return A SpatRaster with one layer per annual metric.
 calc_annual_metrics <- function(tmin12, tmax12, prcp12,
+                                vp12 = NULL,
                                 denom = sum(.month_weights)) {
 
   # ---- monthly mean temperature and monthly VPD (12-layer stacks) ----
   tmean12 <- (tmax12 + tmin12) / 2
   # svp() is polynomial arithmetic that works directly on SpatRasters,
   # avoiding the per-pixel R function overhead of app().
-  vpd12 <- svp(tmean12) - svp(tmin12)
+  
+  # if no vapor pressure data (e.g. for testing projections
+  # for maca models where we just have tmin/tmax)
+  if(is.null(vp12)) {
+    vpd12 <- svp(tmax12) - svp(tmin12)
+  } else {
+    # for daymet data
+    vpd12 <- svp(tmax12) - vp12
+  }
+  
 
   # ---- simple monthly reductions ----
   totalAnnPrecip   <- sum(prcp12)

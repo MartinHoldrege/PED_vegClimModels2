@@ -16,13 +16,8 @@
 #     daymet_v4_tmax_monavg_na_<year>.tif  (deg C, monthly mean of daily max)
 #     daymet_v4_tmin_monavg_na_<year>.tif  (deg C, monthly mean of daily min)
 #
-# Assumed environment (initialise the repo before running):
-#   - source("Functions/init.R") providing paths$large
-#   - source_functions() providing calc_annual_metrics() and read_mask()
 #
-# NOTE: the `reductions` table below is duplicated from
-# 01_summarise_projected_climate_data.R. If it changes there it must change
-# here too (or be factored out into Functions/climate.R).
+# started August 2026
 # //////////////////////////////////////////////////////////////////////////
 
 library(terra)
@@ -39,7 +34,10 @@ source_functions() # Functions/data/climate.R contains the key functions used he
 # "_tiffWriteProc: No space left on device".
 terra_tmp <- file.path(paths$large, "terra_tmp")
 dir.create(terra_tmp, recursive = TRUE, showWarnings = FALSE)
-terra::terraOptions(tempdir = terra_tmp)
+# todisk = TRUE forces block-wise processing to disk instead of allocating
+# whole rasters in RAM; this is what prevents the std::bad_alloc failures on
+# the full CONUS 1 km grid. memfrac caps the share of RAM terra will use.
+terra::terraOptions(tempdir = terra_tmp, todisk = TRUE, memfrac = 0.5)
 
 
 # Parameters --------------------------------------------------------------
@@ -49,7 +47,8 @@ year_end   <- 2020        # last year
 years      <- year_start:year_end
 
 # Daymet variable file tag -> our short name.
-daymet_vars <- c(prcp_monttl = "prcp", tmax_monavg = "tmax", tmin_monavg = "tmin")
+daymet_vars <- c(prcp_monttl = "prcp", tmax_monavg = "tmax", 
+                 tmin_monavg = "tmin", vp_monavg = "vp")
 
 daymet_dir <- file.path(paths$large, "Data_raw/daymet/rawMonthlyData")
 
@@ -146,9 +145,14 @@ for (yr in years) {
   metrics <- calc_annual_metrics(
     tmin12 = read_daymet_year("tmin_monavg", yr),
     tmax12 = read_daymet_year("tmax_monavg", yr),
-    prcp12 = read_daymet_year("prcp_monttl", yr)
+    prcp12 = read_daymet_year("prcp_monttl", yr),
+    vp12 = read_daymet_year("vp_monavg", yr)
   )
+  
   terra::writeRaster(metrics, out_file, overwrite = TRUE)
+  # Free per-year rasters so peak RAM does not grow across iterations.
+  rm(metrics)
+  gc()
 }
 
 
