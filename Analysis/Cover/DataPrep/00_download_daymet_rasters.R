@@ -1,7 +1,7 @@
 #///////////////////////////////////////////////////////////////////////////
 # Download Daymet V4R1 monthly + annual climate-summary COGs (CONUS "na")
 # via the Earthdata CMR granule API, for use in
-# GettingDaymetDataForModelPredictions.R
+# 01_summarise_daymet_climate_data.R
 #
 # The V4R1 files live in ORNL's cloud archive, so we query CMR for the real
 # download URLs rather than constructing THREDDS paths (which returned 404s).
@@ -10,10 +10,7 @@
 #   Annual  summaries: concept <SET BELOW>             (dataset 2130)
 #
 # AUTH: requires a free NASA Earthdata login. Your ~/.netrc (machine
-# urs.earthdata.nasa.gov ...) plus ~/.urs_cookies is used by curl. If cloud
-# links need a bearer token instead, the test stage will reveal an auth error
-# and we adjust then.
-#
+# urs.earthdata.nasa.gov ...) plus ~/.urs_cookies is used by curl. 
 # WORKFLOW:
 #   1. Run with `stage <- "inspect"` first. It queries CMR, prints a few real
 #      URLs + filenames, and tries ONE download. Confirm URLs/filenames/auth.

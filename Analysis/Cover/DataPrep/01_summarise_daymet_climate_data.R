@@ -11,10 +11,12 @@
 # and masked to that grid.
 #
 # Inputs: monthly Daymet v4 (R1) North America GeoTIFFs, 12 bands per file
+# these files are downloaded using 00_download_daymet_rasters.R
 #   (Jan..Dec), under paths$large/Data_raw/daymet/rawMonthlyData:
 #     daymet_v4_prcp_monttl_na_<year>.tif  (mm, monthly total)
 #     daymet_v4_tmax_monavg_na_<year>.tif  (deg C, monthly mean of daily max)
 #     daymet_v4_tmin_monavg_na_<year>.tif  (deg C, monthly mean of daily min)
+#     daymet_v4_vp_monavg_na_<year>.tif (vapor pressure, monthly mean of daily mean, Pa)
 #
 #
 # started August 2026
