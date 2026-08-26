@@ -245,32 +245,259 @@ calc_annual_metrics <- function(tmin12, tmax12, prcp12,
 
 # Most metrics: mean across years. A few use percentiles, matching training.
 
-mean_fun <- function(r) terra::app(r, fun = mean, na.rm = TRUE)
-q95_fun  <- function(r) terra::app(r, fun = function(x) stats::quantile(x, 0.95, na.rm = TRUE))
-q05_fun  <- function(r) terra::app(r, fun = function(x) stats::quantile(x, 0.05, na.rm = TRUE))
+# Across-year reductions --------------------------------------------------
+# Two implementations of the same three reductions: one for multi-layer
+# SpatRasters (year = layer), one for numeric vectors (year = element).
 
-# Map: per-year metric name -> list(output _CLIM name, reduction function).
-climate_reductions <- list(
-  list("tmin_annAvg",            "tmin_meanAnnAvg_CLIM",                  mean_fun),
-  list("tmax_annAvg",            "tmax_meanAnnAvg_CLIM",                  mean_fun),
-  list("tmean",                  "tmean_meanAnnAvg_CLIM",                 mean_fun),
-  list("totalAnnPrecip",         "prcp_meanAnnTotal_CLIM",                mean_fun),
-  list("T_warmestMonth",         "T_warmestMonth_meanAnnAvg_CLIM",        mean_fun),
-  list("T_coldestMonth",         "T_coldestMonth_meanAnnAvg_CLIM",        mean_fun),
-  list("precip_wettestMonth",    "precip_wettestMonth_meanAnnAvg_CLIM",   mean_fun),
-  list("precip_driestMonth",     "precip_driestMonth_meanAnnAvg_CLIM",    mean_fun),
-  list("precip_Seasonality",     "precip_Seasonality_meanAnnAvg_CLIM",    mean_fun),
-  list("PrecipTempCorr",         "PrecipTempCorr_meanAnnAvg_CLIM",        mean_fun),
-  list("aboveFreezing_month",    "aboveFreezing_month_meanAnnAvg_CLIM",   mean_fun),
-  list("isothermality",          "isothermality_meanAnnAvg_CLIM",         mean_fun),
-  list("annWaterDeficit",        "annWaterDeficit_meanAnnAvg_CLIM",       mean_fun),
-  list("annWetDegDays",          "annWetDegDays_meanAnnAvg_CLIM",         mean_fun),
-  list("annVPD_mean",            "annVPD_mean_meanAnnAvg_CLIM",           mean_fun),
-  list("annVPD_max",             "annVPD_max_meanAnnAvg_CLIM",            mean_fun),
-  list("annVPD_min",             "annVPD_min_meanAnnAvg_CLIM",            mean_fun),
-  list("annVPD_max",             "annVPD_max_95percentile_CLIM",          q95_fun),
-  list("annWaterDeficit",        "annWaterDeficit_95percentile_CLIM",     q95_fun),
-  list("annWetDegDays",          "annWetDegDays_5percentile_CLIM",        q05_fun),
-  list("durationFrostFreeDays",  "durationFrostFreeDays_5percentile_CLIM", q05_fun),
-  list("durationFrostFreeDays",  "durationFrostFreeDays_meanAnnAvg_CLIM", mean_fun)
+.reduction_raster <- list(
+  mean = function(r) terra::app(r, fun = mean, na.rm = TRUE),
+  q95  = function(r) terra::app(r, fun = function(x) stats::quantile(x, 0.95, na.rm = TRUE)),
+  q05  = function(r) terra::app(r, fun = function(x) stats::quantile(x, 0.05, na.rm = TRUE))
 )
+
+
+.reduction_vector <- list(
+  mean = function(x) mean(x, na.rm = TRUE),
+  q95  = function(x) unname(stats::quantile(x, 0.95, na.rm = TRUE)),
+  q05  = function(x) unname(stats::quantile(x, 0.05, na.rm = TRUE))
+)
+
+
+# Map: per-year metric name -> list(output _CLIM name, reduction name,
+# anomaly type). Anomaly type controls how the trailing-window anomaly is
+# expressed: "abs" for quantities on an interpretable absolute scale
+# (temperatures, VPD, correlations, day counts), "pct" for quantities where a
+# proportional change is more meaningful (precipitation, deficits).
+climate_reductions <- list(
+  list("tmin_annAvg",            "tmin_meanAnnAvg_CLIM",                   "mean", "abs"),
+  list("tmax_annAvg",            "tmax_meanAnnAvg_CLIM",                   "mean", "abs"),
+  list("tmean",                  "tmean_meanAnnAvg_CLIM",                  "mean", "abs"),
+  list("totalAnnPrecip",         "prcp_meanAnnTotal_CLIM",                 "mean", "pct"),
+  list("T_warmestMonth",         "T_warmestMonth_meanAnnAvg_CLIM",         "mean", "abs"),
+  list("T_coldestMonth",         "T_coldestMonth_meanAnnAvg_CLIM",         "mean", "abs"),
+  list("precip_wettestMonth",    "precip_wettestMonth_meanAnnAvg_CLIM",    "mean", "pct"),
+  list("precip_driestMonth",     "precip_driestMonth_meanAnnAvg_CLIM",     "mean", "pct"),
+  list("precip_Seasonality",     "precip_Seasonality_meanAnnAvg_CLIM",     "mean", "pct"),
+  list("PrecipTempCorr",         "PrecipTempCorr_meanAnnAvg_CLIM",         "mean", "abs"),
+  list("aboveFreezing_month",    "aboveFreezing_month_meanAnnAvg_CLIM",    "mean", "abs"),
+  list("isothermality",          "isothermality_meanAnnAvg_CLIM",          "mean", "abs"),
+  list("annWaterDeficit",        "annWaterDeficit_meanAnnAvg_CLIM",        "mean", "pct"),
+  list("annWetDegDays",          "annWetDegDays_meanAnnAvg_CLIM",          "mean", "pct"),
+  list("annVPD_mean",            "annVPD_mean_meanAnnAvg_CLIM",            "mean", "abs"),
+  list("annVPD_max",             "annVPD_max_meanAnnAvg_CLIM",             "mean", "abs"),
+  list("annVPD_min",             "annVPD_min_meanAnnAvg_CLIM",             "mean", "abs"),
+  list("annVPD_max",             "annVPD_max_95percentile_CLIM",           "q95",  "abs"),
+  list("annWaterDeficit",        "annWaterDeficit_95percentile_CLIM",      "q95",  "pct"),
+  list("annWetDegDays",          "annWetDegDays_5percentile_CLIM",         "q05",  "pct"),
+  list("durationFrostFreeDays",  "durationFrostFreeDays_5percentile_CLIM", "q05",  "abs"),
+  list("durationFrostFreeDays",  "durationFrostFreeDays_meanAnnAvg_CLIM",  "mean", "abs")
+)
+
+#' Anomaly of a trailing window relative to the long-term normal
+#'
+#' The anomaly is recent minus normal, so a recent period that is warmer or
+#' wetter than normal gives a positive anomaly. Note this is the opposite sign
+#' to some older code
+#'
+#' Percent anomalies are undefined when the normal is zero. Where both the
+#' normal and the recent window are zero (e.g. driest-month precipitation in
+#' the desert Southwest) the anomaly is set to 0: the recent period is not
+#' different from normal. Where the normal is zero but the recent window is
+#' not, the anomaly is left NA rather than being forced to a finite value.
+#'
+#' @param dat Data frame containing the `_CLIM` and short-window columns.
+#' @param short_suffix Suffix of the short-window columns (e.g. "_3yr").
+#' @return Data frame of anomaly columns, named `<metric><short_suffix>Anom`.
+calc_anomalies <- function(dat, short_suffix = "_3yr") {
+  clim_names  <- purrr::map_chr(climate_reductions, 2)
+  anom_types  <- purrr::map_chr(climate_reductions, 4)
+  short_names <- stringr::str_replace(clim_names, "_CLIM$", short_suffix)
+  anom_names  <- stringr::str_replace(clim_names, "_CLIM$",
+                                      paste0(short_suffix, "Anom"))
+  
+  missing <- setdiff(c(clim_names, short_names), names(dat))
+  if (length(missing) > 0) {
+    stop("Missing columns: ", paste(missing, collapse = ", "))
+  }
+  
+  out <- purrr::pmap(list(clim_names, short_names, anom_types),
+                     function(cl, sh, type) {
+                       normal <- dat[[cl]]
+                       recent <- dat[[sh]]
+                       if (type == "abs") return(recent - normal)
+                       dplyr::case_when(
+                         normal == 0 & recent == 0 ~ 0,
+                         normal == 0               ~ NA_real_,
+                         TRUE                      ~ (recent - normal) / normal
+                       )
+                     })
+  purrr::set_names(as.data.frame(out), anom_names)
+}
+
+
+# Row-wise helpers --------------------------------------------------------
+# Vectorised equivalents of the scalar helpers, for n x 12 matrices. Kept
+# separate (rather than mapping the scalar versions over rows) because these run over
+# millions of rows; each is mathematically identical to its scalar counterpart.
+
+#' Row-wise maximum / minimum of a matrix
+#' @param m Numeric matrix.
+#' @return Numeric vector of length nrow(m).
+.row_max <- function(m) purrr::reduce(as.data.frame(m), pmax)
+.row_min <- function(m) purrr::reduce(as.data.frame(m), pmin)
+
+#' Row-wise sample standard deviation
+#' @param m Numeric matrix.
+#' @return Numeric vector of length nrow(m).
+.row_sd <- function(m) {
+  centred <- m - rowMeans(m)
+  sqrt(rowSums(centred^2) / (ncol(m) - 1))
+}
+
+#' Row-wise Pearson correlation between two matrices
+#'
+#' Correlates row i of `x` against row i of `y`, using stats::cor() on each
+#' pair of rows. Returns NA where either row has zero variance (cor() warns in
+#' that case; the warning is suppressed because the NA is expected and is
+#' substituted by the caller).
+#'
+#' @param x,y Numeric matrices of identical dimension.
+#' @return Numeric vector of length nrow(x).
+.row_cor <- function(x, y) {
+  stopifnot(identical(dim(x), dim(y)))
+  suppressWarnings(
+    purrr::map2_dbl(asplit(x, 1), asplit(y, 1),
+                    function(xi, yi) stats::cor(x = xi, y = yi))
+  )
+}
+
+
+#' Calculate all per-year annual climate metrics for point data
+#'
+#' Data-frame analogue of `calc_annual_metrics()`. Takes 12-column matrices of
+#' monthly values (Jan..Dec, one row per site-year) and returns a data frame of
+#' the same annual metrics, with the same NA substitutions.
+#'
+#' @param tmin12,tmax12,prcp12 Numeric matrices, n x 12: monthly tmin (deg C),
+#'   tmax (deg C) and precipitation total (mm).
+#' @param vp12 Numeric matrix, n x 12, of monthly vapour pressure (Pa), or NULL
+#'   to approximate the dew point with tmin (matching the MACA branch).
+#' @param denom Denominator for the day-weighted annual means.
+#' @return Data frame with one row per input row and one column per metric,
+#'   using the same column names as `calc_annual_metrics()`.
+calc_annual_metrics_df <- function(tmin12, tmax12, prcp12, vp12 = NULL,
+                                   denom = sum(.month_weights)) {
+  stopifnot(is.matrix(tmin12), ncol(tmin12) == 12,
+            identical(dim(tmin12), dim(tmax12)),
+            identical(dim(tmin12), dim(prcp12)))
+  if (!is.null(vp12)) stopifnot(identical(dim(tmin12), dim(vp12)))
+  
+  tmean12 <- (tmax12 + tmin12) / 2
+  vpd12 <- if (is.null(vp12)) svp(tmax12) - svp(tmin12) else svp(tmax12) - vp12
+  
+  # Day-weighted annual mean: matrix multiply by the month weights.
+  wmean <- function(m) as.vector(m %*% .month_weights) / denom
+  
+  tmin_annAvg <- wmean(tmin12)
+  r_not_na    <- !is.na(tmin_annAvg)
+  
+  # Precip seasonality (CV), NA -> 2.
+  precip_Seasonality <- .row_sd(prcp12) / rowMeans(prcp12)
+  precip_Seasonality[is.na(precip_Seasonality) & r_not_na] <- 2
+  
+  # Precip-tmax correlation, NA -> -0.25.
+  PrecipTempCorr <- .row_cor(prcp12, tmax12)
+  PrecipTempCorr[is.na(PrecipTempCorr) & r_not_na] <- -0.25
+  
+  # Thaw timing. max.col() gives the first/last TRUE; rows with no month above
+  # freezing get NA.
+  above    <- tmin12 > 0
+  has_any  <- rowSums(above) > 0
+  first_ab <- max.col(above, ties.method = "first")
+  last_ab  <- 13 - max.col(above[, 12:1, drop = FALSE], ties.method = "first")
+  first_ab[!has_any] <- NA_integer_
+  last_ab[!has_any]  <- NA_integer_
+  
+  # Frost-free duration, NA -> 0. aboveFreezing_month NA -> 8, applied after.
+  durationFrostFreeDays <- .last_doy[last_ab] - .first_doy[first_ab]
+  durationFrostFreeDays[is.na(durationFrostFreeDays) & r_not_na] <- 0
+  aboveFreezing_month <- first_ab
+  aboveFreezing_month[is.na(aboveFreezing_month) & r_not_na] <- 8
+  
+  # Monthly water deficit and wet degree days; sum positive months only.
+  awd12  <- tmean12 * 2 - prcp12
+  awdd12 <- ifelse(tmean12 * 2 < prcp12, tmean12 * 30, 0)
+  
+  data.frame(
+    totalAnnPrecip        = rowSums(prcp12),
+    T_warmestMonth        = .row_max(tmax12),
+    T_coldestMonth        = .row_min(tmin12),
+    tmin_annAvg           = tmin_annAvg,
+    tmax_annAvg           = wmean(tmax12),
+    tmean                 = wmean(tmean12),
+    precip_wettestMonth   = .row_max(prcp12),
+    precip_driestMonth    = .row_min(prcp12),
+    precip_Seasonality    = precip_Seasonality,
+    PrecipTempCorr        = PrecipTempCorr,
+    aboveFreezing_month   = aboveFreezing_month,
+    isothermality         = rowMeans(tmax12 - tmin12) /
+      (.row_max(tmax12) - .row_min(tmin12)) * 100,
+    annWaterDeficit       = rowSums(pmax(awd12, 0)),
+    annWetDegDays         = rowSums(pmax(awdd12, 0)),
+    annVPD_mean           = wmean(vpd12),
+    annVPD_max            = .row_max(vpd12),
+    annVPD_min            = .row_min(vpd12),
+    durationFrostFreeDays = durationFrostFreeDays
+  )
+}
+
+
+#' Reduce per-year point metrics over a trailing window
+#'
+#' For each requested site-year, applies the `climate_reductions` across the
+#' `n_years` years *preceding* that year (the observation year itself is
+#' excluded). Windows are truncated where the record does not extend far enough
+#' back; `min_years` sets how short a window is still acceptable.
+#'
+#' @param annual Data frame of per-year metrics, with columns `cell`, `year`,
+#'   and one column per metric named in `climate_reductions`.
+#' @param targets Data frame of the site-years to summarise, with columns
+#'   `cell` and `year`.
+#' @param n_years Length of the trailing window (e.g. 30 or 3).
+#' @param out_suffix Suffix for the output columns, replacing the `_CLIM` in
+#'   `climate_reductions` (e.g. "_CLIM" or "_3yr").
+#' @param min_years Minimum number of years required; site-years with fewer
+#'   available get NA. Defaults to `n_years` (no truncation allowed).
+#' @return Data frame with `cell`, `year`, `n_years_used`, and one column per
+#'   reduction.
+roll_point_normals <- function(annual, targets, n_years, out_suffix,
+                               min_years = n_years) {
+  metrics   <- purrr::map_chr(climate_reductions, 1)
+  out_names <- purrr::map_chr(climate_reductions, 2)
+  out_names <- stringr::str_replace(out_names, "_CLIM$", out_suffix)
+  red_names <- purrr::map_chr(climate_reductions, 3)
+  
+  target_years <- sort(unique(targets$year))
+  
+  purrr::map_dfr(target_years, function(yr) {
+    cells_yr <- targets$cell[targets$year == yr]
+    window   <- annual[annual$year >= yr - n_years & annual$year <= yr - 1 &
+                         annual$cell %in% cells_yr, , drop = FALSE]
+    if (nrow(window) == 0) return(NULL)
+    
+    split_by_cell <- split(window, window$cell)
+    
+    purrr::map_dfr(split_by_cell, function(d) {
+      vals <- purrr::map2(metrics, red_names, function(m, red) {
+        .reduction_vector[[red]](d[[m]])
+      })
+      out <- purrr::set_names(as.data.frame(vals), out_names)
+      out$cell <- d$cell[1]
+      out$year <- yr
+      out$n_years_used <- nrow(d)
+      out
+    })
+  }) |>
+    dplyr::mutate(dplyr::across(dplyr::all_of(out_names),
+                                ~ ifelse(n_years_used >= min_years, .x, NA_real_)))
+}

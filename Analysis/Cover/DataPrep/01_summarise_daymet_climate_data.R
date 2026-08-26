@@ -152,9 +152,11 @@ for (yr in years) {
   )
   
   terra::writeRaster(metrics, out_file, overwrite = TRUE)
-  # Free per-year rasters so peak RAM does not grow across iterations.
+  # Free per-year rasters and delete this year's terra scratch tiles so disk
+  # use stays bounded to one year instead of accumulating across the loop.
   rm(metrics)
   gc()
+  terra::tmpFiles(current = TRUE, orphan = TRUE, remove = TRUE)
 }
 
 
@@ -175,7 +177,7 @@ stack_metric <- function(metric_name) {
 clim_layers <- lapply(climate_reductions, function(spec) {
   metric_name <- spec[[1]]
   out_name    <- spec[[2]]
-  fun         <- spec[[3]]
+  fun  <- .reduction_raster[[spec[[3]]]]
   r <- fun(stack_metric(metric_name))
   names(r) <- out_name
   r

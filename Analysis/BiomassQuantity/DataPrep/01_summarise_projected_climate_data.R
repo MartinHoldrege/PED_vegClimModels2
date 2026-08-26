@@ -156,7 +156,7 @@ stack_metric <- function(metric_name) {
 clim_layers <- lapply(climate_reductions, function(spec) {
   metric_name <- spec[[1]]
   out_name    <- spec[[2]]
-  fun         <- spec[[3]]
+  fun         <- .reduction_raster[[spec[[3]]]]
   r <- fun(stack_metric(metric_name))
   names(r) <- out_name
   r
