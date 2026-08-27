@@ -89,14 +89,14 @@ read_climate_raster <- function(
     path = NULL,
     path_soil = file.path(paths$large, 
               "./Data_processed/soils/", 
-              "awc_SOLUS100_1000m.tif")
+              "soil_covariates_solus100_1000m.tif")
     ) {
   scenario <- match.arg(scenario)
   
   if (is.null(path)) {
     path <- if (scenario == "current") {
-      file.path(paths$large, "Data_processed/BiomassQuantityData", 
-                "DayMetData_allCONUS_2023ClimateValues_raster.tif")
+      file.path(paths$large, "Data_processed/WallToWallClimateData", 
+                "DaymetClimateData_1991-2020_CLIM.tif")
     } else {
       file.path(paths$large, "Data_processed/WallToWallClimateData",
                 paste0("ForecastedClimateData_", scenario, "_rcp85_CLIM.tif"))

@@ -17,7 +17,7 @@ source_functions()
 # test_run = TRUE produces the same figure from a ~10 x 10 cell version of the
 # raster, at low dpi, written to a separate file. For checking layout,
 # labels and panel order without the full-resolution render.
-test_run <- TRUE
+test_run <- FALSE
 
 path_soil <- file.path(paths$large, "Data_processed/soils",
                        "soil_covariates_solus100_1000m.tif")
@@ -29,7 +29,7 @@ trunc_probs <- c(0.01, 0.99)   # color-limit truncation (squished by colorscale)
 n_col       <- 3
 fig_width   <- 16
 fig_height  <- 9
-dpi         <- if (test_run) 100 else 600
+dpi         <- if (test_run) 100 else 900
 # 4381 x 2733 cells total; 5e6 is near-native for a 5-inch panel at 600 dpi
 maxcell     <- if (test_run) 1e3 else 5e6
 

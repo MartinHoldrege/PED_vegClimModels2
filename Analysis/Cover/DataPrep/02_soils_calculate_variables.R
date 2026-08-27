@@ -20,6 +20,11 @@ soil_stack <- c(
   rast(file.path(soil_dir, paste0(properties, "_solus100_1000m.tif"))),
   rast(file.path(soil_dir, "resdept_solus100_1000m.tif"))
 )
+
+soc_bands <- str_subset(names(soil_stack), '^soc_')
+# dividing by scaling factor to convert to %
+soil_stack[[soc_bands]] <- soil_stack[[soc_bands]]/1000 
+
 # layer depths ------------
 
 solus_depths <- names(soil_stack) |> 
