@@ -35,8 +35,8 @@ source_functions()         # sources climate_functions.R
 # Parameters --------------------------------------------------------------
 
 # Which climate model to process: "BNU-ESM" or "IPSL-CM5A-MR".
-climate_model <- "BNU-ESM" # "IPSL-CM5A-MR" # 
-
+climate_model <- "IPSL-CM5A-MR" # "BNU-ESM" # 
+rerun <- FALSE
 rcp        <- "rcp85"
 year_start <- 2068        # first year of the climate-normal window
 year_end   <- 2099        # last year (full available span: 32 years)
@@ -113,7 +113,7 @@ stopifnot(all(years %in% layer_years))
 
 for (yr in years) {
   out_file <- file.path(intermediate_dir, paste0("annualMetrics_", yr, ".tif"))
-  if (file.exists(out_file)) {
+  if (file.exists(out_file) & !rerun) {
     message("  year ", yr, " already done, skipping")
     next
   }

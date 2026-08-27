@@ -221,7 +221,7 @@ calc_annual_metrics <- function(tmin12, tmax12, prcp12,
   annWaterDeficit <- terra::app(awd12, fun = function(x) sum(x[x > 0]))
 
   # wet degree days: months where tmean*2 < prcp contribute tmean*30, else 0.
-  awdd12 <- terra::ifel(tmean12 * 2 < prcp12, tmean12 * 30, 0)
+  awdd12 <- terra::ifel(tmean12 * 2 < prcp12, tmean12 * .month_weights, 0)
   annWetDegDays <- terra::app(awdd12, fun = function(x) sum(x[x > 0]))
 
   out <- c(totalAnnPrecip, T_warmestMonth, T_coldestMonth,
@@ -414,7 +414,7 @@ calc_annual_metrics_df <- function(tmin12, tmax12, prcp12, vp12 = NULL,
   above    <- tmin12 > 0
   has_any  <- rowSums(above) > 0
   first_ab <- max.col(above, ties.method = "first")
-  last_ab  <- 13 - max.col(above[, 12:1, drop = FALSE], ties.method = "first")
+  last_ab  <- max.col(above, ties.method = "last")
   first_ab[!has_any] <- NA_integer_
   last_ab[!has_any]  <- NA_integer_
   
@@ -426,7 +426,8 @@ calc_annual_metrics_df <- function(tmin12, tmax12, prcp12, vp12 = NULL,
   
   # Monthly water deficit and wet degree days; sum positive months only.
   awd12  <- tmean12 * 2 - prcp12
-  awdd12 <- ifelse(tmean12 * 2 < prcp12, tmean12 * 30, 0)
+  month_days <- matrix(.month_weights, nrow = nrow(tmean12), ncol = 12, byrow = TRUE)
+  awdd12 <- ifelse(tmean12 * 2 < prcp12, tmean12 * month_days, 0)
   
   data.frame(
     totalAnnPrecip        = rowSums(prcp12),
@@ -489,7 +490,8 @@ roll_point_normals <- function(annual, targets, n_years, out_suffix,
     
     purrr::map_dfr(split_by_cell, function(d) {
       vals <- purrr::map2(metrics, red_names, function(m, red) {
-        .reduction_vector[[red]](d[[m]])
+        f <- .reduction_vector[[red]]
+        f(d[[m]])
       })
       out <- purrr::set_names(as.data.frame(vals), out_names)
       out$cell <- d$cell[1]
