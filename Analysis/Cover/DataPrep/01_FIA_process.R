@@ -5,7 +5,6 @@
 #
 # Outputs :
 #   vegetationComposition_fiaX.csv - plot-avg aerial cover by functional group
-#   groundCover_fiaXcsv           - bare ground (averaged across FIA's 2 sources)
 #   TREEtable_fiaX.csv             - plot-avg basal area by taxonomic group + props
 #
 # Analysis decisions (preserved from the original):
@@ -23,7 +22,7 @@ source('Functions/init.R')
 library(FIESTA)
 
 # for taxonlookup (used below)
-#install.packages("devtools")
+#install.packages('pak')
 # pak::pak("ropenscilabs/datastorr")
 # pak::pak("wcornwell/taxonlookup")
 
@@ -53,7 +52,7 @@ state_codes <- FIESTA::ref_statecd |>
   select(-c(RS, RSCD, REGION, REGION_SPGRPCD))
 
 # --- PLOT: location + inventory year ----------------------------------------
-plot_tbl <- read_csv(file.path(raw_dir, "ENTIRE_PLOT.csv")) |>  # plot table
+plot_tbl <- read_csv(file.path(raw_dir, "ENTIRE_PLOT.csv"), guess_max = Inf) |>  # plot table
   filter(!is.na(LAT), !is.na(LON))
 
 # --- COND: filter to usable conditions, attach location ---------------------
@@ -108,38 +107,17 @@ write_csv(veg_composition,
 
 # --- Ground cover: bare ground, averaged across FIA's two sources -----------
 # FIA measures bare ground two ways, in largely non-overlapping regions:
-#   PCTBARE_RMRS  - COND attribute, RMRS interior West (already on cond_loc)
+#   PCTBARE_RMRS  - COND attribute, RMRS interior West (already on cond_loc)--
+# from methods description, sounds like can be bare ground below the canopy
+# so not planning to use
 #   GRND_CVR BARE - ground-cover transect, Pacific states (OR/CA/WA)
-# missing_flag -> NA in both, then average per plot (na.rm = TRUE coalesces
-# where only one source exists, means where both do).
-
-# STOP--this is conceptually wrong (fix)
-
+# GRND_CVR--this is only things touching the ground (so could be under
+# a canopy), therefore not using that variable. 
 # in this dataset 'Ground cover items must be in contact with the ground'
-bare_transect <- read_csv(file.path(raw_dir, "ENTIRE_GRND_CVR.csv")) |>
-  pivot_wider(names_from = GRND_CVR_TYP, values_from = CVR_PCT) |>
-  group_by(PLT_CN, INVYR, STATECD, UNITCD, COUNTYCD, PLOT) |>
-  summarise(BareGround_transect = mean(BARE, na.rm = TRUE), .groups = "drop") |>
-  mutate(BareGround_transect = na_if(BareGround_transect, NaN),
-         BareGround_transect = na_if(BareGround_transect, missing_flag))
 
-ground_cover <- cond_loc |>
-  mutate(PCTBARE_RMRS = na_if(PCTBARE_RMRS, missing_flag)) |>
-  left_join(bare_transect,
-            by = c("PLT_CN","INVYR","STATECD","UNITCD","COUNTYCD","PLOT")) |>
-  mutate(BareGroundCover = rowMeans(cbind(PCTBARE_RMRS, BareGround_transect),
-                                    na.rm = TRUE),
-         BareGroundCover = na_if(BareGroundCover, NaN)) |>
-  select(PLT_CN, INVYR, STATECD, UNITCD, COUNTYCD, PLOT, CONDID,
-         SLOPE, ASPECT, STATENAME, LAT, LON, BareGroundCover) 
-
-stopifnot(all(!is.na(ground_cover$LAT)))
-
-write_csv(ground_cover,
-          file.path(out_dir, paste0("groundCover", suffix, ".csv")))
 
 # --- Species -> taxonomic group lookup --------------------------------------
-species_groups <- FIESTA::ref_species |>
+species_groups0 <- FIESTA::ref_species |>
   left_join(
     {
       tax <- taxonlookup::lookup_table(
@@ -148,13 +126,15 @@ species_groups <- FIESTA::ref_species |>
       tax
     },
     by = "SCIENTIFIC_NAME"
-  ) |>
+  ) 
+
+species_groups <- species_groups0 |>
   # manual group assignments for species taxonlookup missed (kept from original)
   mutate(group = case_when(
     GENUS %in% c("Reynoldsia","Feijoa","Exorrhiza","Gulubia","Trukia",
                  "Neolaugeria","Nesoluma","Hyeronima","Guamia","Carmona",
                  "Munroidendron")                            ~ "Angiosperms",
-    GENUS %in% c("Acoelorraphe","Family Arecaceae","Howeia") ~ "Pteridophytes",
+    GENUS %in% c("Acoelorraphe","Family Arecaceae","Howeia") ~ "Angiosperms",
     GENUS == "Cupressocyparis"                               ~ "Gymnosperms",
     SCIENTIFIC_NAME == "Tree broadleaf"                      ~ "Angiosperms",
     SCIENTIFIC_NAME == "Tree evergreen"                      ~ "Gymnosperms",
@@ -162,24 +142,67 @@ species_groups <- FIESTA::ref_species |>
   ))
 
 # --- TREE: basal area by taxonomic group ------------------------------------
-# Pull the TREE table in non-overlapping 5-state chunks (original hardcoded
-# ranges that overlapped -> some states double-counted).
-state_ids  <- unique(cond$STATECD)
-state_chunks <- split(state_ids, ceiling(seq_along(state_ids) / 5))
 
-tree_basal_area <- map_dfr(state_chunks,
-                           ~ FIESTA::DBgetCSV("TREE", states = .x)) |>
-  left_join(species_groups[, c("SPCD","SCIENTIFIC_NAME","family","group")],
+# * download: one CSV per state, cached -------------------------------
+tree_dir <- file.path(paths$large, "data_raw/FIA/tmp_tree_csv")
+dir.create(tree_dir, showWarnings = FALSE, recursive = TRUE)
+
+# adjust to what you actually need downstream
+tree_cols <- c("CN", "PLT_CN", "STATECD", "UNITCD", "COUNTYCD", "PLOT",
+               "INVYR", "SUBP", "TREE", "CONDID", "STATUSCD", "SPCD",
+               "DIA", "TPA_UNADJ")
+
+#' Path to the cached TREE csv for one state
+#' @param statecd FIA state code (numeric).
+tree_csv_path <- function(statecd) {
+  file.path(tree_dir, sprintf("tmp_tree_state-%02d.csv", statecd))
+}
+
+#' Download and cache live-tree records for one state
+#'
+#' Skips the download if the file already exists. Writes to a `.partial`
+#' file first so an interrupted run doesn't leave a truncated csv.
+#' @param statecd FIA state code (numeric).
+download_tree_state <- function(statecd) {
+  out <- tree_csv_path(statecd)
+  if (file.exists(out)) return(invisible(out))
+  
+  tmp <- paste0(out, ".partial")
+  FIESTA::DBgetCSV("TREE", states = statecd) |>
+    filter(STATUSCD == 1) |> # live trees only
+    select(any_of(tree_cols)) |>
+    write_csv(tmp)
+  file.rename(tmp, out)
+  
+  invisible(out)
+}
+
+state_ids <- sort(unique(cond$STATECD))
+walk(state_ids, download_tree_state)
+
+# * read back in and combine -----------------------------------------
+
+tree_col_types <- cols(
+  .default    = col_double(),
+  CN          = col_character(),
+  PLT_CN      = col_character()
+)
+
+tree_basal_area <- list.files(tree_dir, pattern = "^tmp_tree_state-\\d+\\.csv$",
+                              full.names = TRUE) |>
+  map_dfr(read_csv, col_types = tree_col_types, guess_max = Inf) |>
+  left_join(species_groups[, c("SPCD", "SCIENTIFIC_NAME", "family", "group")],
             by = "SPCD") |>
-  # generic broadleaf / evergreen / unknown rows get a group directly
-  mutate(group = case_when(
-    SCIENTIFIC_NAME == "Tree broadleaf" ~ "Angiosperms",
-    SCIENTIFIC_NAME == "Tree evergreen" ~ "Gymnosperms",
-    SCIENTIFIC_NAME == "Tree unknown"   ~ "Unknown",
-    TRUE ~ group
-  )) |>
-  filter(STATUSCD == 1) |>                    # live trees only, before aggregation
-  mutate(basalArea_in2 = pi * (DIA / 2)^2)     # basal area per tree (sq in)
+  mutate(
+    group = case_when(
+      SCIENTIFIC_NAME == "Tree broadleaf" ~ "Angiosperms",
+      SCIENTIFIC_NAME == "Tree evergreen" ~ "Gymnosperms",
+      SCIENTIFIC_NAME == "Tree unknown"   ~ "Unknown",
+      TRUE ~ group
+    ),
+    basalArea_in2 = pi * (DIA / 2)^2# basal area per tree (sq in)
+  )
+
 
 tree_keys <- c("PLT_CN","INVYR","STATECD","UNITCD","COUNTYCD","PLOT","CONDID","group")
 
