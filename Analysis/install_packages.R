@@ -15,7 +15,9 @@ exclude_dirs <- c(".git", "renv", "packrat", "node_modules", ".Rproj.user")
 
 # Packages that aren't on CRAN; name = package, value = "user/repo".
 github_pkgs <- c(
-  rSOILWAT2 = "DrylandEcology/rSOILWAT2"
+  rSOILWAT2 = "DrylandEcology/rSOILWAT2",
+  plantR = "LimaRAF/plantR", # for usda plant codes etc
+  terradactyl = "Landscape-Data-Commons/terradactyl" # AIM generic species/growth-habit codes
 )
 
 ## Functions ------------------------------------------------------------------
@@ -88,10 +90,10 @@ install_one <- function(pkg, github = github_pkgs) {
   
   status <- tryCatch({
     if (pkg %in% names(github)) {
-      if (!requireNamespace("remotes", quietly = TRUE)) {
-        install.packages("remotes", repos = repos)
+      if (!requireNamespace("pak", quietly = TRUE)) {
+        install.packages("pak", repos = repos)
       }
-      remotes::install_github(github[[pkg]], upgrade = "never")
+      pak::pak(github[[pkg]])
     } else {
       install.packages(pkg, repos = repos)
     }
