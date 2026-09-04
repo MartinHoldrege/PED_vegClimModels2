@@ -5,7 +5,6 @@
 # kill and restart at any point. Expect ~10 hours for a full cold run
 # (~106k plots, ~35M LPI rows).
 
-library(tidyverse)
 source("Functions/init.R")
 
 # ---- settings -----------------------------------------------------------
