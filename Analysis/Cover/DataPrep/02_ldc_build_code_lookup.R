@@ -283,7 +283,7 @@ layer_order <- c("TopCanopy", paste0("Lower", 1:10), "SoilSurface")
 
 hdr_key <- hdr_all |> as_tibble() |> distinct(PrimaryKey, SpeciesKey)
 
-if (!rerun_code_tally && file.exists(code_tally_cache)) {
+if(!rerun_code_tally && file.exists(code_tally_cache)) {
   message("code_tally: reading cached ", code_tally_cache)
   code_tally <- readRDS(code_tally_cache)
 } else {
@@ -359,7 +359,7 @@ manual_codes <- tibble::tribble(
   "GR",                              "bare_ground", "gravel",
   "CB",                              "bare_ground", "cobble",
   "ST",                              "bare_ground", "stone",
-  "BR",                              "bare_ground", "bedrock",
+  "BR",                              "rock", "bedrock",
   "RF",                              "bare_ground", "rock fragments",
   "WA",                              "water",       "water",
   "L",                               "litter",      NA_character_,
@@ -425,6 +425,16 @@ sp_names <- sp_attr |>
   distinct(SpeciesKey, code = Species, ScientificName) |>
   slice_head(n = 1, by = c(SpeciesKey, code))
 
+# Global per-code fallback, as for growth habit: many species lists record a
+# code without a name while another list names the same code (BRTE, BOER4,
+# ARPU9 ...). Without this those codes reach the pathway and leaf-type steps
+# unnamed and are silently dropped. Most common name per code wins.
+global_names <- sp_attr |>
+  filter(!is.na(ScientificName)) |>
+  count(code = Species, ScientificName, name = "n_lists") |>
+  slice_max(n_lists, n = 1, with_ties = FALSE, by = code) |>
+  select(code, ScientificName_global = ScientificName)
+
 
 # ---- attach a class to every observed (SpeciesKey, code) -----------------
 # Precedence (first non-missing wins): species-list habit, global per-code
@@ -443,7 +453,14 @@ code_joined <- code_tally |>
          class  = coalesce(class, class_global, class_manual, class_generic)) |>
   select(-class_global, -class_manual, -class_generic) |>
   left_join(sp_names, by = c("SpeciesKey", "code")) |> 
-  replace_with_na()
+  left_join(global_names, by = "code") |>
+  replace_with_na() |> 
+  mutate(name_source = case_when(!is.na(ScientificName)        ~ "list",
+                                 !is.na(ScientificName_global) ~ "global",
+                                 .default                      = "none"),
+         ScientificName = coalesce(ScientificName, ScientificName_global)) |>
+  select(-ScientificName_global)
+
 
 code_joined |>
   summarise(n_first = sum(n_first, na.rm = TRUE), .by = source) |>
