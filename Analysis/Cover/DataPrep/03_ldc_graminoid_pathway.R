@@ -48,6 +48,8 @@ stopifnot(nrow(osborne) == 708, !any(duplicated(osborne$genus)))
 
 table(osborne$pathway)
 
+osborne$pathway[osborne$genus == 'Aristida'] <- 'C4' #in north america common sp are all c4
+  
 # ---- non-Poaceae graminoids ----------------------------------------------
 # Osborne covers Poaceae only. Cyperaceae pathways from Bruhl & Wilson (2007)
 # Aliso 23:99-148, Table 1. Listed below is every C4 and C3/C4 genus in that
@@ -145,7 +147,7 @@ if(FALSE) {
 }
 
 # ---- graminoid codes in the data -----------------------------------------
-graminoids <- code_class |>
+graminoids_raw <- code_class |>
   filter(class == "graminoid") |>
   mutate(
     # leading alphabetic run only: drops authorities and punctuation
@@ -159,6 +161,22 @@ graminoids <- code_class |>
   summarise(n_hits  = sum(n_hits,  na.rm = TRUE),
             n_first = sum(n_first, na.rm = TRUE),
             .by = c(code, ScientificName, genus))
+
+graminoids <- graminoids_raw |>
+  summarise(n_hits = sum(n_hits, na.rm = TRUE),
+            n_first = sum(n_first, na.rm = TRUE),
+            .by = c(code, genus)) |>
+  # genus with the most hits wins; NA sorted last so it only wins if it's
+  # the only option (b/ can be mis-spellings etc. of the genus)
+  arrange(is.na(genus), desc(n_hits)) |>
+  slice_head(n = 1, by = code) |> 
+  # totals must cover all rows for the code, not just the winning genus
+  left_join(summarise(graminoids_raw,
+                      n_hits_tot  = sum(n_hits,  na.rm = TRUE),
+                      n_first_tot = sum(n_first, na.rm = TRUE),
+                      .by = code),
+            by = "code") |>
+  transmute(code, genus, n_hits = n_hits_tot, n_first = n_first_tot)
 
 pathway_lookup <- graminoids |>
   left_join(osborne, by = "genus") |>
