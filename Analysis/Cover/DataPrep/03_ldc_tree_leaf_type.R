@@ -15,20 +15,11 @@
 # September, 2026
 
 source("Functions/init.R")
+source("Functions/data/plant_traits.R")
 
 ldc_processed_dir <- file.path(paths$large, "Data_processed/LandscapeDataCommonsDat")
 code_class <- readRDS(file.path(ldc_processed_dir, "code_class.rds"))
 
-# Conifer genera occurring in North America, native and planted.
-.needle_genera <- c(
-  "Abies", "Calocedrus",  "Cedrus", "Chamaecyparis", "Cupressus",
-  "Hesperocyparis", "Juniperus", "Larix", "Picea", "Pinus", "Pseudotsuga",
-  "Sequoia", "Sequoiadendron", "Taxodium", "Taxus", "Thuja", "Torreya",
-  "Tsuga", "Callitropsis", "Cryptomeria", "Metasequoia", "Platycladus",
-  "Podocarpus", "Araucaria", 'Pine', 'Pseudolarix', 'Afrocarpus'
-)
-
-bad_genus <- c("Unknown", "Generic", "Perennial", "Check", "#N/A", "NA")
 
 trees <- code_class |>
   filter(class == "tree") |>
@@ -42,18 +33,7 @@ trees <- code_class |>
             .by = c(code, ScientificName, genus))
 
 leaf_lookup <- trees |>
-  mutate(
-    leaf_type = case_when(
-      is.na(genus)              ~ NA_character_,
-      genus %in% .needle_genera  ~ "needle",
-      .default                  = "broad"
-    ),
-    leaf_type_source = case_when(
-      is.na(genus)              ~ "no_scientific_name",
-      genus %in% .needle_genera  ~ "conifer_list",
-      .default                  = "broad_by_default"
-    )
-  )
+  left_join(assign_leaf_type(trees$genus), by = "genus")
 
 # ---- audit ---------------------------------------------------------------
 leaf_lookup |>
