@@ -132,8 +132,8 @@ ensure_cols <- function(x, cols, fill = 0) {
 #'
 #' @param path Path to the .rds cache file.
 #' @param fn Zero-argument function returning the object to cache.
-fetch_cached <- function(path, fn) {
-  if (file.exists(path)) return(readRDS(path))
+fetch_cached <- function(path, fn, rerun = FALSE) {
+  if (file.exists(path) & !rerun) return(readRDS(path))
   
   message("computing: ", basename(path))
   x <- fn()
