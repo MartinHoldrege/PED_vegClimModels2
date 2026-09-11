@@ -69,7 +69,9 @@ stopifnot(!any(duplicated(code_traits$code)))
 
 # ---- functions -----------------------------------------------------------
 
-#' Long code -> component group lookup for the any-hit covers
+#' Long code -> component group lookup for the any-hit covers, first hit covers,
+#' and first hit cover, of the understory (i.e. after first hit trees have 
+#' been removed)
 #'
 #' Groups deliberately overlap: a code contributes to its top-level class
 #' (tree / shrub / herbaceous) and to its component group (tree_needle,
@@ -140,24 +142,66 @@ summarise_lpi <- function(path, code_class, code_group) {
             paste(unique(hits$layer[is.na(hits$rank)]), collapse = ", "), ")")
   }
   
+  classify_herbaceous <- function(df) {
+    df |> 
+      mutate(class = case_when(
+        class %in% c("graminoid", "forb", "herbaceous",
+                     "nonwoody_unknown")                ~ "herbaceous",
+        is.na(class)                                    ~ "unclassified",
+        .default = class
+    ))
+  }
+  
   # --- first hit: absolute, mutually exclusive ---------------------------
   fh <- hits |>
     filter(!is.na(rank)) |>
     slice_min(rank, n = 1, with_ties = FALSE,
               by = c(PrimaryKey, LineKey, PointNbr)) |>
     left_join(code_class, by = c("SpeciesKey", "code")) |>
-    mutate(class = case_when(
-      class %in% c("graminoid", "forb", "herbaceous", 
-                   "nonwoody_unknown")                ~ "herbaceous",
-      is.na(class)                                    ~ "unclassified",
-      .default = class
-    )) |>
+    classify_herbaceous() |> 
     count(PrimaryKey, class, name = "n_hit") |>
     left_join(pins, by = "PrimaryKey") |>
     mutate(cover = 100 * n_hit / n_pins) |>
     select(PrimaryKey, class, cover) |>
     pivot_wider(names_from = class, values_from = cover,
                 names_prefix = "fh_", values_fill = 0)
+  
+  # --- first hit, seeing through trees -----------------------------------
+  # A pin contributes its first hit, and if that hit is a tree, also its
+  # first non-tree VEGETATION hit. Nothing deeper counts, and surface classes
+  # are never picked up on the second pass - bare ground stays strictly
+  # first-hit, so fht_bare_ground equals fh_bare_ground.
+  #
+  # Not mutually exclusive: a pin with a tree over a shrub counts once for
+  # tree and once for shrub, so fht_* can sum above 100%.
+  veg_classes <- c("tree", "shrub", "herbaceous", "vine", "woody_unknown")
+  
+  ranked <- hits |>
+    filter(!is.na(rank)) |>
+    left_join(code_class, by = c("SpeciesKey", "code")) |>
+    classify_herbaceous()
+  
+  fht <- bind_rows(
+    # the first hit itself, whatever it is
+    ranked |>
+      slice_min(rank, n = 1, with_ties = FALSE,
+                by = c(PrimaryKey, LineKey, PointNbr)),
+    # and, only where that first hit was a tree, the first non-tree
+    # vegetation hit beneath it
+    ranked |>
+      filter(any(class == "tree" & rank == min(rank)),
+             class %in% setdiff(veg_classes, "tree"),
+             .by = c(PrimaryKey, LineKey, PointNbr)) |>
+      slice_min(rank, n = 1, with_ties = FALSE,
+                by = c(PrimaryKey, LineKey, PointNbr))
+  ) |>
+    distinct(PrimaryKey, LineKey, PointNbr, class) |>
+    count(PrimaryKey, class, name = "n_hit") |>
+    left_join(pins, by = "PrimaryKey") |>
+    mutate(cover = 100 * n_hit / n_pins) |>
+    select(PrimaryKey, class, cover) |>
+    pivot_wider(names_from = class, values_from = cover,
+                names_prefix = "fht_", values_fill = 0)
   
   # --- any hit: components, overlapping ----------------------------------
   ah <- hits |>
@@ -173,12 +217,14 @@ summarise_lpi <- function(path, code_class, code_group) {
   
   pins |>
     left_join(fh, by = "PrimaryKey") |>
-    left_join(ah, by = "PrimaryKey")
+    left_join(ah, by = "PrimaryKey") |> 
+    left_join(fht, by = "PrimaryKey")
 }
 
 summarise_lpi_safe <- function(path, code_class, code_group) {
   out <- try(summarise_lpi(path, code_class, code_group), silent = TRUE)
   if (inherits(out, "try-error")) {
+
     message("SKIPPED ", basename(path), ": ",
             conditionMessage(attr(out, "condition")))
     return(NULL)
@@ -199,10 +245,11 @@ if(!file.exists(p_cover_visit) | rerun) {
     map(\(f) summarise_lpi_safe(f, code_class, code_group)) |>
     list_rbind() |>
     # a group absent from a batch yields no column there, so fill after binding
-    mutate(across(starts_with(c("fh_", "ah_")), \(x) replace_na(x, 0)))
-  write_csv(cover_visit, p_cover_visi)
+    mutate(across(starts_with(c("fh_", "ah_", 'fht_')), \(x) replace_na(x, 0)))
+  write_csv(cover_visit, p_cover_visit)
 } else {
-  cover_visit <- read_csv(p_cover_visit)
+  cover_visit <- read_csv(p_cover_visit) |> 
+    mutate(across(starts_with(c("fh_", "ah_", 'fht_')), \(x) replace_na(x, 0)))
 }
 
 
@@ -253,7 +300,7 @@ if (n_dropped > 0) {
   message("dropping ", n_dropped, " visits with no date or coordinates")
 }
 visits <- visits |> filter(!is.na(year), !is.na(Latitude_NAD83), !is.na(Longitude_NAD83))
-cover_cols <- str_subset(names(visits), "^(fh|ah)_")
+cover_cols <- str_subset(names(visits), "^(fh|ah|fht)_")
 
 plot_year <- visits |>
   summarise(
