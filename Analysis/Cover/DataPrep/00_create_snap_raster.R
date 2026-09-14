@@ -18,7 +18,8 @@ source("Functions/init.R")
 source_functions()
 
 # paths -------------------------------------------------------------------
-
+ 
+# a downloaded daymet file, to use as the reference grid
 p_daymet <- file.path(paths$large0, # this can be changed to paths$large once files are moved
                       "Data_raw/dayMet/yearly/daymet_v4_prcp_annttl_na_1980.tif")
 

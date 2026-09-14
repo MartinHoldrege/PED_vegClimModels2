@@ -1,6 +1,6 @@
 #///////////////////////////////////////////////////////////////////////////
 # FIA data wrangling, based heavily on Alice Stears code
-# Produces plot-level functional-group cover, bare ground, and tree basal area
+# Produces plot-level functional-group cover, and tree basal area
 # for the vegetation-cover modeling pipeline.
 #
 # Outputs :
@@ -13,18 +13,13 @@
 #   - aerial cover = P2VEG LAYER 5, summed within subplot by group, averaged
 #     across subplots within a plot
 #   - angio/conifer split from BASAL AREA proportions (FIA has no cover split)
-#   - NA basal-area group = true zero
 #
 
 #///////////////////////////////////////////////////////////////////////////
 
 source('Functions/init.R')
+source("Functions/data/plant_traits.R")
 library(FIESTA)
-
-# for taxonlookup (used below)
-#install.packages('pak')
-# pak::pak("ropenscilabs/datastorr")
-# pak::pak("wcornwell/taxonlookup")
 
 # --- params ----------------------------------------------------------
 raw_dir <- file.path(paths$large, "Data_raw/FIA/CSV_FIADB_ENTIRE")   # input FIADB CSV tables
@@ -42,8 +37,6 @@ drop_states <- c("VI","PR","PW","MP","MH","GU","FM","AS","HI","AK")
 disturb_codes   <- c(30, 31, 32, 21, 22, 80, 91:95)
 treat_codes     <- c(10, 20, 30, 40, 50)
 nonforest_codes <- c(10, 11, 12, 13, 16, 17,31, 30, 32)
-
-missing_flag <- 999   # sentinel for missing bare-ground values
 
 # --- reference: state codes -------------------------------------------------
 
@@ -65,7 +58,8 @@ cond <- read_csv(file.path(raw_dir, "ENTIRE_COND.csv"), guess_max = Inf)  |>
          !(TRTCD2 %in% treat_codes),
          !(TRTCD3 %in% treat_codes)) |>
   filter(!(PRESNFCD %in% nonforest_codes)) |>
-  inner_join(plot_tbl[, c("STATECD","UNITCD","COUNTYCD","PLOT","INVYR","LAT","LON")],
+  inner_join(plot_tbl[, c("STATECD","UNITCD","COUNTYCD","PLOT","INVYR",
+                          "MEASYEAR", "LAT","LON")],
             by = c("STATECD","UNITCD","COUNTYCD","PLOT","INVYR")) |>
   left_join(state_codes, by = "STATECD") |>
   filter(!(STATEABB %in% drop_states))
@@ -73,7 +67,7 @@ cond <- read_csv(file.path(raw_dir, "ENTIRE_COND.csv"), guess_max = Inf)  |>
 # condition-level location + attributes carried onto each plot-level table.
 # PCTBARE_RMRS (RMRS interior West bare-ground estimate) rides along here.
 cond_loc <- cond |>
-  select(PLT_CN, INVYR, STATECD, UNITCD, COUNTYCD, PLOT, CONDID,
+  select(PLT_CN, INVYR, MEASYEAR,STATECD, UNITCD, COUNTYCD, PLOT, CONDID, CONDPROP_UNADJ,
          PCTBARE_RMRS, SLOPE, ASPECT, STATENAME, LAT, LON)
 
 # join keys shared by the plot-level tables and cond_loc
@@ -116,35 +110,19 @@ write_csv(veg_composition,
 # in this dataset 'Ground cover items must be in contact with the ground'
 
 
-# --- Species -> taxonomic group lookup --------------------------------------
-species_groups0 <- FIESTA::ref_species |>
-  left_join(
-    {
-      tax <- taxonlookup::lookup_table(
-        unique(FIESTA::ref_species$SCIENTIFIC_NAME), by_species = TRUE)
-      tax$SCIENTIFIC_NAME <- rownames(tax)
-      tax
-    },
-    by = "SCIENTIFIC_NAME"
-  ) 
+# --- Species -> leaf type lookup --------------------------------------------
+# needle vs broad from genus, using the same conifer list as the LDC and
+# LFRDB pipelines. 
+species_groups <- FIESTA::ref_species |>
+  mutate(genus = clean_genus(SCIENTIFIC_NAME, .needle_genera, report = FALSE))
 
-species_groups <- species_groups0 |>
-  # manual group assignments for species taxonlookup missed (kept from original)
-  mutate(group = case_when(
-    GENUS %in% c("Reynoldsia","Feijoa","Exorrhiza","Gulubia","Trukia",
-                 "Neolaugeria","Nesoluma","Hyeronima","Guamia","Carmona",
-                 "Munroidendron")                            ~ "Angiosperms",
-    GENUS %in% c("Acoelorraphe","Family Arecaceae","Howeia") ~ "Angiosperms",
-    GENUS == "Cupressocyparis"                               ~ "Gymnosperms",
-    SCIENTIFIC_NAME == "Tree broadleaf"                      ~ "Angiosperms",
-    SCIENTIFIC_NAME == "Tree evergreen"                      ~ "Gymnosperms",
-    TRUE                                                     ~ group
-  ))
+species_groups <- species_groups |>
+  left_join(assign_leaf_type(species_groups$genus), by = "genus")
 
 # --- TREE: basal area by taxonomic group ------------------------------------
 
 # * download: one CSV per state, cached -------------------------------
-tree_dir <- file.path(paths$large, "data_raw/FIA/tmp_tree_csv")
+tree_dir <- file.path(paths$large, "Data_raw/FIA/tmp_tree_csv")
 dir.create(tree_dir, showWarnings = FALSE, recursive = TRUE)
 
 # adjust to what you actually need downstream
@@ -191,20 +169,21 @@ tree_col_types <- cols(
 tree_basal_area <- list.files(tree_dir, pattern = "^tmp_tree_state-\\d+\\.csv$",
                               full.names = TRUE) |>
   map_dfr(read_csv, col_types = tree_col_types, guess_max = Inf) |>
-  left_join(species_groups[, c("SPCD", "SCIENTIFIC_NAME", "family", "group")],
+  left_join(species_groups[, c("SPCD", "SCIENTIFIC_NAME", "genus", "leaf_type")],
             by = "SPCD") |>
   mutate(
-    group = case_when(
-      SCIENTIFIC_NAME == "Tree broadleaf" ~ "Angiosperms",
-      SCIENTIFIC_NAME == "Tree evergreen" ~ "Gymnosperms",
-      SCIENTIFIC_NAME == "Tree unknown"   ~ "Unknown",
-      TRUE ~ group
+    leaf_type = case_when(
+      SCIENTIFIC_NAME == "Tree broadleaf" ~ "broad",
+      SCIENTIFIC_NAME == "Tree evergreen" ~ "needle",
+      SCIENTIFIC_NAME == "Tree unknown"   ~ "unknown",
+      .default = leaf_type
     ),
-    basalArea_in2 = pi * (DIA / 2)^2# basal area per tree (sq in)
+    basalArea_in2 = pi * (DIA / 2)^2
   )
 
 
-tree_keys <- c("PLT_CN","INVYR","STATECD","UNITCD","COUNTYCD","PLOT","CONDID","group")
+tree_keys <- c("PLT_CN","INVYR","STATECD","UNITCD","COUNTYCD","PLOT","CONDID",
+               "leaf_type")
 
 tree_use <- tree_basal_area |>
   group_by(across(all_of(c(tree_keys, "SUBP")))) |>
@@ -212,8 +191,8 @@ tree_use <- tree_basal_area |>
   group_by(across(all_of(tree_keys))) |>
   summarise(basalArea_in2 = mean(basalAreaSum_in2, na.rm = TRUE), .groups = "drop") |> # across subplots
   mutate(PLT_CN = as.double(PLT_CN)) |>
-  pivot_wider(names_from = group, values_from = basalArea_in2,
-              names_glue = "basalArea_{group}_in2") |>
+  pivot_wider(names_from = leaf_type, values_from = basalArea_in2,
+              names_glue = "basalArea_{leaf_type}_in2") |>
   mutate(across(starts_with("basalArea_"), ~ replace_na(.x, 0))) |>  # absent group = true zero
   left_join(cond_loc, by = plot_keys) |>
   filter(!is.na(LAT))

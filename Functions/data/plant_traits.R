@@ -32,7 +32,7 @@ common_names <- tibble::tribble(
 # Calocedrus, Thuja and Hesperocyparis are scale-leaved and are defined as
 # needle-leaved here.
 .needle_genera <- c(
-  "Abies", "Calocedrus",  "Cedrus", "Chamaecyparis", "Cupressus",
+  "Abies", "Calocedrus",  "Cedrus", "Chamaecyparis", "Cupressus","Cupressocyparis",
   "Hesperocyparis", "Juniperus", "Larix", "Picea", "Pinus", "Pseudotsuga",
   "Sequoia", "Sequoiadendron", "Taxodium", "Taxus", "Thuja", "Torreya",
   "Tsuga", "Callitropsis", "Cryptomeria", "Metasequoia", "Platycladus",
