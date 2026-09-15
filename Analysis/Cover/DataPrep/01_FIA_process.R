@@ -94,8 +94,8 @@ veg_composition <- read.csv(file.path(raw_dir, "ENTIRE_P2VEG_SUBP_STRUCTURE.csv"
          Graminoid_AerialCover    = GR,
          Shrub_AerialCover        = SH,
          TallyTree_AerialCover    = TT,
-         NonTallyTree_AerialCover = NT)
-
+         NonTallyTree_AerialCover = NT) |> 
+  left_join(cond_loc, by = plot_keys)
 write_csv(veg_composition,
           file.path(out_dir, paste0("vegetationComposition", suffix, ".csv")))
 
