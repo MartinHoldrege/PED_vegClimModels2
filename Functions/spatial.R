@@ -69,3 +69,17 @@ raster_quantile <- function(r, prob) {
   stopifnot(nlyr(r) == 1)
   terra::global(r, fun = function(x) quantile(x, probs = prob, na.rm = TRUE))[[1]]
 }
+
+
+#' Assign each row a snap-grid cell
+#'
+#' @param df Data frame with longitude and latitude columns.
+#' @param lon,lat Column names, as strings.
+#' @param crs EPSG string for the source coordinates.
+#' @return df with a `cell` column; NA where the point falls off the grid.
+assign_cell <- function(df, lon, lat, crs, snap = read_mask()) {
+  v <- terra::vect(df, geom = c(lon, lat), crs = crs) |>
+    terra::project(terra::crs(snap))
+  df$cell <- terra::extract(snap, v, cells = TRUE)$cell
+  df
+}

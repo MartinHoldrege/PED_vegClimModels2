@@ -78,3 +78,24 @@ add_suffix2names <- function(x, suffix) {
   names(x) <- paste0(nms, suffix)
   x
 }
+
+#' Drop rows with no grid cell
+#'
+#' @param df Data frame with a `cell` column.
+drop_offgrid <- function(df, warn_prop = 0.1) {
+  n <- sum(is.na(df$cell))
+  if(n/nrow(df) > warn_prop) warning(">", warn_prop*100, '% rows dropped')
+  filter(df, !is.na(cell))
+}
+
+#' Safe ratio: NA rather than NaN when the denominator is zero or missing
+#'
+#' @param num,den Numerator and denominator.
+safe_frac <- function(num, den) {
+  if_else(!is.na(den) & den > 0, num / den, NA_real_)
+}
+
+#' Mean that returns NA rather than NaN when every value is missing
+#'
+#' @param z Numeric vector.
+mean_na <- function(z) if (all(is.na(z))) NA_real_ else mean(z, na.rm = TRUE)
