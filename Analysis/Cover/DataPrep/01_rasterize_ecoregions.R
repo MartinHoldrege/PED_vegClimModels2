@@ -9,7 +9,7 @@
 # params ------------------------------------------------------------------
 
 # rasterize either the L2 or L3 ecoregions
-epa_lev <- 'L2' # 'L3' # 
+epa_lev <- 'L3' # 'L2' # 
 
 # dependencies ------------------------------------------------------------
 
@@ -47,18 +47,13 @@ if (epa_lev == "L3") {
 # load ecoregion shapefile -------------------------------------------------
 
 eco <- sf::st_read(p_shp, quiet = TRUE)
-cat("  N ecoregions:", length(unique(eco[[code_col]])), "\n")
-cat("  CRS:", sf::st_crs(eco)$proj4string, "\n")
 
 # load a daymet template raster --------------------------------------------
 
-cat("Loading daymet template...\n")
-rasters <- load_conus_rasters()
-r_template <- rasters$climate[["MAT"]]
+r_template <- read_mask()
 
 # project ecoregions to daymet CRS ----------------------------------------
 
-cat("Projecting to daymet CRS...\n")
 eco_proj <- sf::st_transform(eco, crs = terra::crs(r_template))
 
 # create numeric ecoregion ID ----------------------------------------------
@@ -105,7 +100,29 @@ if (n_gap > 0) {
 } 
 
 # fill border gaps with nearest ecoregion ----------------------------------
-
+# Gaps are coastal and border fringe: snap cells whose centre falls just
+# outside an ecoregion polygon. Filled with the modal ecoregion of the
+# surrounding cells, iterating so that gaps more than one cell wide close.
+# Only cells with climate data are filled, and only from existing values.
+if (n_gap > 0) {
+  max_iter <- 10
+  
+  for (i in seq_len(max_iter)) {
+    gap <- has_climate & is.na(r_eco)
+    n_left <- terra::global(gap, "sum", na.rm = TRUE)[[1]]
+    if (n_left == 0) break
+    
+    filled <- terra::focal(r_eco, w = 3, fun = "modal", na.policy = "only",
+                           na.rm = TRUE)
+    r_eco <- terra::cover(r_eco, terra::mask(filled, has_climate,
+                                             maskvalue = FALSE))
+    cat("  fill pass", i, ": ", n_left, " gap cell(s) remaining\n", sep = "")
+  }
+  
+  n_gap_final <- terra::global(has_climate & is.na(r_eco), "sum",
+                               na.rm = TRUE)[[1]]
+  cat("  Gap after filling:", n_gap_final, "\n")
+}
 
 
 # save ---------------------------------------------------------------------
