@@ -116,7 +116,7 @@ var fireMeanBinary = burnedFracMean
   });
 
 if (exportFireMean) {
-  var fireMeanFileName = 'MTBS_burnedFracMean_gte' + maskCutoffFire * 100 +
+  var fireMeanFileName = 'MTBS_fracUnburnedMean_gte' + maskCutoffFire * 100 +
     '_' + windowLength + 'yr_' + meanYearStart + '-' + meanYearEnd + fg.resLabel;
   fg.exportDrive(fireMeanBinary, fireMeanFileName, driveFolder);
 }
