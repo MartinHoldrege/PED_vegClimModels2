@@ -160,7 +160,8 @@ exports.lcmapMaskBinary = function(threshold) {
 
   return ee.Image(exports.pathAsset + 'masks/LCMAP_fracKeep' + exports.resLabel)
     .gte(threshold)
-    .rename('lcmapKeep');
+    .rename('lcmapKeep')
+    .updateMask(exports.maskConus);
 };
 
 /**
@@ -175,7 +176,8 @@ exports.fireMaskYear = function(year) {
 
   return ee.Image(exports.pathAsset + 'fire/' + name)
     .select('year_' + year)
-    .rename('fireKeep');
+    .rename('fireKeep')
+    .updateMask(exports.maskConus);
 };
 
 
