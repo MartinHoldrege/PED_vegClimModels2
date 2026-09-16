@@ -40,7 +40,7 @@ var scaleIn = 100;          // m, resolution of the burned asset
 var maskCutoffLcmap = 0.9;
 var maskCutoffFire = 0.9;   // keep where at least this fraction is unburned
  // years over which to average the burned fraction ~ years with most cover data
-var meanYearStart = 2010;  
+var meanYearStart = 2011;  
 var meanYearEnd = 2023;
 var driveFolder = 'PED_vegClimModels2';
 
