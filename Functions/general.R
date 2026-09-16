@@ -85,7 +85,7 @@ add_suffix2names <- function(x, suffix) {
 drop_offgrid <- function(df, warn_prop = 0.1) {
   n <- sum(is.na(df$cell))
   if(n/nrow(df) > warn_prop) warning(">", warn_prop*100, '% rows dropped')
-  filter(df, !is.na(cell))
+  filter(df, !is.na(.data$cell))
 }
 
 #' Safe ratio: NA rather than NaN when the denominator is zero or missing

@@ -64,6 +64,20 @@ align_raster_extents <- function(..., rast_list = NULL) {
   purrr::map(rast_list, \(r) terra::crop(r, common_ext))
 }
 
+align_raster <- function(r, snap = read_mask()) {
+  r <- terra::crop(r, snap)
+
+  # Stop if the CRSs are not actually equivalent
+  stopifnot(terra::same.crs(r, snap))
+  
+  # Equivalent CRS, different WKT text: copy snap's (no resampling)
+  terra::crs(r) <- terra::crs(snap)
+  
+  stopifnot(terra::compareGeom(r, snap, stopOnError = FALSE,
+                               rowcol = TRUE, ext = TRUE))
+  r
+}
+
 # for just a single layer, for determining limits for plotting
 raster_quantile <- function(r, prob) {
   stopifnot(nlyr(r) == 1)
@@ -80,6 +94,7 @@ raster_quantile <- function(r, prob) {
 assign_cell <- function(df, lon, lat, crs, snap = read_mask()) {
   v <- terra::vect(df, geom = c(lon, lat), crs = crs) |>
     terra::project(terra::crs(snap))
-  df$cell <- terra::extract(snap, v, cells = TRUE)$cell
+  stopifnot('cell_id' %in% names(snap))
+  df$cell <- terra::extract(snap, v)$cell_id
   df
 }

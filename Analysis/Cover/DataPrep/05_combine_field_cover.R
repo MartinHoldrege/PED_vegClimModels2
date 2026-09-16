@@ -32,6 +32,11 @@
 #   lfrdb_cover_by_plot.csv            - 02_lfrdb_process.R
 #   fia_cover_by_plot_year<suffix>.csv - 02_FIA_combine.R
 #   daymet_conus_snap_1000m.tif        - 00_create_snap_raster.R (read_mask())
+#   LCMAP_fracKeep_gte90_1000m.tif     - 03_export_masks.js, downloaded in
+#                                        04_download_gee_output.R
+#   MTBS_fracUnburned_gte90_20yr_2000-2024_1000m.tif
+#                                      - 03_export_masks.js, downloaded in
+#                                        04_download_gee_output.R
 #
 # Output:
 #   field_cover_by_pixel_year.csv
@@ -161,8 +166,60 @@ field_px <- field_long |>
     frac_needle = safe_frac(c_needle, c_needle + c_broad),
     frac_broad  = safe_frac(c_broad,  c_needle + c_broad)
   ) |>
-  select(-herb_den)
+  select(-herb_den) |> 
+  filter(year >= 2000 & year < 2025)
 
+# cell centroid, for joining to other gridded data and for mapping
+xy <- terra::xyFromCell(snap, field_px$cell)
+field_px$x <- xy[, "x"]
+field_px$y <- xy[, "y"]
+
+
+# mask flags --------------------------------------------------------------
+# Flags only, no filtering: whether to apply the LCMAP mask to FIA is decided
+# downstream, and FIA already excludes developed and agricultural conditions.
+# TRUE means the pixel would be masked out.
+#
+# The fire mask is per-year (less than 10% of the cell burned in the
+# preceding 20 years), so each pixel-year is checked against its own band.
+# Pixel-years outside the mask's year range get NA.
+
+mask_dir <- file.path(paths$large, "Data_processed/masks")
+
+lcmap_mask <- terra::rast(file.path(mask_dir, "LCMAP_fracKeep_gte90_1000m.tif"))
+fire_mask  <- terra::rast(file.path(mask_dir,
+                                    "MTBS_fracUnburned_gte90_20yr_2000-2024_1000m.tif"))
+
+lcmap_mask <- align_raster(lcmap_mask, snap)
+fire_mask <- align_raster(fire_mask, snap)
+
+# LCMAP: one layer, so a straight cell lookup
+field_px$masked_by_lcmap <- !as.logical(lcmap_mask[field_px$cell][[1]])
+
+# Fire: pick the band matching each pixel-year's year
+fire_years <- as.integer(str_remove(names(fire_mask), "^year_"))
+
+fire_vals <- terra::extract(fire_mask, field_px$cell)
+band_idx  <- match(field_px$year, fire_years)
+stopifnot(all(!is.na(band_idx))) # suggests more years of data provided than years fire masks made for
+field_px$masked_by_fire <- if_else(
+  is.na(band_idx), NA,
+  !as.logical(fire_vals[cbind(seq_len(nrow(fire_vals)), band_idx)])
+)
+
+message("\nmask flags:")
+field_px |>
+  count(masked_by_lcmap, masked_by_fire) |>
+  mutate(pct = round(100 * n / sum(n), 2)) |>
+  as.data.frame() |> print()
+
+message("\nby source:")
+field_px |>
+  summarise(n = n(),
+            pct_lcmap = round(100 * mean(masked_by_lcmap, na.rm = TRUE), 1),
+            pct_fire  = round(100 * mean(masked_by_fire,  na.rm = TRUE), 1),
+            .by = sources) |>
+  arrange(desc(n)) |> as.data.frame() |> print()
 
 # checks ------------------------------------------------------------------
 
