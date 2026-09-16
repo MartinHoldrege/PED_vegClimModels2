@@ -388,7 +388,7 @@ load_cover <- function(cover_source = c('rap', 'model'),
 load_ecoregion_raster <- function(
     epa_lev = NULL, 
     root = paths$large) {
-  # file created in "DataPrep/01_rasterize_ecoregions.R"
+  # file created in "Cover/DataPrep/01_rasterize_ecoregions.R"
   if (is.null(epa_lev)) epa_lev <- "L3"
   epa_lev <- match.arg(epa_lev, choices = c("L3", "L2"))
   p <- file.path(root, "Data_processed/regions",
@@ -397,6 +397,38 @@ load_ecoregion_raster <- function(
   r <- terra::rast(p)
   names(r) <- 'region'
   r
+}
+
+#' Load the EPA ecoregion ID lookup for the rasterized ecoregions
+#'
+#' `eco_id` is an arbitrary integer assigned when the shapefile was
+#' rasterized, so it is only meaningful alongside this table. Always join it
+#' rather than storing bare IDs downstream.
+#'
+#' @param epa_lev Ecoregion level, "L3" (default) or "L2".
+#' @param root Root path for large files.
+#' @return Tibble with eco_id, eco_code, eco_name.
+#' @export
+load_ecoregion_lookup <- function(epa_lev = NULL, root = paths$large) {
+  # file created in "Cover/DataPrep/01_rasterize_ecoregions.R"
+  if (is.null(epa_lev)) epa_lev <- "L3"
+  epa_lev <- match.arg(epa_lev, choices = c("L3", "L2"))
+  
+  p <- file.path(root, "Data_processed/regions",
+                 paste0("EPA_", epa_lev, "_ecoregion_lookup.csv"))
+  stopifnot(file.exists(p))
+  
+  out <- readr::read_csv(p, show_col_types = FALSE)
+  
+  code_col <- if (epa_lev == "L3") "US_L3CODE" else "NA_L2CODE"
+  name_col <- if (epa_lev == "L3") "US_L3NAME" else "NA_L2NAME"
+  stopifnot(all(c("eco_id", code_col, name_col) %in% names(out)))
+  
+  out |>
+    dplyr::select(eco_id,
+                  eco_code = dplyr::all_of(code_col),
+                  eco_name = dplyr::all_of(name_col)) |>
+    dplyr::arrange(eco_id)
 }
 
 #' Load sagebrush biome mask raster
