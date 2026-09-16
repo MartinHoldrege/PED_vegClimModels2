@@ -29,19 +29,21 @@ var rap = ee.ImageCollection('projects/rap-data-365417/assets/vegetation-cover-v
 
 // process ------------------------------------------
 
+print(rap.first().bandNames())
 
 // pull the three functional groups out of a single year's image
 var pftBands = function(image) {
   return ee.Image.cat([
     image.select('TRE'),
     image.select('SHR'),
-    image.select('AFG').add(image.select('PFG'))
-  ]).rename(['tree', 'shrub', 'herbaceous']);
+    image.select('AFG').add(image.select('PFG')),
+    image.select('BGR')
+  ]).rename(['tree', 'shrub', 'herbaceous', 'bare_ground']);
 };
 
 // build one image per pft, with a band per year
-var pfts = ['tree', 'shrub', 'herbaceous'];
-var stacks = {tree: null, shrub: null, herbaceous: null};
+var pfts = ['tree', 'shrub', 'herbaceous', 'bare_ground'];
+var stacks = {tree: null, shrub: null, herbaceous: null, bare_ground: null};
 
 for (var year = yearStart; year <= yearEnd; year++) {
   var yearImage = pftBands(
