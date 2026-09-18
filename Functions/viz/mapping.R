@@ -108,6 +108,14 @@ plot_map_conus <- function(rast,
 #' @param basemap_size Numeric; line width for state boundaries.
 #' @param states_sf Optional sf object of state boundaries. If NULL,
 #'   loaded from `spData::us_states` and transformed to `crs_daymet`.
+#' @param inset_hist Logical; add a small histogram of `color_var` to each
+#'   panel, with bars coloured by `colorscale`. Needs a numeric `color_var`.
+#' @param inset_bins Integer; number of histogram bins.
+#' @param inset_drop_zero Logical; leave exact zeros out of the bars and
+#'   print their share above the inset, so a spike at zero doesn't flatten the
+#'   rest. FALSE gives an ordinary histogram.
+#' @param inset_position Numeric length 4; inset xmin, xmax, ymin, ymax as
+#'   fractions of the map extent. The default is the empty lower-left corner.
 #'
 #' @return A ggplot object.
 #' @export
@@ -123,7 +131,11 @@ plot_points_conus <- function(sf_df,
                               legend_name = NULL,
                               basemap_color = "grey40",
                               basemap_size = 0.2,
-                              states_sf = NULL) {
+                              states_sf = NULL,
+                              inset_hist = FALSE,
+                              inset_bins = 50,
+                              inset_drop_zero = TRUE,
+                              inset_position = c(0.02, 0.28, 0.04, 0.2)) {
   
   stopifnot(inherits(sf_df, "sf"))
   if (!is.null(color_var)) {
@@ -176,6 +188,18 @@ plot_points_conus <- function(sf_df,
   
   # use CONUS extent from state boundaries
   bbox <- sf::st_bbox(states_sf)
+  
+  if (inset_hist) {
+    stopifnot(!is.null(color_var), is.numeric(sf_df[[color_var]]))
+    g <- g + inset_hist_layers(sf::st_drop_geometry(sf_df),
+                               var = color_var,
+                               facet_var = facet_var,
+                               bbox = bbox,
+                               bins = inset_bins,
+                               drop_zero = inset_drop_zero,
+                               position = inset_position)
+  }
+  
   g <- g +
     ggplot2::coord_sf(
       xlim = c(bbox["xmin"], bbox["xmax"]),
@@ -194,6 +218,103 @@ plot_points_conus <- function(sf_df,
   }
   
   g
+}
+
+
+#' Histogram layers drawn in map coordinates
+#'
+#' Builds a small histogram of `var` in a corner of the map, one per facet.
+#' It is made of ordinary layers in the map's CRS, so it works with
+#' `facet_wrap()` and `coord_sf()`. Bars are coloured by the plot's colour
+#' scale (at the bin midpoint), and each facet's tallest bar has the same
+#' height. Bins span the full range, including zero, in both modes. Used by
+#' `plot_points_conus()`.
+#'
+#' @param df Data frame (no geometry) with `var` and, if given, `facet_var`.
+#' @param var Character; numeric column to summarise.
+#' @param facet_var Character or NULL; facet column.
+#' @param bbox Map extent (`sf::st_bbox()`) in the map's CRS.
+#' @param bins Integer; number of bins, shared across facets.
+#' @param drop_zero Logical; leave exact zeros out of the bars and label
+#'   each facet with their share.
+#' @param position Numeric length 4; xmin, xmax, ymin, ymax as fractions of
+#'   the extent.
+#'
+#' @return List of ggplot2 layers.
+inset_hist_layers <- function(df, var, facet_var, bbox, bins,
+                              drop_zero = TRUE, position) {
+  stopifnot(length(position) == 4, bins >= 1)
+  
+  rng <- range(df[[var]], na.rm = TRUE)
+  if (diff(rng) == 0) rng <- rng + c(-0.5, 0.5)
+  breaks <- seq(rng[1], rng[2], length.out = bins + 1)
+  
+  # inset frame in map units
+  fx <- bbox[["xmin"]] + position[1:2] * (bbox[["xmax"]] - bbox[["xmin"]])
+  fy <- bbox[["ymin"]] + position[3:4] * (bbox[["ymax"]] - bbox[["ymin"]])
+  
+  df <- dplyr::filter(df, !is.na(.data[[var]]))
+  
+  bars <- df |>
+    dplyr::filter(!drop_zero | .data[[var]] != 0) |>
+    dplyr::mutate(bin = findInterval(.data[[var]], breaks,
+                                     rightmost.closed = TRUE,
+                                     all.inside = TRUE)) |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(c(facet_var, "bin")))) |>
+    dplyr::summarise(n = dplyr::n(), .groups = "drop_last") |>
+    dplyr::mutate(height = n / max(n)) |>  # per facet
+    dplyr::ungroup() |>
+    dplyr::mutate(xmin = fx[1] + (bin - 1) / bins * diff(fx),
+                  xmax = fx[1] + bin / bins * diff(fx),
+                  ymin = fy[1],
+                  ymax = fy[1] + height * diff(fy),
+                  mid  = (breaks[bin] + breaks[bin + 1]) / 2)
+  
+  # no facet column, so the axis is drawn in every facet; end labels rounded
+  # to about 3 significant digits of the range
+  digits  <- max(0, 2 - floor(log10(diff(rng))))
+  axis_df <- data.frame(x = fx, y = fy[1], label = round(rng, digits))
+  
+  layers <- list(
+    ggplot2::geom_rect(
+      data = bars,
+      ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax,
+                   ymin = .data$ymin, ymax = .data$ymax,
+                   colour = .data$mid,
+                   fill = ggplot2::after_scale(colour)),
+      linewidth = 0.1,
+      inherit.aes = FALSE
+    ),
+    ggplot2::geom_line(data = axis_df,
+                       ggplot2::aes(x = .data$x, y = .data$y),
+                       linewidth = 0.2, inherit.aes = FALSE),
+    ggplot2::geom_text(data = axis_df,
+                       ggplot2::aes(x = .data$x, y = .data$y,
+                                    label = .data$label),
+                       size = 2, vjust = 1.4, inherit.aes = FALSE)
+  )
+  
+  if (drop_zero) {
+    zero_df <- df |>
+      dplyr::group_by(dplyr::across(dplyr::all_of(facet_var))) |>
+      dplyr::summarise(p_zero = mean(.data[[var]] == 0), .groups = "drop") |>
+      dplyr::mutate(
+        x = fx[1], y = fy[2],
+        label = paste0("zeros: ",
+                       dplyr::if_else(p_zero > 0 & p_zero < 0.01, "<1%",
+                                      scales::percent(p_zero, accuracy = 1)))
+      )
+    
+    layers <- c(layers, list(
+      ggplot2::geom_text(data = zero_df,
+                         ggplot2::aes(x = .data$x, y = .data$y,
+                                      label = .data$label),
+                         size = 2, hjust = 0, vjust = -0.4,
+                         inherit.aes = FALSE)
+    ))
+  }
+  
+  layers
 }
 
 
