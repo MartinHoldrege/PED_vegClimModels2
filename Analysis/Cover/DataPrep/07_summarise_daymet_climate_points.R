@@ -1,5 +1,5 @@
 # //////////////////////////////////////////////////////////////////////////
-# 02_summarise_daymet_climate_points.R
+# 07_summarise_daymet_climate_points.R
 #
 # Point-location analogue of 01_summarise_daymet_climate_data.R.
 #
@@ -30,7 +30,8 @@ source_functions()
 # Parameters --------------------------------------------------------------
 
 rerun <-  TRUE # recreate intermediate files
-
+test_run <- FALSE 
+vc <- opt$vc
 # Daymet years available on disk. Windows are truncated to this range.
 daymet_years <- 1980:2023
 
@@ -47,25 +48,25 @@ daymet_dir <- file.path(paths$large, "Data_raw/daymet/rawMonthlyData")
 intermediate_dir <- file.path(paths$large, "Data_processed/CoverData",
                               "DaymetPoints_intermediate")
 dir.create(intermediate_dir, recursive = TRUE, showWarnings = FALSE)
-
-out_file <- file.path(paths$large, "Data_processed/CoverData",
-                      "daymetClimateAtPoints.rds")
+cov_dir   <- file.path(paths$large, "Data_processed/cover_combined")
+out_file <- file.path(cov_dir,
+                      paste0("daymet_climate-at-points_", vc, ".csv"))
 
 
 # Input observations ------------------------------------------------------
-# DUMMY DATA -- replace with the real observation sf object. Only two things
-# are required: a `year` column and point geometry.
+# Only two things are required: a `year`, 'cell' column and point geometry
 
-set.seed(1)
-obs_sf <- tibble(
-  year = sample(2000:2024, 500, replace = TRUE),
-  lon  = runif(500, -120, -75),
-  lat  = runif(500, 30, 48)
-) |>
-  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+mask_r <- read_mask()
+# file with all pixel-years of cover data, created in 06_cover_add-rap.R
+obs_sf <- read_csv(file.path(
+  cov_dir, paste0("cover_by_pixel_year_all-sources_",  vc, ".csv"))) |> 
+  select(cell, year, x, y) |> 
+  st_as_sf(coords = c('x', 'y'), crs = crs(mask_r))
 
+if(test_run) {
+  obs_sf <- sample_n(obs_sf, size = 5)
+}
 stopifnot("year" %in% names(obs_sf), inherits(obs_sf, "sf"))
-
 
 # Locate Daymet files -----------------------------------------------------
 
@@ -100,14 +101,8 @@ invisible(lapply(daymet_years, function(yr) lapply(var_tags, daymet_path, yr = y
 # observation: many observations share a cell, and repeat visits share a cell
 # across years.
 
-mask_r <- read_mask()
-
-# cellFromXY() returns the cell the point falls in, or NA if the point is
-# outside the raster. There is no nearest-cell search: a point off the grid
-# stays NA rather than borrowing a distant cell's values.
 obs_sf <- obs_sf |>
-  st_transform(crs(mask_r)) |>
-  mutate(cell = cellFromXY(mask_r, st_coordinates(geometry)))
+  st_transform(crs(mask_r)) 
 
 n_off_grid <- sum(is.na(obs_sf$cell))
 if (n_off_grid > 0) {
@@ -259,5 +254,10 @@ if (n_missing > 0) {
           min_years_clim, ")")
 }
 
-saveRDS(out, out_file)
-message("Wrote ", out_file)
+if(!test_run) {
+  write_csv(out, out_file)
+  message("Wrote ", out_file)
+} else {
+  print(out)
+}
+
