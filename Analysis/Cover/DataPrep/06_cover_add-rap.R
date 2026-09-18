@@ -75,7 +75,7 @@ snap <- read_mask()
 
 field <- read_csv(file.path(in_dir, "field_cover_by_pixel_year.csv"),
                   show_col_types = FALSE)
-
+stopifnot(all(terra::cellFromXY(snap, as.matrix(field[c("x", "y")])) == field$cell))
 eco        <- load_ecoregion_raster("L3")
 eco_lookup <- load_ecoregion_lookup("L3")
 

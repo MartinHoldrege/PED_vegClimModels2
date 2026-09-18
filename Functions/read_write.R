@@ -490,6 +490,46 @@ read_mask <- function() {
               "daymet_conus_snap_1000m.tif"))
 }
 
+#' Read the cover training data (cover, climate and soils by pixel-year)
+#'
+#' Reads the table written by Cover/DataPrep/08_combine_cover_and_covariates.R.
+#'
+#' @param vc Cover data version (e.g. "c01"), usually `opt$vc`.
+#' @param group NULL for all rows, or one cover group, to keep only the rows
+#'   where that group's response is observed (not NA): tree, shrub,
+#'   herbaceous, bare_ground (cover, %); needle, broad (share of tree); forb,
+#'   c3_grass, c4_grass (share of herbaceous).
+#' @param as_sf Logical; return an sf data frame of cell-centre points in the
+#'   CRS of `read_mask()`. The x and y columns are kept.
+#' @param root Root path for large files.
+#' @return Tibble, or sf data frame if `as_sf = TRUE`.
+read_cover_training <- function(vc, group = NULL, as_sf = FALSE,
+                                root = paths$large) {
+  group_cols <- c(tree = "cov_tree", shrub = "cov_shrub",
+                  herbaceous = "cov_herbaceous",
+                  bare_ground = "cov_bare_ground",
+                  needle = "frac_needle", broad = "frac_broad",
+                  forb = "frac_forb", c3_grass = "frac_c3",
+                  c4_grass = "frac_c4")
+  
+  p <- file.path(root, "Data_processed/cover_combined",
+                 paste0("cover_clim_soils_", vc, ".csv"))
+  stopifnot(file.exists(p))
+  if (!is.null(group)) group <- match.arg(group, names(group_cols))
+  
+  out <- readr::read_csv(p, show_col_types = FALSE)
+  
+  if (!is.null(group)) {
+    out <- dplyr::filter(out, !is.na(.data[[group_cols[[group]]]]))
+  }
+  
+  if (as_sf) {
+    out <- sf::st_as_sf(out, coords = c("x", "y"),
+                        crs = terra::crs(read_mask()), remove = FALSE)
+  }
+  out
+}
+
 # downloading files -----------------------------------------
 
 #' Download a file from Drive if it is newer than the local copy

@@ -29,7 +29,7 @@ source_functions()
 
 # Parameters --------------------------------------------------------------
 
-rerun <-  TRUE # recreate intermediate files
+rerun <-  FALSE # recreate intermediate files, needed if input data locations have change
 test_run <- FALSE 
 vc <- opt$vc
 # Daymet years available on disk. Windows are truncated to this range.
@@ -54,19 +54,21 @@ out_file <- file.path(cov_dir,
 
 
 # Input observations ------------------------------------------------------
-# Only two things are required: a `year`, 'cell' column and point geometry
+# Required columns: cell, year and the cell-centre x, y (Daymet LCC). cell is
+# the join key; x, y are checked against it below and carried to the output.
 
 mask_r <- read_mask()
 # file with all pixel-years of cover data, created in 06_cover_add-rap.R
-obs_sf <- read_csv(file.path(
-  cov_dir, paste0("cover_by_pixel_year_all-sources_",  vc, ".csv"))) |> 
-  select(cell, year, x, y) |> 
-  st_as_sf(coords = c('x', 'y'), crs = crs(mask_r))
+obs <- read_csv(file.path(
+  cov_dir, paste0("cover_by_pixel_year_all-sources_",  vc, ".csv")),
+  show_col_types = FALSE) |> 
+  select(cell, year, x, y)
 
 if(test_run) {
   obs_sf <- sample_n(obs_sf, size = 5)
 }
-stopifnot("year" %in% names(obs_sf), inherits(obs_sf, "sf"))
+# one row per cell-year, since results are joined back on cell and year
+stopifnot(!anyDuplicated(obs[c("cell", "year")]))
 
 # Locate Daymet files -----------------------------------------------------
 
@@ -101,39 +103,41 @@ invisible(lapply(daymet_years, function(yr) lapply(var_tags, daymet_path, yr = y
 # observation: many observations share a cell, and repeat visits share a cell
 # across years.
 
-obs_sf <- obs_sf |>
-  st_transform(crs(mask_r)) 
-
-n_off_grid <- sum(is.na(obs_sf$cell))
+n_off_grid <- sum(is.na(obs$cell))
 if (n_off_grid > 0) {
   message(n_off_grid, " observations fall outside the mask extent; dropping")
-  obs_sf <- filter(obs_sf, !is.na(cell))
+  obs <- filter(obs, !is.na(cell))
 }
 
 # read_mask() holds the cell number at unmasked cells and NA elsewhere, so the
 # value is both the CONUS test and the identifier. Confirm the stored value
 # really is the terra cell number; if it is a different index the join key
 # below would be wrong.
-mask_vals <- mask_r[obs_sf$cell][[1]]
+mask_vals <- mask_r[obs$cell][[1]]
 outside <- is.na(mask_vals)
 if (any(outside)) {
   message(sum(outside), " observations fall outside the CONUS mask; dropping")
-  obs_sf <- filter(obs_sf, !outside)
+  obs <- filter(obs, !outside)
   mask_vals <- mask_vals[!outside]
 }
-stopifnot(all(mask_vals == obs_sf$cell))
+stopifnot(all(mask_vals == obs$cell))
 
-cells <- sort(unique(obs_sf$cell))
+# x, y must lie in the cell they are labelled with, so the carried
+# coordinates and the cell id can't disagree in the output
+xy_cell <- cellFromXY(mask_r, as.matrix(obs[c("x", "y")]))
+stopifnot(all(xy_cell == obs$cell))
 
-if (any(obs_sf$year - 1 > max(daymet_years))) {
+cells <- sort(unique(obs$cell))
+
+if (any(obs$year - 1 > max(daymet_years))) {
   stop("Observation years require Daymet data past ", max(daymet_years), ": ",
-       paste(sort(unique(obs_sf$year[obs_sf$year - 1 > max(daymet_years)])),
+       paste(sort(unique(obs$year[obs$year - 1 > max(daymet_years)])),
              collapse = ", "))
 }
 
 # Years of Daymet needed to cover the longest window for any observation.
-years_needed <- seq(max(min(daymet_years), min(obs_sf$year) - n_years_clim),
-                    min(max(daymet_years), max(obs_sf$year) - 1))
+years_needed <- seq(max(min(daymet_years), min(obs$year) - n_years_clim),
+                    min(max(daymet_years), max(obs$year) - 1))
 
 
 #' Read monthly Daymet values at cells of the mask grid
@@ -166,15 +170,15 @@ cells_no_data <- cells[is.na(ref_vals[, 1])]
 # given the mask being used is based on daymet, this shouldn't yield 
 # any cells with no data
 if (length(cells_no_data) > 0) {
-  n_drop <- sum(obs_sf$cell %in% cells_no_data)
+  n_drop <- sum(obs$cell %in% cells_no_data)
   message(n_drop, " observations at ", length(cells_no_data),
           " cells with no Daymet data; dropping")
-  obs_sf <- filter(obs_sf, !cell %in% cells_no_data)
-  cells <- sort(unique(obs_sf$cell))
+  obs <- filter(obs, !cell %in% cells_no_data)
+  cells <- sort(unique(obs$cell))
 }
 rm(ref_vals)
 
-message(nrow(obs_sf), " observations at ", length(cells), " unique Daymet cells")
+message(nrow(obs), " observations at ", length(cells), " unique Daymet cells")
 
 
 
@@ -205,6 +209,8 @@ annual <- map_dfr(years_needed, function(yr) {
   readRDS(file.path(intermediate_dir, paste0("annualMetrics_", yr, ".rds")))
 })
 
+stopifnot(all(cells %in% annual$cell))  # intermediates cover every cell; else rerun = TRUE
+
 # No-data cells were dropped above, so any NA remaining here is unexpected
 # (e.g. a year with incomplete coverage) and would quietly shorten a window.
 if (anyNA(annual$tmin_annAvg)) {
@@ -215,8 +221,7 @@ if (anyNA(annual$tmin_annAvg)) {
 
 # 2. Trailing-window reductions -------------------------------------------
 
-targets <- obs_sf |>
-  st_drop_geometry() |>
+targets <- obs |>
   distinct(cell, year)
 
 message("Reducing over the ", n_years_clim, "-year window ...")
@@ -232,20 +237,18 @@ lag3 <- rename(lag3, n_years_3yr  = n_years_used)
 
 
 # 3. Anomalies and join back to the observations --------------------------
+# Joined on cell and year. x, y come from the input (checked against cell
+# above), so the output can be joined back on cell and year with x, y as a
+# check.
 
-# Cell-centre coordinates (Daymet LCC), stored alongside `cell` so the cell
-# identifier stays interpretable if the snap raster is ever rebuilt.
-cell_xy <- xyFromCell(mask_r, cells) |>
-  as_tibble() |>
-  rename(cell_x = x, cell_y = y) |>
-  mutate(cell = cells)
-
-out <- obs_sf |>
-  left_join(cell_xy, by = "cell") |>
+out <- obs |>
   left_join(clim, by = c("cell", "year")) |>
   left_join(lag3, by = c("cell", "year"))
 
-out <- bind_cols(out, calc_anomalies(st_drop_geometry(out), short_suffix = "_3yr"))
+# one output row per observation
+stopifnot(nrow(out) == nrow(obs))
+
+out <- bind_cols(out, calc_anomalies(out, short_suffix = "_3yr"))
 
 n_missing <- sum(is.na(out$tmean_meanAnnAvg_CLIM))
 if (n_missing > 0) {
@@ -260,4 +263,3 @@ if(!test_run) {
 } else {
   print(out)
 }
-
