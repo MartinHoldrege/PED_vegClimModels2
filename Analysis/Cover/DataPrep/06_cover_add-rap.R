@@ -11,7 +11,7 @@
 # Available area is the count of snap cells passing both the LCMAP mask and
 # the decade-mean fire mask. Note the two are not the same fire criterion as
 # the observation flags: observations use the per-year mask (that year's
-# 20-year window), area uses the mean burned fraction over 2010-2023. Area is
+# 20-year window), area uses the mean burned fraction over 2011-2023. Area is
 # a property of the ecoregion, not of a year.
 #
 # Target density is one sampled pixel per ~2,500 ha, the FIA base grid.
@@ -22,7 +22,7 @@
 #                                    - 01_rasterize_ecoregions.R
 #   LCMAP_fracKeep_gte90_1000m.tif   - 03_export_masks.js, via
 #                                      04_download_gee_output.R
-#   MTBS_fracUnburnedMean_gte90_20yr_2010-2023_1000m.tif
+#   MTBS_fracUnburnedMean_gte90_20yr_2011-2023_1000m.tif
 #                                    - 03_export_masks.js, via
 #                                      04_download_gee_output.R
 #   daymet_conus_snap_1000m.tif      - 00_create_snap_raster.R (read_mask())
@@ -33,6 +33,13 @@
 # Part 2: sample rap pixels to augment the field data,
 # in ecoregions where field data is sparse (see full description
 # at begin of part 2 below)
+#
+# Inputs:
+#   RAP_v3_cover-<group>_2011-2023_thin5_1000m.tif - 03_rap_sample.js
+#
+# Outputs:
+#   cover_by_pixel_year_all-sources_<vc>.csv
+#   diagnostics_pixel-n_achieved-vs-target_<vc>.csv
 #
 # September, 2026
 
@@ -463,6 +470,15 @@ rap_px <- rap_px |>
     cov_bare_ground = if_else(rank <= gap_bare_ground, cov_bare_ground, NA_real_)
   )
 
+# nesting: within a region each group's cells are ranks 1..k of the same
+# random ordering, so a smaller gap's cells are a subset of a larger one's.
+# Checked here because the tree rule below drops understorey cells.
+nest_ok <- rap_px |>
+  pivot_longer(starts_with("cov_"), names_to = "group", values_to = "cover") |>
+  filter(!is.na(cover)) |>
+  summarise(ok = max(rank) == n_distinct(cell), .by = c(region, group))
+stopifnot(all(nest_ok$ok))
+
 # RAP understorey is not usable under tree canopy
 n_under_tree <- sum(rap_px$cov_tree >= tree_cutoff, na.rm = TRUE)
 
@@ -519,22 +535,6 @@ stopifnot(nrow(overlap) == 0)
 # and never a pixel that has field data at all
 stopifnot(!any(rap_out$cell %in% field_final$cell))
 
-# nesting: a group's RAP pixels must be a subset of any larger group's
-rap_cells_by_group <- map(unname(groups), \(col) {
-  rap_out |> filter(!is.na(.data[[col]])) |> distinct(region, cell)
-}) |> set_names(names(groups))
-
-# getting the cell id's of group with the most cells in a region
-rap_cells_largest <- bind_rows(rap_cells_by_group, .id = 'group') |> 
-  mutate(n = n(), .by = c(region, group)) |> 
-  filter(group == group[n == max(n)][1]) |> 
-  select(region, cell)
-
-# check
-walk(rap_cells_by_group, function(df) {
-  stopifnot(all(df$cell %in% rap_cells_largest$cell))
-})
-
 # covers stay in range
 stopifnot(all(map_lgl(unname(groups), \(cc) {
   z <- cover_final[[cc]]; all(is.na(z) | (z >= 0 & z <= 100))
@@ -545,7 +545,6 @@ stopifnot(!any(duplicated(cover_final[c("cell", "year")])))
 
 message("\nresulting density against target, by group:")
 density_achieved <- cover_final |>
-  filter(sources != "rap" | TRUE) |>
   summarise(across(all_of(unname(groups)),
                    \(z) n_distinct(cell[!is.na(z)])), .by = eco_name) |>
   pivot_longer(-eco_name, names_to = "col", values_to = "n_pixels_final") |>
@@ -560,5 +559,5 @@ density_achieved |>
 write_csv(cover_final, file.path(out_dir, paste0("cover_by_pixel_year_all-sources_", 
                                                  vc, ".csv")))
 
-write_csv(density_achieved, 
-          paste0('diagnostics_pixel-n_achieved-vs-target_', vc, '.csv'))
+write_csv(density_achieved, file.path(
+  out_dir, paste0('diagnostics_pixel-n_achieved-vs-target_', vc, '.csv')))
