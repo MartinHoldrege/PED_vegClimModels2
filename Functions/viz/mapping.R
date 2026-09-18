@@ -96,6 +96,8 @@ plot_map_conus <- function(rast,
 #' @param point_color Character; point color when `color_var` is NULL.
 #' @param point_size Numeric; point size.
 #' @param point_shape Integer; ggplot shape code (default 16 = filled circle).
+#' @param point_stroke Numeric; point stroke. ggplot adds it to the marker
+#'   size, so set to 0 for very small markers.
 #' @param colorscale A ggplot2 scale object (e.g., `scale_color_viridis_c()`).
 #'   If NULL and `color_var` is provided, uses a viridis scale chosen based on
 #'   whether `color_var` is numeric or not.
@@ -114,6 +116,7 @@ plot_points_conus <- function(sf_df,
                               point_color = "red",
                               point_size = 1.5,
                               point_shape = 16,
+                              point_stroke = 0.5,
                               colorscale = NULL,
                               facet_var = NULL,
                               title = NULL,
@@ -157,14 +160,16 @@ plot_points_conus <- function(sf_df,
     g <- g + ggplot2::geom_sf(data = sf_df,
                               color = point_color,
                               size = point_size,
-                              shape = point_shape)
+                              shape = point_shape,
+                              stroke = point_stroke)
   } else {
     g <- g +
       ggplot2::geom_sf(
         data = sf_df,
         ggplot2::aes(color = .data[[color_var]]),
         size = point_size,
-        shape = point_shape
+        shape = point_shape,
+        stroke = point_stroke
       ) +
       colorscale
   }
@@ -293,13 +298,17 @@ colorscale_diverging <- function(name = "Difference",
 #' with 0s showing up gray.
 #' @param name Legend title.
 #' @param limits Numeric limits.
+#' @param pal_end Numeric in (0, 1]; where mako is cut at its light end.
+#'   Values below 1 keep low cover visible against a white background.
 #' @export
 colorscale_cover <- function(name = "Cover",
                              limits = c(0, 1),
                              zero_color = "grey85", 
+                             pal_end = 1,
                              ...) {
   n_colors <- 256
-  mako_cols <- viridis::viridis(n_colors, option = "mako", direction = -1)
+  mako_cols <- viridis::viridis(n_colors, option = "mako", direction = -1,
+                                end = pal_end)
   
   # gray at exactly 0, then mako from epsilon onward
   colors <- c(zero_color, mako_cols)
