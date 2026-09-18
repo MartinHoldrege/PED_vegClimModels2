@@ -27,8 +27,7 @@ exclude_dirs <- c(
   ".Rproj.user",
   "renv",
   ".quarto",
-  "Analysis/BiomassPhenology",
-  "Analysis/BiomassQuantity",
+  "Analysis/Phenology",
   "Analysis/VegComposition/Visualizations"
 )
 

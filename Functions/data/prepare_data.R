@@ -396,7 +396,8 @@ climate_name_lookup <- function(x, to_short = TRUE) {
     "durationFrostFreeDays_5percentile_CLIM"  = "frost_free_days_p05",
     "durationFrostFreeDays_meanAnnAvg_CLIM"   = "frost_free_days",
     "tmin_meanAnnAvg_CLIM"                    = "T_min",
-    "tmax_meanAnnAvg_CLIM"                    = "T_max"
+    "tmax_meanAnnAvg_CLIM"                    = "T_max",
+    "AWHC"                                    = "awc"
   )
   
   if (to_short) {

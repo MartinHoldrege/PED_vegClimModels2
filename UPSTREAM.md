@@ -1,1 +1,0 @@
-The source repo is https://github.com/aestears/PED_vegClimModels. However many of the tracked files in that repo are not included. Periodically this repository is updated to contain some files with relevant code from that source repository. 

@@ -108,7 +108,8 @@ read_climate_raster <- function(
   
   if(!is.null(path_soil)) {
     r_soil <- terra::rast(path_soil)
-    names(r_soil) <- stringr::str_replace(names(r_soil), '_cm', '')
+    names(r_soil) <- stringr::str_replace(names(r_soil), '_cm', '') |> 
+      stringr::str_replace('AHWC', 'awc')
     r <- c(r, r_soil)
   }
   r

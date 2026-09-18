@@ -67,6 +67,7 @@ out <- cover |>
 stopifnot(all(out$x == out$x_clim), all(out$y == out$y_clim))
 
 out <- out |>
+  select(-x_clim, -y_clim) |>
   bind_cols(as_tibble(soil_r[out$cell]))
 
 write_csv(out, out_file)
