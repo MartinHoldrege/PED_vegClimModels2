@@ -37,7 +37,7 @@ vc <- opt$vc  # cover data version
 
 # params ------------------------------------------------------------------
 
-rerun <- FALSE  # TRUE recomputes the climate/soils constants
+rerun <- TRUE  # TRUE recomputes the climate/soils constants
 
 out_dir <- file.path(paths$large, "Data_processed/scale_params")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)

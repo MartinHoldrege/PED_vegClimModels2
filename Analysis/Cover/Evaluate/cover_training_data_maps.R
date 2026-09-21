@@ -31,7 +31,7 @@
 #                                            - 01_rasterize_ecoregions.R
 #   LCMAP_fracKeep_gte90_1000m.tif           - 03_export_masks.js, via
 #                                              04_download_gee_output.R
-#   MTBS_fracUnburnedMean_gte90_20yr_2011-2023_1000m.tif
+#   MTBS_fracUnburned_gte90_20yr_2000-2024_1000m.tif (layer year_2023)
 #                                            - 03_export_masks.js, via
 #                                              04_download_gee_output.R
 #   daymet_conus_snap_1000m.tif              - 00_create_snap_raster.R
@@ -185,10 +185,11 @@ for (g in names(groups)) {
 #                     herbaceous
 #   eco_density     - total and unmasked area per sampled pixel, by group
 #
-# Means are drawn only on unmasked cells (LCMAP and 2011-2023 mean fire
-# masks, i.e. the available area in 06_cover_add-rap.R), so masked land is not
-# coloured as if it were represented. Density is drawn over the whole
-# ecoregion. Sampled pixels include any in masked cells (FIA plots, which skip
+# Means are drawn only on unmasked cells (LCMAP and the 2023 fire mask, i.e.
+# unburned 2004-2023; read_available_mask()), so masked land is not coloured
+# as if it were represented. Density is drawn over the whole ecoregion; its
+# "unmasked area" is 06's available area (2011-2023 mean fire mask), because
+# it's compared with the RAP sampling target. Sampled pixels include any in masked cells (FIA plots, which skip
 # the LCMAP mask, and plots measured before a later fire), as in the density
 # check at the end of 06.
 #
@@ -225,15 +226,8 @@ stopifnot(all(comp_cols %in% names(cover)))
 snap <- read_mask()
 eco  <- load_ecoregion_raster("L3")  # values are eco_id (`region` in 06)
 
-lcmap_mask <- terra::rast(file.path(mask_dir,
-                                    "LCMAP_fracKeep_gte90_1000m.tif")) |>
-  align_raster(snap)
-fire_mask  <- terra::rast(file.path(
-  mask_dir, "MTBS_fracUnburnedMean_gte90_20yr_2011-2023_1000m.tif")) |>
-  align_raster(snap)
-
-# ecoregion id on unmasked cells, NA elsewhere
-eco_avail <- terra::ifel(lcmap_mask == 1 & fire_mask == 1, eco, NA)
+# ecoregion id on unmasked cells (LCMAP, 2023 fire mask), NA elsewhere
+eco_avail <- terra::mask(eco, read_available_mask(2023))
 
 # km2 per ecoregion, as defined in 06
 eco_area <- read_csv(file.path(paths$large, "Data_processed/cover_combined",
@@ -352,7 +346,7 @@ bind_rows(select(eco_cover, var = group, value),
 
 eco_caption <- paste0(
   "Mean of pixel means (repeat years averaged), all sources. Shown only on ",
-  "cells passing the LCMAP and 2011-2023 mean fire masks.\nEcoregions with ",
+  "cells passing the LCMAP and 2023 fire masks.\nEcoregions with ",
   "fewer than ", min_pixels, " sampled pixels are not shown.")
 
 cover_panels <- map(names(groups), \(g) {
@@ -394,7 +388,7 @@ fig_frac <- wrap_plots(frac_panels$frac_needle, frac_panels$frac_broad,
       "Components averaged over years, then pixels, and the proportion ",
       "taken once (cover-weighted). Field sources only; herbaceous shares ",
       "exclude FIA-only pixel-years (no C3/C4 split).\n",
-      "Shown only on cells passing the LCMAP and 2011-2023 mean fire masks. ",
+      "Shown only on cells passing the LCMAP and 2023 fire masks. ",
       "Ecoregions with fewer than ", min_pixels,
       " pixels with cover in the set are not shown."))
 

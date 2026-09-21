@@ -1,0 +1,306 @@
+---
+title: "Climate and soil predictors: PCA and correlations"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  vc: null        # cover data version; null uses opt$vc
+  n_top: 8        # top variables per PC to report
+  n_select: 15    # variables to add in forward selection
+  n_conus: 100000 # CONUS cells to sample for section 1
+  test_run: FALSE
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Purpose
+
+Help choose a small set of predictors that covers most of the climate and soil
+variation, is biologically reasonable, and isn't strongly correlated. Help
+decide which variables will be selected from when model fitting. Done
+twice:
+
+1. Normals and soils, on a random sample of available CONUS cells (LCMAP and
+   2023 fire masks), so one selection serves both the cover and biomass
+   models. The chosen set is also checked on the cover training data.
+2. Normals, soils and 3-yr anomalies, on the cover training data (anomalies
+   exist only there; cover models only).
+
+**Coverage** of a set = RM² from `subselect::rm.coef()`: the share of the
+total variance of all variables explained by regressing them on the set
+(McCabe's criterion for "principal variables"). Comparable to the cumulative
+variance of the same number of PCs, which is the best possible. **Best
+subsets** come from `subselect::improve()` with criterion "RM": for each size
+k, the k variables with the highest coverage (a local search, so not
+guaranteed optimal). See `?subselect::rm.coef` and `?subselect::improve`.
+
+## Setup
+
+```{r setup-data}
+source("Functions/init.R")
+source_functions()  # read_cover_training(), variable_selection.R
+theme_set(theme_classic())
+
+vc <- if (is.null(params$vc)) opt$vc else params$vc
+
+dat <- read_cover_training(vc, normalize = TRUE)
+if (params$test_run) dat <- slice_sample(dat, n = 5000)
+
+soil_vars <- c("soilDepth", "clay_surface", "clay", "sand", "coarse",
+               "carbon", "awc")
+anom_vars <- str_subset(names(dat), "_3yrAnom$")
+clim_vars <- c(str_remove(anom_vars, "_3yrAnom$"), soil_vars)
+all_vars  <- c(clim_vars, anom_vars)
+
+dat <- dat[complete.cases(dat[all_vars]), ]
+
+# available CONUS cells: normals and soils only
+n_conus <- if (params$test_run) 2000 else params$n_conus
+set.seed(1)
+conus <- read_climate_raster("current") |>
+  align_raster(read_mask()) |>
+  terra::mask(read_available_mask(2023)) |>
+  terra::spatSample(size = n_conus, method = "random", na.rm = TRUE) |>
+  standardize(vars = clim_vars, scale_df = read_scale_params())
+conus <- conus$data[complete.cases(conus$data[clim_vars]), ]
+```
+
+CONUS sample: `r nrow(conus)` available cells. Cover data `r vc`:
+`r nrow(dat)` complete pixel-years (repeat years at a pixel kept) at
+`r n_distinct(dat$cell)` pixels.
+
+```{r helpers}
+plot_scree <- function(pca) {
+  ggplot(pca_variance(pca), aes(pc_num)) +
+    geom_col(aes(y = prop_var), fill = "steelblue", alpha = 0.7) +
+    geom_line(aes(y = cum_var)) +
+    geom_point(aes(y = cum_var)) +
+    geom_hline(yintercept = 0.9, linetype = "dashed", color = "grey50") +
+    scale_y_continuous(labels = scales::percent) +
+    labs(x = "Principal component", y = "Variance (bars: per PC, line: cumulative)")
+}
+
+# PCs up to 95% cumulative variance
+plot_loadings <- function(pca) {
+  n_pc <- min(which(pca_variance(pca)$cum_var >= 0.95))
+  ggplot(pca_loadings_long(pca, n_pc), aes(PC, variable, fill = loading)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = sprintf("%.2f", loading)), size = 2.2) +
+    scale_fill_gradient2(low = "#b2182b", high = "#2166ac", limits = c(-1, 1)) +
+    labs(x = NULL, y = NULL)
+}
+
+top_loadings <- function(pca) {
+  n_pc <- min(which(pca_variance(pca)$cum_var >= 0.95))
+  pca_loadings_long(pca, n_pc) |>
+    group_by(PC) |>
+    slice_max(abs(loading), n = params$n_top, with_ties = FALSE) |>
+    mutate(rank = row_number(),
+           entry = paste0(variable, " (", sprintf("%+.2f", loading), ")")) |>
+    select(rank, PC, entry) |>
+    pivot_wider(names_from = PC, values_from = entry)
+}
+
+plot_cor <- function(cor_mat) {
+  ggplot(cor_long(cor_mat), aes(var1, var2, fill = r)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient2(low = "#b2182b", high = "#2166ac", limits = c(-1, 1)) +
+    labs(x = NULL, y = NULL) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+kable_set <- function(tbl, caption) {
+  tbl |>
+    mutate(cum_coverage = scales::percent(cum_coverage, accuracy = 0.1)) |>
+    knitr::kable(digits = 2, caption = caption)
+}
+```
+
+## 1. Normals and soils (CONUS sample)
+
+```{r clim-pca}
+pca_clim <- prcomp(conus[clim_vars], scale. = TRUE)
+cor_clim <- cor(conus[clim_vars])
+```
+
+```{r clim-exclude}
+# improve() needs a non-singular correlation matrix, so variables that are
+# (near-)exact linear combinations of others are left out of the subset
+# search. MAT is presumably the mean of T_min and T_max, so one of the three
+# goes (edit to choose).
+exclude_clim <- "T_min"
+
+# any remaining dependency; trim.matrix() names the variable(s) to add to
+# exclude_clim (see ?subselect::trim.matrix)
+keep <- setdiff(clim_vars, exclude_clim)
+remaining <- subselect::trim.matrix(cor_clim[keep, keep],
+                                    tolval = 1000 * .Machine$double.eps)$names.discarded
+stopifnot(length(remaining) == 0)
+```
+
+### PCA
+
+```{r clim-scree, fig.width = 7, fig.height = 4}
+plot_scree(pca_clim)
+```
+
+```{r clim-loadings, fig.width = 8, fig.height = 8}
+plot_loadings(pca_clim)
+knitr::kable(top_loadings(pca_clim),
+             caption = paste("Top", params$n_top, "variables per PC by |loading| (showing PCs that explain 95%)"))
+```
+
+### Correlations
+
+Variables clustered on 1 - |r|.
+
+```{r clim-cor, fig.width = 9, fig.height = 8}
+plot_cor(cor_clim)
+```
+
+### Candidate sets
+
+Best subsets by coverage (a data-driven benchmark, not a recommendation),
+with the cumulative variance of the same number of PCs for comparison. For
+your candidate set, `cum_coverage` is the coverage as each variable is added,
+`max_abs_r` the largest |r| with the rest of the set.
+
+```{r clim-sets}
+best_subsets(cor_clim, params$n_select, exclude = exclude_clim) |>
+  mutate(pca = pca_variance(pca_clim)$cum_var[k],
+         across(c(coverage, pca), \(x) scales::percent(x, accuracy = 0.1))) |>
+  knitr::kable(caption = "Best subsets (subselect::improve, RM)")
+
+# edit to taste (starting point: Alice's CONUS set)
+candidate_clim <- c("MAT", "MAP", "PrecipTempCorr", "isothermality",
+                    "WDD_mean", "clay_surface", "coarse", "awc")
+summarise_set(conus[clim_vars], candidate_clim) |>
+  kable_set("Candidate set")
+
+# same set, in the cover training data
+summarise_set(dat[clim_vars], candidate_clim) |>
+  kable_set("Candidate set, cover training data")
+```
+
+```{r clim-subsets}
+# each item: k = one or more subset sizes; include = NULL or variables that
+# must be in every subset
+subset_specs <- list(
+  list(k = 4:8, include = NULL),
+  list(k = 5:7,   include = c("MAT", "MAP", "PrecipTempCorr", 'awc')),
+  list(k = 6:8,   include = c("MAT", "MAP", "PrecipTempCorr", 'isothermality', 
+                              'awc'))
+)
+
+subset_results <- map(subset_specs, \(s) {
+  stopifnot(all(s$k > length(s$include)))  # k must exceed the required count
+  best_subsets(cor_clim, kmax = max(s$k), include = s$include,
+               exclude = exclude_clim) |>
+    filter(k %in% s$k) |>
+    mutate(required = if (is.null(s$include)) "none" else paste(s$include, collapse = ", "),
+           .before = 1)
+}) |>
+  bind_rows()
+
+subset_results |>
+  mutate(pca = pca_variance(pca_clim)$cum_var[k],
+         across(c(coverage, pca), \(x) scales::percent(x, accuracy = 0.1))) |>
+  knitr::kable(caption = "Best subsets for given sizes and required variables")
+```
+
+## 2. Normals, soils and anomalies
+
+```{r both-pca}
+pca_both <- prcomp(dat[all_vars], scale. = TRUE)
+cor_both <- cor(dat[all_vars])
+```
+
+```{r both-exclude}
+# as in section 1; the same dependency presumably holds for the anomalies
+exclude_both <- c(exclude_clim, "T_min_3yrAnom")
+
+keep <- setdiff(all_vars, exclude_both)
+remaining <- subselect::trim.matrix(cor_both[keep, keep],
+                                    tolval = 1000 * .Machine$double.eps)$names.discarded
+stopifnot(length(remaining) == 0)
+```
+
+### Anomalies vs normals and soils
+
+```{r both-cross, fig.width = 9, fig.height = 7}
+as_tibble(cor_both[anom_vars, clim_vars], rownames = "anomaly") |>
+  pivot_longer(-anomaly, names_to = "variable", values_to = "r") |>
+  ggplot(aes(variable, anomaly, fill = r)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "#b2182b", high = "#2166ac", limits = c(-1, 1)) +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### PCA
+
+```{r both-scree, fig.width = 7, fig.height = 4}
+plot_scree(pca_both)
+```
+
+```{r both-loadings, fig.width = 9, fig.height = 11}
+plot_loadings(pca_both)
+knitr::kable(top_loadings(pca_both),
+             caption = paste("Top", params$n_top, "variables per PC by |loading|"))
+```
+
+### Correlations among anomalies
+
+```{r both-cor, fig.width = 9, fig.height = 8}
+plot_cor(cor_both[anom_vars, anom_vars])
+```
+
+### Candidate sets
+
+```{r both-sets}
+best_subsets(cor_both, params$n_select, exclude = exclude_both) |>
+  mutate(pca = pca_variance(pca_both)$cum_var[k],
+         across(c(coverage, pca), \(x) scales::percent(x, accuracy = 0.1))) |>
+  knitr::kable(caption = "Best subsets (subselect::improve, RM)")
+
+# edit to taste
+candidate_both <- c(candidate_clim, "MAT_3yrAnom", "MAP_3yrAnom")
+summarise_set(dat[all_vars], candidate_both) |>
+  kable_set("Candidate set")
+```
+
+```{r both-subsets}
+# each item: k = one or more subset sizes; include = NULL or variables that
+# must be in every subset
+subset_specs <- list(
+  list(k = 6:12, include = NULL),
+  list(k = 6:12,   include = c("MAT", "MAP", "PrecipTempCorr", 'awc'))
+)
+
+subset_results <- map(subset_specs, \(s) {
+  stopifnot(all(s$k > length(s$include)))  # k must exceed the required count
+  best_subsets(cor_both, kmax = max(s$k), include = s$include,
+               exclude = exclude_both) |>
+    filter(k %in% s$k) |>
+    mutate(required = if (is.null(s$include)) "none" else paste(s$include, collapse = ", "),
+           .before = 1)
+}) |>
+  bind_rows()
+
+subset_results |>
+  mutate(pca = pca_variance(pca_both)$cum_var[k],
+         across(c(coverage, pca), \(x) scales::percent(x, accuracy = 0.1))) |>
+  knitr::kable(caption = "Best subsets for given sizes and required variables")
+```
+
+## Session info
+
+```{r session-info}
+sessionInfo()
+```

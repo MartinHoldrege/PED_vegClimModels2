@@ -108,8 +108,8 @@ read_climate_raster <- function(
   
   if(!is.null(path_soil)) {
     r_soil <- terra::rast(path_soil)
-    names(r_soil) <- stringr::str_replace(names(r_soil), '_cm', '') |> 
-      stringr::str_replace('AHWC', 'awc')
+    names(r_soil) <- stringr::str_replace(names(r_soil), '_cm', '')
+    names(r_soil)[names(r_soil) == "AWHC"] <- climate_name_lookup("AWHC")
     r <- c(r, r_soil)
   }
   r
@@ -489,6 +489,32 @@ read_mask <- function() {
   # cell values are integers (or NA)
   terra::rast(file.path(paths$large, "Data_processed", 'masks', 
               "daymet_conus_snap_1000m.tif"))
+}
+
+#' Available-area mask: LCMAP and 20-yr unburned in a given year
+#'
+#' 1 where the cell passes the LCMAP mask (>= 90% keepable) and was >= 90%
+#' unburned in the 20 years up to `year` (layer year_<year> of the per-year
+#' fire mask); NA elsewhere. For maps and CONUS samples. RAP sampling (06)
+#' uses the 2011-2023 mean fire mask instead.
+#'
+#' @param year Year of the fire mask layer.
+#' @param root Root path for large files.
+#' @return Single-layer SpatRaster on the snap grid.
+read_available_mask <- function(year = 2023, root = paths$large) {
+  mask_dir <- file.path(root, "Data_processed/masks")
+  snap <- read_mask()
+  lcmap <- terra::rast(file.path(mask_dir, "LCMAP_fracKeep_gte90_1000m.tif")) |>
+    align_raster(snap)
+  fire <- terra::rast(file.path(mask_dir,
+                                "MTBS_fracUnburned_gte90_20yr_2000-2024_1000m.tif"))
+  lyr <- paste0("year_", year)
+  stopifnot(lyr %in% names(fire))
+  fire <- align_raster(fire[[lyr]], snap)
+  
+  out <- terra::ifel(!is.na(snap) & lcmap == 1 & fire == 1, 1, NA)
+  names(out) <- paste0("available_", year)
+  out
 }
 
 #' Read the cover training data (cover, climate and soils by pixel-year)
