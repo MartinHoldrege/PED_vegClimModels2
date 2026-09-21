@@ -494,18 +494,25 @@ read_mask <- function() {
 #' Read the cover training data (cover, climate and soils by pixel-year)
 #'
 #' Reads the table written by Cover/DataPrep/08_combine_cover_and_covariates.R.
+#' The _3yr columns are dropped. Climate columns are renamed to the short names
+#' in `climate_name_lookup()`: the _CLIM suffix is dropped and _3yrAnom is kept
+#' (e.g. tmean_meanAnnAvg_CLIM -> MAT, tmean_meanAnnAvg_3yrAnom ->
+#' MAT_3yrAnom). AWHC becomes awc.
 #'
 #' @param vc Cover data version (e.g. "c01"), usually `opt$vc`.
 #' @param group NULL for all rows, or one cover group, to keep only the rows
 #'   where that group's response is observed (not NA): tree, shrub,
 #'   herbaceous, bare_ground (cover, %); needle, broad (share of tree); forb,
 #'   c3_grass, c4_grass (share of herbaceous).
+#' @param normalize Logical; z-score the climate and soil columns with the
+#'   CONUS-wide means and sds, and divide the anomalies by their sd across
+#'   training pixel-years (see `read_scale_params()`).
 #' @param as_sf Logical; return an sf data frame of cell-centre points in the
 #'   CRS of `read_mask()`. The x and y columns are kept.
 #' @param root Root path for large files.
 #' @return Tibble, or sf data frame if `as_sf = TRUE`.
-read_cover_training <- function(vc, group = NULL, as_sf = FALSE,
-                                root = paths$large) {
+read_cover_training <- function(vc, group = NULL, normalize = FALSE,
+                                as_sf = FALSE, root = paths$large) {
   group_cols <- c(tree = "cov_tree", shrub = "cov_shrub",
                   herbaceous = "cov_herbaceous",
                   bare_ground = "cov_bare_ground",
@@ -518,7 +525,28 @@ read_cover_training <- function(vc, group = NULL, as_sf = FALSE,
   stopifnot(file.exists(p))
   if (!is.null(group)) group <- match.arg(group, names(group_cols))
   
-  out <- readr::read_csv(p, show_col_types = FALSE)
+  out <- readr::read_csv(p, show_col_types = FALSE) |>
+    dplyr::select(-dplyr::ends_with("_3yr"))
+  
+  # short climate names, keeping the _3yrAnom suffix;
+  # climate_name_lookup() errors on any name it doesn't know
+  old <- stringr::str_subset(names(out), "_(CLIM|3yrAnom)$") |>
+    setdiff("n_years_CLIM")
+  long   <- stringr::str_replace(old, "_3yrAnom$", "_CLIM")
+  suffix <- stringr::str_extract(old, "_3yrAnom$") |> tidyr::replace_na("")
+  new    <- paste0(climate_name_lookup(long), suffix)
+  names(out)[match(old, names(out))] <- new
+  names(out)[names(out) == "AWHC"] <- climate_name_lookup("AWHC")
+  
+  if (normalize) {
+    sp <- read_scale_params(vc, root = root)
+    soil_vars <- c("soilDepth", "clay_surface", "clay", "sand", "coarse",
+                   "carbon", "awc")
+    vars <- c(new, soil_vars)
+    # every predictor must have parameters, so none is left unscaled
+    stopifnot(all(vars %in% names(out)), all(vars %in% sp$variable))
+    out <- standardize(out, vars = vars, scale_df = sp)$data
+  }
   
   if (!is.null(group)) {
     out <- dplyr::filter(out, !is.na(.data[[group_cols[[group]]]]))
@@ -528,6 +556,35 @@ read_cover_training <- function(vc, group = NULL, as_sf = FALSE,
     out <- sf::st_as_sf(out, coords = c("x", "y"),
                         crs = terra::crs(read_mask()), remove = FALSE)
   }
+  out
+}
+
+#' Read the predictor scaling parameters
+#'
+#' Written by Cover/DataPrep/09_compute_scale_params.R. Climate normals and
+#' soils: mean and sd across CONUS cells (shared by all models). Anomalies
+#' (if `vc` is given): mean 0 and the sd across training pixel-years, so
+#' scaling divides by the sd and keeps 0 as the normal.
+#'
+#' @param vc Cover data version for the anomaly parameters, or NULL for the
+#'   climate and soils parameters only.
+#' @param root Root path for large files.
+#' @return Tibble with columns `variable`, `mean`, `sd` only (the `scale_df`
+#'   format of `standardize()`, `standardize_raster()`, `unstandardize()` and
+#'   `unstandardize_long()`). The CSVs also hold `n`, `source` and, for
+#'   anomalies, `mean_obs`.
+read_scale_params <- function(vc = NULL, root = paths$large) {
+  dir <- file.path(root, "Data_processed/scale_params")
+  p <- file.path(dir, "scale_params_climate_soils.csv")
+  if (!is.null(vc)) {
+    p <- c(p, file.path(dir, paste0("scale_params_anomalies_", vc, ".csv")))
+  }
+  stopifnot(file.exists(p))
+  
+  out <- purrr::map(p, readr::read_csv, show_col_types = FALSE) |>
+    dplyr::bind_rows() |>
+    dplyr::select(variable, mean, sd)
+  stopifnot(!anyDuplicated(out$variable))
   out
 }
 

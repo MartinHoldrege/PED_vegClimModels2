@@ -397,7 +397,13 @@ climate_name_lookup <- function(x, to_short = TRUE) {
     "durationFrostFreeDays_meanAnnAvg_CLIM"   = "frost_free_days",
     "tmin_meanAnnAvg_CLIM"                    = "T_min",
     "tmax_meanAnnAvg_CLIM"                    = "T_max",
-    "AWHC"                                    = "awc"
+    "AWHC"                                    = "awc",
+    'soilDepth'                               = "soilDepth",
+    'clay_surface'                            = "clay_surface",
+    'clay'                                    = "clay",
+    "sand"                                    = "sand",
+    "coarse"                                  = "coarse",
+    "carbon"                                  = "carbon"
   )
   
   if (to_short) {
