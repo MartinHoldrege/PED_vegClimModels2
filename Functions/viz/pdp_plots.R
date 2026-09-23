@@ -59,7 +59,7 @@
 #'   seed = seed,
 #'   weighted = weighted
 #' )
-#' plot_cwexp_pdp(pdp_total)
+#' plot_pdp(pdp_total, ylab = "Predicted biomass")
 #'
 #' # per-PFT PDP (potential biomass)
 #' pdp_pft <- cwexp_pdp(
@@ -68,7 +68,7 @@
 #'   n_background = 200, n_grid = 20,
 #'   type = "by_group", weighted = FALSE
 #' )
-#' plot_cwexp_pdp(pdp_pft)  
+#' plot_pdp(pdp_pft, ylab = "Predicted biomass")  
 #' @export
 cwexp_pdp <- function(fit, data, focal_vars = NULL,
                       n_background = 1000,
@@ -154,9 +154,12 @@ cwexp_pdp <- function(fit, data, focal_vars = NULL,
 }
 
 
-#' Plot partial dependence for a cwexp model
+#' Plot partial dependence
 #'
-#' @param pdp_df Output of `cwexp_pdp()`.
+#' Works with any partial dependence table, not just cwexp models.
+#'
+#' @param pdp_df Data frame with columns `variable`, `x_value` and `yhat`,
+#'   and optionally `PFT` (e.g. the output of `cwexp_pdp()`).
 #' @param title Character; plot title.
 #' @param ylab Character; y-axis label.
 #' @param line_color Character; line color (used when no PFT grouping).
@@ -164,10 +167,20 @@ cwexp_pdp <- function(fit, data, focal_vars = NULL,
 #'
 #' @return A ggplot object. For total PDP: faceted by variable. For per-PFT
 #'   PDP: `facet_grid(PFT ~ variable)` with variable labels on the bottom.
+#' @examples
+#' pdp_df <- data.frame(variable = rep(c("MAT", "MAP"), each = 5),
+#'                      x_value = rep(1:5, 2),
+#'                      yhat = c(1:5, 5:1))
+#' title <- NULL
+#' ylab <- "Predicted value"
+#' line_color <- "steelblue"
+#' line_size <- 0.8
+#' plot_pdp(pdp_df = pdp_df, title = title, ylab = ylab,
+#'          line_color = line_color, line_size = line_size)
 #' @export
-plot_cwexp_pdp <- function(pdp_df,
+plot_pdp <- function(pdp_df,
                            title = NULL,
-                           ylab = "Predicted biomass",
+                     ylab = "Predicted value",
                            line_color = "steelblue",
                            line_size = 0.8) {
 

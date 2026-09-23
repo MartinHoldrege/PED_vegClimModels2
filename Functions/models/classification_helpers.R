@@ -100,3 +100,56 @@ predict_raster.cover_classification <- function(fit, rast, chunk_size = 1e6,
   names(out) <- c("prob", "class")
   out
 }
+
+
+#' Partial dependence for a cover classification model
+#'
+#' For each predictor (in original units, e.g. MAP for log1p_MAP), sets it to
+#' each value on a grid for every row of a background sample, predicts, and
+#' averages the predicted probability. Other predictors keep their observed
+#' values.
+#'
+#' @param fit Object of class "cover_classification".
+#' @param dat Training data in original units (the background).
+#' @param n_grid Number of grid values per predictor (quantiles from quantile_range)
+#' @param n_background Rows sampled from `dat` as the background.
+#' @return Tibble with `variable`, `x_value` and `yhat`, for `plot_pdp()`.
+#' @examples
+#' fit <- read_cover_model("classification", "forest", "c01", "m01")
+#' dat <- read_cover_training("c01")
+#' n_grid <- 20
+#' n_background <- 2000
+#' quantile_range <- c(0, 1)
+#' pdp <- pdp_classification(fit = fit, dat = dat, n_grid = n_grid,
+#'                           n_background = n_background)
+pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
+                               quantile_range = c(0, 1)) {
+  requireNamespace('glmnet')
+  spec <- fit$config$spec
+  source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
+  
+  dat <- dat[complete.cases(dat[source_vars]), ]
+  set.seed(1)
+  bg <- dat[sample(nrow(dat), min(n_background, nrow(dat))), ]
+  
+  predict_mean <- function(newdat) {
+    x <- prepare_predictors(newdat, pred_vars = spec$pred_vars,
+                            scale_df = fit$scale_df,
+                            squares = spec$squares,
+                            interactions = spec$interactions)
+    mean(predict(fit$fit, newx = x, s = fit$lambda, type = "response"))
+  }
+  
+  map(source_vars, \(v) {
+    value_range <- quantile(dat[[v]], probs = quantile_range, names = FALSE)
+    grid <- seq(value_range[1], value_range[2], length.out = n_grid)
+    yhat <- map_dbl(grid, \(value) {
+      bg_v <- bg
+      bg_v[[v]] <- value
+      predict_mean(bg_v)
+    })
+    tibble(variable = v, x_value = grid, yhat = yhat)
+  }) |>
+    bind_rows()
+}
+
