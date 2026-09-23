@@ -98,3 +98,18 @@ assign_cell <- function(df, lon, lat, crs, snap = read_mask()) {
   df$cell <- terra::extract(snap, v)$cell_id
   df
 }
+
+#' Predict a fitted model onto a raster
+#'
+#' Generic; methods exist for cwexp biomass fits (`predict_raster.cwexp_fit`)
+#' and cover classification models (`predict_raster.cover_classification`).
+#' Generics are defined in other scripts under Functions/models/
+#' 
+#' @param fit Fitted model object.
+#' @param rast `SpatRaster` of predictors.
+#' @param ... Passed to methods.
+#' @return `SpatRaster`.
+predict_raster <- function(fit, rast, ...) {
+  UseMethod("predict_raster")
+}
+

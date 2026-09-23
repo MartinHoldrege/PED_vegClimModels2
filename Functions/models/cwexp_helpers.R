@@ -418,8 +418,9 @@ extract_base_vars <- function(terms) {
 #' pred <- predict_raster(fit, rast, type = type)
 #' terra::plot(pred)
 #' @export
-predict_raster <- function(fit, rast,
-                           type = c("total", "by_group", "potential")) {
+predict_raster.cwexp_fit <- function(fit, rast,
+                                     type = c("total", "by_group", "potential"),
+                                     ...) {
   
   type <- match.arg(type)
   
@@ -485,95 +486,8 @@ predict_raster <- function(fit, rast,
   out
 }
 
-#' Predict biomass from a cwexp model onto a raster
-#'
-#' Computes `mu = sum_g(C_g * softplus(alpha_g + X * beta_g))` using raster
-#' math. The input raster must have named layers for the base predictor
-#' variables and cover columns. Formula transformations like `I(MAT^2)` and
-#' interactions like `MAT:MAP` are computed on-the-fly from the base layers.
-#'
-#' @param fit Fitted cwexp model object (`cwexp_tmb_fit`).
-#' @param rast A `SpatRaster` (terra) with named layers including base
-#'   predictor variables and cover columns.
-#' @param type Character; `"total"` returns a single-layer SpatRaster of
-#'   total predicted biomass. `"by_group"` returns per-PFT cover-weighted.
-#'   `"potential"` returns per-PFT at 100% cover.
-#'
-#' @return A `SpatRaster`.
-#' @examples
-#' # supports formulas with I() and interactions:
-#' # totalBio ~ MAT + I(MAT^2) + MAP + MAT:MAP
-#' # only requires raster layers named "MAT" and "MAP"
-#' @export
-predict_raster <- function(fit, rast,
-                           type = c("total", "by_group", "potential")) {
-  
-  type <- match.arg(type)
-  
-  stopifnot(inherits(rast, "SpatRaster"),
-            stringr::str_detect(class(fit), "cwexp"))
-  
-  x_cols <- fit$prep$x_cols
-  cover_cols <- fit$spec$cover_cols
-  alpha <- fit$par$alpha
-  B <- fit$par$B
-  
-  # check that base variables (not transformed names) exist in raster
-  base_vars <- extract_base_vars(x_cols)
-  required_layers <- c(base_vars, cover_cols)
-  missing <- setdiff(required_layers, names(rast))
-  if (length(missing) > 0) {
-    stop("Missing layers in raster: ", paste(missing, collapse = ", "))
-  }
-  
-  G <- length(cover_cols)
-  P <- length(x_cols)
-  
-  # helper: safe softplus for rasters
-  r_softplus <- function(r) {
-    terra::ifel(r > 20, r, log1p(exp(r)))
-  }
-  
-  # compute per-group contributions
-  group_layers <- vector("list", G)
-  for (g in seq_len(G)) {
-    # start with alpha_g
-    eta_g <- terra::rast(rast[[1]])  # template
-    terra::values(eta_g) <- alpha[g]
-    
-    # add predictor contributions
-    for (p in seq_len(P)) {
-      eta_g <- eta_g + resolve_raster_layer(rast, x_cols[p]) * B[p, g]
-    }
-    
-    sp_g <- r_softplus(eta_g)
-    
-    if (type == "potential") {
-      group_layers[[g]] <- sp_g
-    } else {
-      group_layers[[g]] <- rast[[cover_cols[g]]] * sp_g
-    }
-  }
-  
-  names(group_layers) <- cover_cols
-  
-  if (type == "total") {
-    out <- group_layers[[1]]
-    if (G > 1) {
-      for (g in 2:G) {
-        out <- out + group_layers[[g]]
-      }
-    }
-    names(out) <- "predicted_totalBio"
-    return(out)
-  }
-  
-  out <- terra::rast(group_layers)
-  pft_labels <- stringr::str_remove(cover_cols, "Cov$")
-  names(out) <- pft_labels
-  out
-}
-
+# cwexp_tmb_fit objects use the same method
+predict_raster.cwexp_tmb_fit <- predict_raster.cwexp_fit
 
 
 # wrappers ----------------------------------------------------------------
