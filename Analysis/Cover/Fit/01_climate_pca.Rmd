@@ -179,7 +179,9 @@ specs_clim <- list(
        exclude_improve = c('soilDepth', 'sand', 'clay')), 
   list(sizes = 5:params$max_k, 
      include = c("MAT", "MAP", "PrecipTempCorr", "awc"),
-     exclude_improve = c('soilDepth', 'sand', 'clay', 'clay_surface', 'coarse', 'carbon')) 
+     # allow clay_surface, but not the other soil variables, not bias
+     # toward climate variables
+     exclude_improve = c('soilDepth', 'sand', 'clay', 'coarse', 'carbon')) 
 )
 
 best_subsets_by_spec(cor_clim, specs_clim, exclude = exclude_clim) |>

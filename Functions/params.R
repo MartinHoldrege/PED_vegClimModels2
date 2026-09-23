@@ -40,7 +40,22 @@ option_list <- list(
   optparse::make_option("--fit_herb", type = "logical", 
                         default = TRUE),
   optparse::make_option("--fit_woody", type = "logical", 
-                        default = TRUE)
+                        default = TRUE),
+  
+  # cover models (Functions/models/cover_specs.R) -------------------------
+  # a cover model is cover_specs[[cover_type]][[cover_response]][[vmc]]
+  
+  # model family, i.e. which fitting script: 'classification', 'cover' or
+  # 'proportion'
+  optparse::make_option("--cover_type", type = "character",
+                        default = "classification"),
+  # which model in that family
+  optparse::make_option("--cover_model", type = "character",
+                        default = "forest"),
+  # cover model version ('vmc' = version model, cover); separate from --vm,
+  # which is the biomass model version
+  optparse::make_option("--vmc", type = "character",
+                        default = "m01")
   
 )
 

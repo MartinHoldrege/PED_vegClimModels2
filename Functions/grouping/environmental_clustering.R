@@ -46,7 +46,8 @@ make_env_clusters <- function(data,
                               k,
                               nstart = 20,
                               iter.max = 100,
-                              seed = NULL) {
+                              seed = NULL,
+                              group = NULL) {
   if (!is.data.frame(data)) {
     stop("data must be a data frame.")
   }
@@ -102,9 +103,19 @@ make_env_clusters <- function(data,
     nstart = nstart,
     iter.max = iter.max
   )
+  
+  env_cluster <- km$cluster
+  
+  # optionally put every row of a group (e.g. all years of a cell) in one
+  # cluster
+  if (!is.null(group)) {
+    stopifnot(length(group) == nrow(data))
+    env_cluster <- ave(env_cluster, group,
+                       FUN = \(f) f[1])
+  }
 
   out <- list(
-    env_cluster = km$cluster,
+    env_cluster = env_cluster,
     vars = vars,
     k = k,
     centers = km$centers,

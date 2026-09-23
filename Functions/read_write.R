@@ -804,3 +804,48 @@ read_shrub_biomass <- function() {
     bind_rows(.id = 'study')
   dat
 }
+
+#' Path to a fitted cover model file
+#'
+#' The file name is defined only here, so the fitting, prediction and
+#' diagnostics scripts can't drift apart.
+#'
+#' @param cover_type Model family: "classification", "cover" or "proportion".
+#' @param cover_model Model within the family, e.g. "forest".
+#' @param vc Cover data version, e.g. "c01".
+#' @param vmc Cover model version, e.g. "m01".
+#' @param root Root path for large files.
+#' @return File path (character).
+#' @examples
+#' cover_type <- "classification"
+#' cover_model <- "forest"
+#' vc <- "c01"
+#' vmc <- "m01"
+#' root <- paths$large
+#' cover_model_path(cover_type = cover_type, cover_model = cover_model,
+#'                  vc = vc, vmc = vmc, root = root)
+cover_model_path <- function(cover_type, cover_model, vc, vmc,
+                             root = paths$large) {
+  file.path(root, "Data_processed", "CoverData", "Fit",
+            paste0(cover_type, "_", cover_model, "_", vc, "-", vmc, ".rds"))
+}
+
+#' Read a fitted cover model
+#'
+#' @inheritParams cover_model_path
+#' @return The list saved by the fitting script (e.g. fit, lambda, threshold,
+#'   clusters, config, data).
+#' @examples
+#' cover_type <- "classification"
+#' cover_model <- "forest"
+#' vc <- "c01"
+#' vmc <- "m01"
+#' root <- paths$large
+#' mod <- read_cover_model(cover_type = cover_type, cover_model = cover_model,
+#'                         vc = vc, vmc = vmc, root = root)
+read_cover_model <- function(cover_type, cover_model, vc, vmc,
+                             root = paths$large) {
+  p <- cover_model_path(cover_type, cover_model, vc, vmc, root = root)
+  if (!file.exists(p)) stop("fitted model not found: ", p)
+  readRDS(p)
+}
