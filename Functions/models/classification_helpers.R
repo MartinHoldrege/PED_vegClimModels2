@@ -44,6 +44,42 @@ choose_threshold <- function(obs, pred, method) {
 }
 
 
+#' Predicted probability from a fitted cover classification model
+#'
+#' Dispatches on the engine the model was fit with, so callers don't need to
+#' know which one it was.
+#'
+#' @param fit Object of class "cover_classification".
+#' @param x Design matrix from `prepare_predictors()`, with the same columns,
+#'   in the same order, as the matrix the model was fit to.
+#' @return Numeric vector of predicted probabilities, one per row of `x`.
+#' @examples
+#' fit <- read_cover_model("classification", "forest", "c01", "m01")
+#' dat <- read_cover_training("c01")
+#' spec <- fit$config$spec
+#' x <- prepare_predictors(head(dat, 10), pred_vars = spec$pred_vars,
+#'                         scale_df = fit$scale_df, squares = spec$squares,
+#'                         interactions = spec$interactions)
+#' predict_prob(fit = fit, x = x)
+predict_prob <- function(fit, x) {
+  engine <- fit$config$spec$engine
+  
+  switch(
+    engine,
+    glmnet = {
+      requireNamespace("glmnet")  # to get the predict() method
+      as.numeric(predict(fit$fit, newx = x, s = fit$lambda,
+                         type = "response"))
+    },
+    ranger = {
+      requireNamespace("ranger")  # to get the predict() method
+      predict(fit$fit, data = x)$predictions[, "1"]
+    },
+    stop("unknown engine: ", engine)
+  )
+}
+
+
 
 
 #' Predict a cover classification model onto a raster
@@ -68,7 +104,6 @@ choose_threshold <- function(obs, pred, method) {
 #' pred <- predict_raster(fit = fit, rast = rast, chunk_size = chunk_size)
 predict_raster.cover_classification <- function(fit, rast, chunk_size = 1e6,
                                                  ...) {
-  requireNamespace('glmnet') # to get predict() method
   spec <- fit$config$spec
   source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
   stopifnot(inherits(rast, "SpatRaster"), all(source_vars %in% names(rast)))
@@ -87,7 +122,7 @@ predict_raster.cover_classification <- function(fit, rast, chunk_size = 1e6,
                             interactions = spec$interactions)
     # same columns, in the same order, as the fitted design matrix
     stopifnot(identical(colnames(x), fit$config$x_colnames))
-    as.numeric(predict(fit$fit, newx = x, s = fit$lambda, type = "response"))
+    predict_prob(fit, x)
   }) |>
     unlist(use.names = FALSE)
   
@@ -124,7 +159,6 @@ predict_raster.cover_classification <- function(fit, rast, chunk_size = 1e6,
 #'                           n_background = n_background)
 pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
                                quantile_range = c(0, 1)) {
-  requireNamespace('glmnet')
   spec <- fit$config$spec
   source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
   
@@ -137,7 +171,7 @@ pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
                             scale_df = fit$scale_df,
                             squares = spec$squares,
                             interactions = spec$interactions)
-    mean(predict(fit$fit, newx = x, s = fit$lambda, type = "response"))
+    mean(predict_prob(fit, x))
   }
   
   map(source_vars, \(v) {
@@ -152,4 +186,3 @@ pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
   }) |>
     bind_rows()
 }
-

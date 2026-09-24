@@ -437,8 +437,9 @@ pdp_total <- cwexp_pdp(
   unstandardize_long(scale_df, name_col = 'variable',
                      value_col = 'x_value')
 
-plot_cwexp_pdp(pdp_total,
-               title = "Partial dependence: total biomass")
+plot_pdp(pdp_total,
+               title = "Partial dependence: total biomass",
+               ylab = "Predicted biomass")
 ```
 
 ### Per-PFT (Cover-Weighted)
@@ -451,8 +452,9 @@ pdp_weighted <- cwexp_pdp(
   unstandardize_long(scale_df, name_col = 'variable',
                      value_col = 'x_value')
 
-plot_cwexp_pdp(pdp_weighted,
-               title = "Partial dependence: per-PFT biomass (cover-weighted)")
+plot_pdp(pdp_weighted,
+               title = "Partial dependence: per-PFT biomass (cover-weighted)",
+               ylab = "Predicted biomass")
 ```
 
 ### Per-PFT (Potential, Cover = 100%)
@@ -466,7 +468,7 @@ pdp_potential <- cwexp_pdp(
   unstandardize_long(scale_df, name_col = 'variable',
                      value_col = 'x_value')
 
-plot_cwexp_pdp(pdp_potential,
+plot_pdp(pdp_potential,
                title = "Partial dependence: per-PFT potential biomass (cover = 100%)",
                ylab = "Potential biomass (at 100% cover)")
 ```

@@ -1,0 +1,323 @@
+---
+title: "Classification model diagnostics"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  cover_type: "classification"
+  cover_model: null   # null uses opt$cover_model
+  vc: null            # null uses opt$vc
+  vmc: null           # null uses opt$vmc
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Setup
+
+```{r setup-data}
+source("Functions/init.R")
+source_functions()
+library(glmnet)
+theme_set(theme_classic())
+
+cover_type  <- params$cover_type
+cover_model <- if (is.null(params$cover_model)) opt$cover_model else params$cover_model
+vc          <- if (is.null(params$vc)) opt$vc else params$vc
+vmc         <- if (is.null(params$vmc)) opt$vmc else params$vmc
+
+fit  <- read_cover_model(cover_type, cover_model, vc, vmc)
+spec <- fit$config$spec
+
+# "glmnet" or "ranger"; the fit summary and a couple of labels differ
+engine <- spec$engine
+
+# for ranger, pred_in holds out-of-bag rather than in-sample predictions
+in_label <- if (engine == "ranger") "out_of_bag" else "in_sample"
+in_title <- if (engine == "ranger") {
+  "Out-of-bag"
+} else {
+  "In-sample (model fit to all data)"
+}
+
+# predictors in original units (log1p_MAP is plotted as MAP)
+source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
+
+# training data joined to the saved predictions; observed class rebuilt from
+# the spec
+dat <- read_cover_training(vc) |>
+  inner_join(fit$predictions, by = c("cell", "year")) |>
+  mutate(observed = as.integer(.data[[spec$response]] > spec$cover_threshold))
+stopifnot(nrow(dat) == nrow(fit$predictions))
+
+scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
+pred_dir <- file.path(paths$large, "Data_processed", "CoverData", "Predictions")
+```
+
+# Model info 
+
+Model `r cover_type`/`r cover_model`, data `r vc`, version `r vmc`, engine
+`r engine`: `r nrow(dat)` pixel-years; cutoff `r round(fit$threshold, 3)`
+
+```{r info}
+print(spec)
+```
+
+# Fit
+
+## Fitted model
+
+For glmnet, the cross-validation curve (binomial deviance vs log(lambda);
+dashed lines mark min and 1se) and the non-zero coefficients at the selected
+lambda. For ranger, the forest settings and the out-of-bag error.
+
+```{r fit-summary}
+if (engine == "glmnet") {
+  
+  plot(fit$fit)
+  
+coefs <- coef(fit$fit, s = fit$lambda)
+tibble(term = rownames(coefs), coefficient = as.numeric(coefs)) |>
+  filter(coefficient != 0) |>
+  arrange(desc(abs(coefficient))) |>
+    knitr::kable(digits = 3) |>
+    print()
+  
+} else if (engine == "ranger") {
+  
+  # add importance = "impurity" to spec$ranger to get variable importance here
+  print(fit$fit)
+  
+}
+```
+
+## Classification performance
+
+AUC and the confusion matrix at the cutoff. Out-of-fold predictions come from
+the environmental folds; for glmnet those are the same folds that chose
+lambda, so they are mildly optimistic. The other set is in-sample for glmnet
+and out-of-bag for ranger.
+
+```{r performance}
+perf <- function(pred) {
+  pa <- data.frame(id = seq_len(nrow(dat)), obs = dat$observed, pred = pred)
+  cm <- PresenceAbsence::cmx(pa, threshold = fit$threshold)
+  tibble(AUC = PresenceAbsence::auc(pa, st.dev = FALSE),
+         accuracy = PresenceAbsence::pcc(cm, st.dev = FALSE),
+         sensitivity = PresenceAbsence::sensitivity(cm, st.dev = FALSE),
+         specificity = PresenceAbsence::specificity(cm, st.dev = FALSE),
+         observed_prevalence = mean(dat$observed),
+         predicted_prevalence = mean(pred > fit$threshold))
+}
+
+bind_rows(perf(dat$pred_in), perf(dat$pred_oof)) |>
+  mutate(predictions = c(in_label, "out_of_fold"), .before = 1) |>
+  knitr::kable(digits = 3)
+
+# confusion matrix (counts of pixel-years), out-of-fold
+table(observed = dat$observed,
+      predicted = as.integer(dat$pred_oof > fit$threshold)) |>
+  knitr::kable(caption = "Out-of-fold confusion matrix (0 = not forest, 1 = forest)")
+```
+
+# Quantile plots
+
+Points: proportion of pixel-years that are forest, observed and predicted
+(predicted class = probability above the cutoff), within quantiles of each
+predictor. Both are classes, so they're directly comparable.
+
+```{r quantile-data}
+# decile_dotplot() expects the predicted column to be <yvar>_pred
+quant_df <- function(pred_col) {
+  dat |>
+    mutate(forest = observed,
+           forest_pred = as.integer(.data[[pred_col]] > fit$threshold)) |>
+    predvars2deciles(response_vars = c("forest", "forest_pred"),
+                     pred_vars = source_vars)
+}
+quant_in  <- quant_df("pred_in")
+quant_oof <- quant_df("pred_oof")
+```
+
+```{r quantile-plots, fig.width = 10, fig.height = 7}
+decile_dotplot("forest", quant_in, ylab = "Proportion forest",
+               add_predicted = TRUE, title = in_title)
+decile_dotplot("forest", quant_oof, ylab = "Proportion forest",
+               add_predicted = TRUE, title = "Out-of-fold")
+```
+
+## Filtered quantile plots
+
+Only pixel-years in the lower and upper 20% of each filter variable, to see
+whether the fit holds at the climate extremes.
+
+```{r quantile-filtered, fig.width = 10, fig.height = 9}
+dat |>
+  mutate(forest = observed,
+         forest_pred = as.integer(pred_oof > fit$threshold)) |>
+  predvars2deciles(response_vars = c("forest", "forest_pred"),
+                   pred_vars = source_vars, filter_var = TRUE,
+                   filter_vars = source_vars) |>
+  decile_dotplot_filtered("forest", df = _, ylab = "Proportion forest",
+                          title = "Out-of-fold, filtered")
+```
+
+# Partial dependence
+
+Mean predicted probability as each predictor varies, others at their
+observed values.
+
+```{r pdp, fig.width = 10, fig.height = 6}
+pdp_classification(fit, dat) |>
+  plot_pdp(ylab = "Predicted probability of forest")
+```
+
+# Maps
+
+## Misclassification at training pixels
+
+Observed class vs predicted class, for both sets of predictions. One point
+per pixel, using its most recent year.
+
+```{r map-misclass, fig.width = 9, fig.height = 6}
+plot_misclass <- function(pred_col, title) {
+  misclass_sf <- dat |>
+    slice_max(year, n = 1, by = cell) |>
+    mutate(predicted = as.integer(.data[[pred_col]] > fit$threshold),
+           outcome = case_when(
+             observed == 1 & predicted == 1 ~ "forest, correct",
+             observed == 0 & predicted == 0 ~ "not forest, correct",
+             observed == 0 & predicted == 1 ~ "false forest",
+             observed == 1 & predicted == 0 ~ "missed forest"
+           )) |>
+    sf::st_as_sf(coords = c("x", "y"), crs = terra::crs(read_mask()))
+  
+  plot_points_conus(misclass_sf, color_var = "outcome", point_size = 0.3,
+                    title = title,
+                    colorscale = scale_colour_manual(
+                      name = NULL,
+                      values = c("forest, correct" = "darkgreen",
+                                 "not forest, correct" = "grey75",
+                                 "false forest" = "#2166ac",
+                                 "missed forest" = "#b2182b"))) +
+    # larger points in the legend only
+    guides(colour = guide_legend(override.aes = list(size = 3)))
+}
+
+plot_misclass("pred_in", in_title)
+plot_misclass("pred_oof", "Out-of-fold")
+```
+
+## Out-of-fold residuals at training pixels
+
+Mean over years of (predicted probability - observed class) per pixel.
+Positive: predicted more forest than observed.
+
+```{r map-residuals, fig.width = 9, fig.height = 6}
+resid_sf <- dat |>
+  summarise(resid = mean(pred_oof - observed), .by = c(cell, x, y)) |>
+  sf::st_as_sf(coords = c("x", "y"), crs = terra::crs(read_mask()))
+
+plot_points_conus(resid_sf, color_var = "resid", point_size = 0.3,
+                  colorscale = scale_colour_gradient2(
+                    name = "Predicted -\nobserved", low = "#b2182b",
+                    high = "#2166ac", limits = c(-1, 1)))
+```
+
+## Current climate
+
+All of CONUS (snap mask), not only the available area: predictions stand for
+potential natural vegetation, and SOILWAT2 will be run CONUS-wide.
+
+```{r map-read}
+read_pred <- function(scenario) {
+  terra::rast(file.path(pred_dir, paste0(cover_type, "_", cover_model, "_",
+                                         vc, "-", vmc, "_", scenario,
+                                         ".tif")))
+}
+pred <- map(scenarios, read_pred) |> set_names(scenarios)
+
+# binary and change rasters as categories, so legends show classes rather
+# than a continuous color bar
+as_class_raster <- function(r) {
+  r <- terra::as.int(r)
+  levels(r) <- data.frame(value = c(0, 1), class = c("not forest", "forest"))
+  r
+}
+class_scale <- scale_fill_manual(name = NULL,
+                                 values = c("not forest" = "grey85",
+                                            "forest" = "darkgreen"),
+                                 na.translate = FALSE)
+
+as_change_raster <- function(r) {
+  r <- terra::as.int(r)
+  levels(r) <- data.frame(value = c(-1, 0, 1),
+                          change = c("forest lost", "no change",
+                                     "forest gained"))
+  r
+}
+change_scale <- scale_fill_manual(name = NULL,
+                                  values = c("forest lost" = "#b2182b",
+                                             "no change" = "grey90",
+                                             "forest gained" = "#1b7837"),
+                                  na.translate = FALSE)
+```
+
+```{r raster-summary}
+terra::global(pred$current$prob, c("min", "mean", "max"), na.rm = TRUE)
+```
+
+Check: the prediction raster at training pixels should match the in-sample
+predictions (same model, same predictors). A large difference means the
+raster predictors differ from the training predictors (units, names, layers).
+Skipped for ranger, where `pred_in` is out-of-bag and so is expected to
+differ from the raster, which uses the whole forest.
+
+```{r raster-check, eval = engine == "glmnet"}
+train_cells <- distinct(dat, cell, .keep_all = TRUE)
+check <- tibble(pred_in = train_cells$pred_in,
+                from_raster = pred$current$prob[train_cells$cell][[1]])
+summary(check$from_raster - check$pred_in)
+```
+
+```{r map-current, fig.width = 9, fig.height = 6}
+plot_map_conus(pred$current$prob,
+               colorscale = scale_fill_viridis_c(name = "Probability",
+                                                 limits = c(0, 1)),
+               title = "Predicted probability of forest")
+
+plot_map_conus(as_class_raster(pred$current$class),
+               colorscale = class_scale,
+               title = "Predicted class")
+```
+
+## Future climate
+
+Class under each future scenario, and the change from current (+1 becomes
+forest, -1 stops being forest).
+
+```{r map-future, fig.width = 9, fig.height = 6}
+walk(setdiff(scenarios, "current"), \(scenario) {
+  change <- pred[[scenario]]$class - pred$current$class
+  
+  print(plot_map_conus(as_class_raster(pred[[scenario]]$class),
+                       colorscale = class_scale,
+                       title = paste("Predicted class,", scenario)))
+  
+  print(plot_map_conus(as_change_raster(change),
+                       colorscale = change_scale,
+                       title = paste("Change in class,", scenario,
+                                     "vs current")))
+})
+```
+
+# Session info
+
+```{r session-info}
+sessionInfo()
+```

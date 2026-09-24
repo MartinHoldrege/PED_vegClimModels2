@@ -1,14 +1,20 @@
 # 02_fit_classification.R
 #
-# Fits one binomial lasso classification model for the cover pipeline and
-# saves it. The model is chosen by --cover_type (family), --cover_response
-# (which model in that family) and --vmc (cover model version), which index
-# cover_specs; --vc is the cover data version. Defaults are in params.R; main_cover.R can run other
-# combinations.
+# Fits one binomial classification model for the cover pipeline and saves it.
+# The model is chosen by --cover_type (family), --cover_response (which model
+# in that family) and --vmc (cover model version), which index cover_specs;
+# --vc is the cover data version. Defaults are in params.R; main_cover.R can
+# run other combinations.
+#
+# spec$engine picks the fitting engine: "glmnet" (penalized logistic
+# regression) or "ranger" (random forest, as a benchmark for how well the same
+# predictors can do without the constraint of an equation).
 #
 # Predictors: log1p (where named "log1p_") -> standardized with the fixed
 # global parameters -> squares and interactions (prepare_predictors()), so
-# coefficients mean the same thing wherever the model is applied.
+# coefficients mean the same thing wherever the model is applied. Ranger specs
+# turn off log1p, squares and interactions, so the same function returns the
+# main effects alone.
 #
 # Inputs:
 #   cover_clim_soils_<vc>.csv  - 08_combine_cover_and_covariates.R
@@ -90,6 +96,8 @@ stopifnot(length(foldid) == nrow(dat), !anyNA(foldid))
 
 # fit ---------------------------------------------------------------------
 
+if (spec$engine == "glmnet") {
+  
 # standardize = TRUE (the default) rescales every column internally before
 # penalizing, so squares and interactions are penalized on the same footing;
 # the coefficients returned are on the scale of x
@@ -104,22 +112,59 @@ lambda <- switch(spec$cv$select_rule,
                  "min" = fit$lambda.min,
                  stop("unknown select_rule: ", spec$cv$select_rule))
 
-# predictions -------------------------------------------------------------
-
 pred_in <- as.numeric(predict(fit, newx = x, s = lambda, type = "response"))
 
 # fit$fit.preval: out-of-fold predictions on the link scale, one column per
 # lambda. From the same folds that chose lambda, so mildly optimistic.
 pred_oof <- plogis(fit$fit.preval[, match(lambda, fit$lambda)])
 
-# cutoff from the in-sample predictions
+  # fit.preval holds out-of-fold predictions for every lambda (large); dropped
+  # now that the column at the selected lambda has been taken
+  fit$fit.preval <- NULL
+  
+} else if (spec$engine == "ranger") {
+  
+  lambda <- NA_real_  # no penalty to select
+  
+  fit_rf <- function(x, y) {
+    do.call(ranger::ranger,
+            c(list(x = x, y = factor(y, levels = c(0, 1)),
+                   probability = TRUE, seed = 1),
+              spec$ranger))
+  }
+  
+  fit <- fit_rf(x, obs)
+  
+  # out-of-bag, not in-sample: in-sample forest predictions are near-perfect,
+  # so the threshold taken from them would be meaningless
+  pred_in <- fit$predictions[, "1"]
+  
+  # do.call() stores the evaluated arguments -- the full training matrix -- in
+  # fit$call, and fit$predictions duplicates pred_in; predict() needs neither
+  fit$call <- NULL
+  fit$predictions <- NULL
+  
+  # out-of-fold predictions from the same environmental folds the lasso uses,
+  # so the two engines are scored the same way. Costs one forest per fold.
+  pred_oof <- rep(NA_real_, length(obs))
+  for (f in unique(foldid)) {
+    i <- foldid == f
+    pred_oof[i] <- predict(fit_rf(x[!i, , drop = FALSE], obs[!i]),
+                           data = x[i, , drop = FALSE])$predictions[, "1"]
+  }
+  stopifnot(!anyNA(pred_oof))
+  
+} else {
+  stop("unknown engine: ", spec$engine)
+}
+
+# predictions -------------------------------------------------------------
+
+# cutoff from pred_in (in-sample for glmnet, out-of-bag for ranger)
 threshold <- choose_threshold(obs = obs, pred = pred_in,
                               method = spec$threshold_method)
 
 # save --------------------------------------------------------------------
-# fit.preval holds out-of-fold predictions for every lambda (large); keep
-# only the column at the selected lambda
-fit$fit.preval <- NULL
 
 out <- list(
   fit = fit,
