@@ -186,3 +186,247 @@ pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
   }) |>
     bind_rows()
 }
+
+
+# internal: predicted probability for data in original units
+.predict_newdata <- function(fit, newdat) {
+  spec <- fit$config$spec
+  x <- prepare_predictors(newdat, pred_vars = spec$pred_vars,
+                          scale_df = fit$scale_df,
+                          squares = spec$squares,
+                          interactions = spec$interactions)
+  predict_prob(fit, x)
+}
+
+
+# internal: ALE for one predictor over the rows of dat (see
+# ale_classification()). Returns NULL if the predictor has too few distinct
+# values in dat to form two bins.
+#' @examples
+#' fit <- read_cover_model("classification", "forest", "c01", "m01")
+#' dat <- read_cover_training("c01")
+#' n_bins <- 20
+#' n_per_bin <- 250
+#' quantile_range <- c(0.01, 0.99)
+#' v = 'MAT'
+#' rows <- rowSums(is.na(dat[, names(dat) %in% c(fit$config$spec$response, fit$config$spec$pred_vars)]))
+#' dat <- dat[rows == 0, ]
+.ale_one <- function(fit, dat, v, n_bins, n_per_bin, quantile_range) {
+  # edges from all rows; type = 1 makes them observed values, so every bin
+  # holds at least one row
+  probs <- seq(quantile_range[1], quantile_range[2], length.out = n_bins + 1)
+  edges <- unique(quantile(dat[[v]], probs = probs, type = 1, names = FALSE))
+  n_edges <- length(edges)
+  if (n_edges < 3) return(NULL)
+  
+  in_range <- dat[dat[[v]] >= edges[1] & dat[[v]] <= edges[n_edges], ]
+  in_range$bin <- findInterval(in_range[[v]], edges,
+                               rightmost.closed = TRUE, all.inside = TRUE)
+  
+
+  set.seed(1)
+  smp <- slice_sample(in_range, n = n_per_bin, by = bin)
+  bin <- smp$bin
+  smp$bin <- NULL
+  n <- nrow(smp)
+  
+  # each row at its bin's lower edge, its upper edge, and as observed
+  lower <- smp
+  lower[[v]] <- edges[bin]
+  upper <- smp
+  upper[[v]] <- edges[bin + 1]
+
+  pred_obs <- .predict_newdata(fit, smp)
+  pred_upper <- .predict_newdata(fit, upper)
+  pred_lower <- .predict_newdata(fit, lower)
+  change <- pred_upper - pred_lower
+
+  bins <- factor(bin, levels = seq_len(n_edges - 1))
+  
+  # mean change per bin, then running sum from the lowest edge
+  delta <- tapply(change, bins, mean)
+  stopifnot(!anyNA(delta))
+  ale <- c(0, cumsum(delta))
+  
+  # center so the curve averages zero of the sampled data
+  ale_mid <- (ale[-n_edges] + ale[-1]) / 2
+  ale <- ale - mean(ale_mid)
+  
+  # mean predicted probability
+  mean_pred <- mean(pred_obs)
+  
+  tibble(x_value = edges, yhat = ale, mean_pred = mean_pred)
+}
+
+
+#' Accumulated local effects (ALE) for a cover classification model
+#'
+#' For each predictor (in original units, e.g. MAP for log1p_MAP), splits the
+#' data into quantile bins of that predictor, samples rows from each bin,
+#' moves each sampled row to its bin's lower and upper edge (other predictors
+#' unchanged), and averages the change in predicted probability within each
+#' bin. The running sum of those averages, centered to mean zero over the
+#' data, is the ALE curve (Apley & Zhu 2020). Unlike a PDP, the model is only
+#' evaluated near combinations of predictors that occur in the data.
+#'
+#' @param fit Object of class "cover_classification".
+#' @param dat Training data in original units.
+#' @param n_bins Number of quantile bins per predictor (fewer where values
+#'   tie).
+#' @param n_per_bin Rows sampled from each bin (all rows if the bin has fewer).
+#'   `Inf` uses every row. The model is predicted three times per sampled row.
+#' @param quantile_range Range of each predictor covered, as quantiles.
+#'   Trimming the tails keeps a few extreme rows from setting the outermost
+#'   bin edges; rows outside the range are left out for that predictor.
+#' @return Tibble with `variable`, `x_value` (bin edges), `yhat` (centered
+#'   ALE, probability scale) and `mean_pred` (mean predicted probability over
+#'   the data), for `plot_ale()`.
+#' @examples
+#' fit <- read_cover_model("classification", "forest", "c01", "m01")
+#' dat <- read_cover_training("c01")
+#' n_bins <- 20
+#' n_per_bin <- 250
+#' quantile_range <- c(0.01, 0.99)
+#' ale <- ale_classification(fit = fit, dat = dat, n_bins = n_bins,
+#'                           n_per_bin = n_per_bin,
+#'                           quantile_range = quantile_range)
+ale_classification <- function(fit, dat, n_bins = 20, n_per_bin = 250,
+                               quantile_range = c(0.01, 0.99)) {
+  source_vars <- unique(str_remove(fit$config$spec$pred_vars, "^log1p_"))
+  dat <- dat[complete.cases(dat[source_vars]), ]
+  
+  map(source_vars, \(v) {
+    .ale_one(fit, dat, v, n_bins = n_bins, n_per_bin = n_per_bin,
+             quantile_range = quantile_range) |>
+      mutate(variable = v, .before = 1)
+  }) |>
+    bind_rows()
+}
+
+
+#' ALE within the low and high percentiles of each filter variable
+#'
+#' Analogue of the filtered quantile plots: for each filter variable, splits
+#' the data into rows below its `low` and above its `high` percentile, and
+#' computes the ALE of every predictor within each subset (as in
+#' `ale_classification()`). Differences in shape between the two subsets show
+#' interactions in the fitted model.
+#'
+#' @param fit Object of class "cover_classification".
+#' @param dat Training data in original units.
+#' @param filter_vars Variables to split by; defaults to the predictors.
+#' @param low,high Percentile cut-offs (as proportions) for the two subsets.
+#' @param n_bins,n_per_bin,quantile_range As in `ale_classification()`, applied
+#'   within each subset.
+#' @return Tibble with `filter_var`, `percentile_category`, `variable`,
+#'   `x_value`, `yhat` and `mean_pred` (mean predicted probability within the
+#'   subset), for `plot_ale_filtered()`.
+#' @examples
+#' fit <- read_cover_model("classification", "forest", "c01", "m01")
+#' dat <- read_cover_training("c01")
+#' filter_vars <- c("MAT", "MAP")
+#' low <- 0.2
+#' high <- 0.8
+#' n_bins <- 20
+#' n_per_bin <- 100
+#' quantile_range <- c(0.01, 0.99)
+#' ale_f <- ale_classification_filtered(fit = fit, dat = dat,
+#'                                      filter_vars = filter_vars,
+#'                                      low = low, high = high,
+#'                                      n_bins = n_bins,
+#'                                      n_per_bin = n_per_bin,
+#'                                      quantile_range = quantile_range)
+ale_classification_filtered <- function(fit, dat, filter_vars = NULL,
+                                        low = 0.2, high = 0.8,
+                                        n_bins = 20, n_per_bin = 100,
+                                        quantile_range = c(0.01, 0.99)) {
+  source_vars <- unique(str_remove(fit$config$spec$pred_vars, "^log1p_"))
+  if (is.null(filter_vars)) filter_vars <- source_vars
+  stopifnot(all(filter_vars %in% names(dat)), low < high)
+  
+  dat <- dat[complete.cases(dat[union(source_vars, filter_vars)]), ]
+  categories <- c(paste0("<", low * 100, "th"), paste0(">", high * 100, "th"))
+  
+  map(filter_vars, \(f) {
+    pct <- ecdf(dat[[f]])(dat[[f]]) # percentile
+    subsets <- list(dat[pct < low, ], dat[pct > high, ]) |>
+      set_names(categories)
+    
+    imap(subsets, \(d, category) {
+      map(source_vars, \(v) {
+        .ale_one(fit, d, v, n_bins = n_bins, n_per_bin = n_per_bin,
+                 quantile_range = quantile_range) |>
+          mutate(filter_var = f, percentile_category = category,
+                 variable = v, .before = 1)
+      })
+    })
+  }) |>
+    list_flatten() |>
+    list_flatten() |>
+    bind_rows() |>
+    mutate(filter_var = factor(filter_var, levels = filter_vars),
+           percentile_category = factor(percentile_category,
+                                        levels = categories),
+           variable = factor(variable, levels = source_vars))
+}
+
+
+#' Plot accumulated local effects
+#'
+#' Points at the bin edges, joined by lines, so each segment is the mean
+#' change in predicted probability across one bin.
+#'
+#' @param ale Tibble from `ale_classification()`.
+#' @param ylab y-axis label.
+#' @return A ggplot object, one panel per predictor.
+#' @examples
+#' ale <- tibble(variable = rep(c("MAT", "MAP"), each = 3),
+#'               x_value = c(0, 5, 10, 200, 400, 800),
+#'               yhat = c(-0.1, 0, 0.1, 0.05, 0, -0.05))
+#' ylab <- "ALE (change in predicted probability)"
+#' plot_ale(ale = ale, ylab = ylab)
+plot_ale <- function(ale, ylab = "ALE (change in predicted probability)") {
+  ggplot(ale, aes(x = x_value, y = yhat)) +
+    geom_hline(yintercept = 0, linetype = 2, colour = "grey60") +
+    geom_line() +
+    geom_point(size = 1) +
+    facet_wrap(~ variable, scales = "free_x") +
+    labs(x = NULL, y = ylab)
+}
+
+
+#' Plot ALE within the low and high percentiles of each filter variable
+#'
+#' Grid like the filtered quantile plots: columns are predictors, rows are
+#' filter variables. Each line is the subset's mean predicted probability
+#' plus its ALE, so the two lines can be compared in level as well as shape.
+#' Points are bin edges; each segment is the mean change across one bin.
+#'
+#' @param ale Tibble from `ale_classification_filtered()`.
+#' @param ylab y-axis label.
+#' @param title Plot title.
+#' @return A ggplot object.
+#' @examples
+#' ale <- tibble(filter_var = "MAT", variable = "MAP",
+#'               percentile_category = rep(c("<20th", ">80th"), each = 3),
+#'               x_value = rep(c(200, 400, 800), 2),
+#'               yhat = c(-0.1, 0, 0.1, -0.2, 0, 0.2),
+#'               mean_pred = rep(c(0.3, 0.6), each = 3))
+#' ylab <- "Predicted probability (subset mean + ALE)"
+#' title <- NULL
+#' plot_ale_filtered(ale = ale, ylab = ylab, title = title)
+plot_ale_filtered <- function(ale,
+                              ylab = "ALE (subset mean + ALE)",
+                              title = NULL) {
+  ggplot(ale, aes(x = x_value, y = mean_pred + yhat,
+                  colour = percentile_category)) +
+    geom_line() +
+    geom_point(size = 0.8) +
+    facet_grid(filter_var ~ variable, scales = "free_x") +
+    scale_colour_manual(name = NULL, values = c("#f03b20", "#0570b0")) +
+    labs(x = NULL, y = ylab, title = title,
+         caption = paste0("Columns: predictor variable. Rows: filtering ",
+                          "variable (ALE computed only from pixels in its ",
+                          "lowest/highest percentiles).")) +
+    theme(legend.position = "top")
+}

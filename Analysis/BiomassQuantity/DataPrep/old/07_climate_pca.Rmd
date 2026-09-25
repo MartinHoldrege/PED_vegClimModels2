@@ -34,7 +34,7 @@ Goals:
 ```{r source-and-load}
 source("Functions/init.R")
 source_functions()
-theme_set(theme_classic())
+theme_set(theme_custom1())
 
 vd <- params$data_version
 model_type <- params$model_type

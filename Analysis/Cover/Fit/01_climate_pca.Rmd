@@ -47,7 +47,7 @@ search (not guaranteed optimal). See `?subselect::rm.coef` and
 ```{r setup-data}
 source("Functions/init.R")
 source_functions()  # read_cover_training(), variable_selection.R
-theme_set(theme_classic())
+theme_set(theme_custom1())
 
 vc <- if (is.null(params$vc)) opt$vc else params$vc
 

@@ -24,7 +24,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 source("Functions/init.R")
 source_functions()
 library(glmnet)
-theme_set(theme_classic())
+theme_set(theme_custom1())
 
 cover_type  <- params$cover_type
 cover_model <- if (is.null(params$cover_model)) opt$cover_model else params$cover_model
@@ -198,6 +198,34 @@ observed values.
 ```{r pdp, fig.width = 10, fig.height = 6}
 pdp_classification(fit, dat) |>
   plot_pdp(ylab = "Predicted probability of forest")
+```
+
+# Accumulated local effects
+
+Change in predicted probability as each predictor increases, relative to
+the average prediction (Apley & Zhu 2020). Built from small steps within
+quantile bins, using only pixels near each value, so unlike the partial
+dependence plots it does not evaluate the model at combinations of
+predictors that don't occur. Where the two disagree, the PDP is being
+driven by those combinations. Middle 98% of each predictor. Points are
+bin edges; each segment is the mean change in probability across a bin.
+
+```{r ale, fig.width = 10, fig.height = 6}
+ale_classification(fit, dat) |>
+  plot_ale()
+```
+
+## Filtered accumulated local effects
+
+ALE computed separately within the lowest and highest 20% of each filter
+variable, as in the filtered quantile plots. Each line is the subset's mean
+predicted probability plus its ALE, so the lines differ in level where the
+subsets differ, and in shape where the predictor interacts with the filter
+variable in the fitted model.
+
+```{r ale-filtered, fig.width = 10, fig.height = 9}
+ale_classification_filtered(fit, dat) |>
+  plot_ale_filtered()
 ```
 
 # Maps
