@@ -27,7 +27,7 @@ source_functions()
 # read --------------------------------------------------------------------
 
 fit <- read_cover_model(opt$cover_type, opt$cover_model, opt$vc, opt$vmc)
-
+if(is.null(fit$config$spec$engine)) fit$config$spec$engine <- 'glmnet' # for legacy reasons
 mask_r <- read_mask()
 
 # climate scenarios to predict for (see read_climate_raster())
@@ -50,5 +50,8 @@ walk(scenarios, \(scenario) {
   p_out <- file.path(out_dir,
                      paste0(opt$cover_type, "_", opt$cover_model, "_",
                             opt$vc, "-", opt$vmc, "_", scenario, ".tif"))
-  terra::writeRaster(pred, p_out, overwrite = TRUE)
+  # float for both layers: a GeoTIFF has one data type for all bands, and
+  # the logical class layer otherwise makes terra write integers, which
+  # truncates every probability to 0
+  terra::writeRaster(pred, p_out, overwrite = TRUE, datatype = "FLT4S")
 })

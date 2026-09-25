@@ -32,11 +32,12 @@ vc          <- if (is.null(params$vc)) opt$vc else params$vc
 vmc         <- if (is.null(params$vmc)) opt$vmc else params$vmc
 
 fit  <- read_cover_model(cover_type, cover_model, vc, vmc)
+if(is.null(fit$config$spec$engine)) fit$config$spec$engine <- 'glmnet' # for legacy reasons
 spec <- fit$config$spec
 
 # "glmnet" or "ranger"; the fit summary and a couple of labels differ
-engine <- spec$engine
 
+engine <- spec$engine
 # for ranger, pred_in holds out-of-bag rather than in-sample predictions
 in_label <- if (engine == "ranger") "out_of_bag" else "in_sample"
 in_title <- if (engine == "ranger") {
@@ -75,6 +76,7 @@ print(spec)
 For glmnet, the cross-validation curve (binomial deviance vs log(lambda);
 dashed lines mark min and 1se) and the non-zero coefficients at the selected
 lambda. For ranger, the forest settings and the out-of-bag error.
+for these binomial models (where it's succeses out of 1 try) binomial deviance is just -2*log likelihood
 
 ```{r fit-summary}
 if (engine == "glmnet") {
@@ -90,8 +92,16 @@ tibble(term = rownames(coefs), coefficient = as.numeric(coefs)) |>
   
 } else if (engine == "ranger") {
   
-  # add importance = "impurity" to spec$ranger to get variable importance here
-  print(fit$fit)
+  # selected fields only: print(fit$fit) deparses fit$call, which can hold
+  # the whole training matrix. prediction.error is the out-of-bag Brier score.
+  # Add importance = "impurity" to spec$ranger for variable importance.
+  fit$fit[c("treetype", "num.trees", "mtry", "min.node.size", "splitrule",
+            "num.samples", "num.independent.variables",
+            "prediction.error")] |>
+    map_chr(\(v) format(v, digits = 3)) |>
+    enframe(name = "setting", value = "value") |>
+    knitr::kable() |>
+    print()
   
 }
 ```
@@ -106,10 +116,15 @@ and out-of-bag for ranger.
 ```{r performance}
 perf <- function(pred) {
   pa <- data.frame(id = seq_len(nrow(dat)), obs = dat$observed, pred = pred)
-  cm <- PresenceAbsence::cmx(pa, threshold = fit$threshold)
-  tibble(AUC = PresenceAbsence::auc(pa, st.dev = FALSE),
-         accuracy = PresenceAbsence::pcc(cm, st.dev = FALSE),
+  cm <- PresenceAbsence::cmx(pa, threshold = fit$threshold) # confusion matrix
+  tibble(
+    #the probability that a randomly chosen forest pixel gets a higher p̂ than a
+    #randomly chosen non-forest pixel. 0.5 is random and 1 is perfect ranking.
+          AUC = PresenceAbsence::auc(pa, st.dev = FALSE),
+         PCC = PresenceAbsence::pcc(cm, st.dev = FALSE), # percent correctly classified
+         # Of the pixels that are actually forest, it's the fraction called forest.
          sensitivity = PresenceAbsence::sensitivity(cm, st.dev = FALSE),
+         # Of the pixels that are actually non-forest, it's the fraction called non-forest.
          specificity = PresenceAbsence::specificity(cm, st.dev = FALSE),
          observed_prevalence = mean(dat$observed),
          predicted_prevalence = mean(pred > fit$threshold))
@@ -146,9 +161,11 @@ quant_oof <- quant_df("pred_oof")
 
 ```{r quantile-plots, fig.width = 10, fig.height = 7}
 decile_dotplot("forest", quant_in, ylab = "Proportion forest",
-               add_predicted = TRUE, title = in_title)
+               add_predicted = TRUE, title = in_title,
+               add_ribbon = FALSE)
 decile_dotplot("forest", quant_oof, ylab = "Proportion forest",
-               add_predicted = TRUE, title = "Out-of-fold")
+               add_predicted = TRUE, title = "Out-of-fold",
+               add_ribbon = FALSE)
 ```
 
 ## Filtered quantile plots
@@ -157,14 +174,20 @@ Only pixel-years in the lower and upper 20% of each filter variable, to see
 whether the fit holds at the climate extremes.
 
 ```{r quantile-filtered, fig.width = 10, fig.height = 9}
-dat |>
+filtered <- function(pred_col, title) {
+  dat |>
   mutate(forest = observed,
-         forest_pred = as.integer(pred_oof > fit$threshold)) |>
+         forest_pred = as.integer(.data[[pred_col]] > fit$threshold)) |>
   predvars2deciles(response_vars = c("forest", "forest_pred"),
                    pred_vars = source_vars, filter_var = TRUE,
                    filter_vars = source_vars) |>
   decile_dotplot_filtered("forest", df = _, ylab = "Proportion forest",
-                          title = "Out-of-fold, filtered")
+                          title = title)
+}
+
+filtered('pred_in', title = paste0('filtered (', in_title, ')'))
+filtered('pred_oof', title = 'filtered (out of fold)')
+
 ```
 
 # Partial dependence
@@ -204,7 +227,7 @@ plot_misclass <- function(pred_col, title) {
                       values = c("forest, correct" = "darkgreen",
                                  "not forest, correct" = "grey75",
                                  "false forest" = "#2166ac",
-                                 "missed forest" = "#b2182b"))) +
+                                 "missed forest" = "orange"))) +
     # larger points in the legend only
     guides(colour = guide_legend(override.aes = list(size = 3)))
 }
@@ -262,7 +285,7 @@ as_change_raster <- function(r) {
   r
 }
 change_scale <- scale_fill_manual(name = NULL,
-                                  values = c("forest lost" = "#b2182b",
+                                  values = c("forest lost" = "orange",
                                              "no change" = "grey90",
                                              "forest gained" = "#1b7837"),
                                   na.translate = FALSE)
@@ -272,23 +295,18 @@ change_scale <- scale_fill_manual(name = NULL,
 terra::global(pred$current$prob, c("min", "mean", "max"), na.rm = TRUE)
 ```
 
-Check: the prediction raster at training pixels should match the in-sample
-predictions (same model, same predictors). A large difference means the
-raster predictors differ from the training predictors (units, names, layers).
-Skipped for ranger, where `pred_in` is out-of-bag and so is expected to
-differ from the raster, which uses the whole forest.
 
-```{r raster-check, eval = engine == "glmnet"}
-train_cells <- distinct(dat, cell, .keep_all = TRUE)
-check <- tibble(pred_in = train_cells$pred_in,
-                from_raster = pred$current$prob[train_cells$cell][[1]])
-summary(check$from_raster - check$pred_in)
-```
 
 ```{r map-current, fig.width = 9, fig.height = 6}
 plot_map_conus(pred$current$prob,
-               colorscale = scale_fill_viridis_c(name = "Probability",
-                                                 limits = c(0, 1)),
+               colorscale = scale_fill_gradient2(
+                    name = "Probability", 
+                    low = "#b2182b",
+                    high = "#2166ac",
+                    mid = 'grey85',
+                    midpoint = fit$threshold,
+                    na.value = 'transparent',
+                    limits = c(0, 1)),
                title = "Predicted probability of forest")
 
 plot_map_conus(as_class_raster(pred$current$class),
