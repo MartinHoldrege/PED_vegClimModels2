@@ -46,6 +46,17 @@ in_title <- if (engine == "ranger") {
   "In-sample (model fit to all data)"
 }
 
+# binomial models predict a probability of forest; continuous ones (family
+# gaussian or poisson) predict tree cover (%), cut into classes the same way
+score_layer <- score_name(fit)  # "prob" or "cover"
+continuous <- score_layer == "cover"
+score_label <- if (continuous) {
+  "Predicted tree cover (%)"
+} else {
+  "Predicted probability of forest"
+}
+score_limits <- if (continuous) c(0, 100) else c(0, 1)
+
 # predictors in original units (log1p_MAP is plotted as MAP)
 source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
 
@@ -53,7 +64,8 @@ source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
 # the spec
 dat <- read_cover_training(vc) |>
   inner_join(fit$predictions, by = c("cell", "year")) |>
-  mutate(observed = as.integer(.data[[spec$response]] > spec$cover_threshold))
+  mutate(cover_obs = .data[[spec$response]],
+         observed = as.integer(cover_obs > spec$cover_threshold))
 stopifnot(nrow(dat) == nrow(fit$predictions))
 
 scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
@@ -63,7 +75,9 @@ pred_dir <- file.path(paths$large, "Data_processed", "CoverData", "Predictions")
 # Model info 
 
 Model `r cover_type`/`r cover_model`, data `r vc`, version `r vmc`, engine
-`r engine`: `r nrow(dat)` pixel-years; cutoff `r round(fit$threshold, 3)`
+`r engine`, family `r if (continuous) spec$family else "binomial"`:
+`r nrow(dat)` pixel-years; cutoff `r round(fit$threshold, 3)`
+`r if (continuous) "% predicted cover (observed classes split at 10%)" else ""`
 
 ```{r info}
 print(spec)
@@ -75,7 +89,12 @@ print(spec)
 
 For glmnet, the cross-validation curve (binomial deviance vs log(lambda);
 dashed lines mark min and 1se) and the non-zero coefficients at the selected
-lambda. For ranger, the forest settings and the out-of-bag error.
+lambda. For ranger, the forest settings and the out-of-bag error. For grpreg
+(hierarchical group lasso), the cross-validation curve (mean out-of-fold
+deviance +/- 1 SE; dashed line at the selected lambda) and the non-zero
+coefficients, each summed over the groups it was fit
+in. Squares only appear with their main effect, and interactions with
+both of their terms.
 for these binomial models (where it's succeses out of 1 try) binomial deviance is just -2*log likelihood
 
 ```{r fit-summary}
@@ -103,15 +122,30 @@ tibble(term = rownames(coefs), coefficient = as.numeric(coefs)) |>
     knitr::kable() |>
     print()
   
+} else if (engine == "grpreg") {
+  
+  cv_plot <- ggplot(fit$fit$cv, aes(x = log(lambda), y = cvm)) +
+    geom_pointrange(aes(ymin = cvm - cvsd, ymax = cvm + cvsd), size = 0.2) +
+    geom_vline(xintercept = log(fit$lambda), linetype = 2) +
+    labs(y = paste0("Out-of-fold ", spec$family, " deviance"))
+  print(cv_plot)
+  
+  # coefficients on the standardized scale of the design matrix
+  tibble(term = names(fit$fit$coef), coefficient = fit$fit$coef) |>
+    filter(coefficient != 0) |>
+    arrange(desc(abs(coefficient))) |>
+    knitr::kable(digits = 3) |>
+    print()
+  
 }
 ```
 
 ## Classification performance
 
 AUC and the confusion matrix at the cutoff. Out-of-fold predictions come from
-the environmental folds; for glmnet those are the same folds that chose
-lambda, so they are mildly optimistic. The other set is in-sample for glmnet
-and out-of-bag for ranger.
+the environmental folds; for glmnet and grpreg those are the same folds that
+chose lambda, so they are mildly optimistic. The other set is in-sample for
+glmnet and grpreg, and out-of-bag for ranger.
 
 ```{r performance}
 perf <- function(pred) {
@@ -140,10 +174,31 @@ table(observed = dat$observed,
   knitr::kable(caption = "Out-of-fold confusion matrix (0 = not forest, 1 = forest)")
 ```
 
+## Predicted vs observed cover
+
+Continuous models only. Out-of-fold predicted against observed tree cover
+(log1p axes; predictions outside 0-100% are drawn at the limits). Dashed
+lines: the 10% threshold (vertical) and the cutoff on predicted cover
+(horizontal), so the top-left corner is false forest and the bottom-right
+missed forest.
+
+```{r cover-fit, eval = continuous, fig.width = 7, fig.height = 5}
+ggplot(dat, aes(x = cover_obs, y = pmin(pmax(pred_oof, 0), 100))) +
+  geom_bin2d(bins = 60) +
+  geom_abline(colour = "grey40") +
+  geom_vline(xintercept = spec$cover_threshold, linetype = 2) +
+  geom_hline(yintercept = fit$threshold, linetype = 2) +
+  scale_x_continuous(trans = "log1p", breaks = c(0, 1, 5, 10, 25, 50, 100)) +
+  scale_y_continuous(trans = "log1p", breaks = c(0, 1, 5, 10, 25, 50, 100)) +
+  scale_fill_viridis_c(trans = "log10", name = "Pixel-years") +
+  labs(x = "Observed tree cover (%)",
+       y = "Out-of-fold predicted tree cover (%)")
+```
+
 # Quantile plots
 
 Points: proportion of pixel-years that are forest, observed and predicted
-(predicted class = probability above the cutoff), within quantiles of each
+(predicted class = prediction above the cutoff), within quantiles of each
 predictor. Both are classes, so they're directly comparable.
 
 ```{r quantile-data}
@@ -192,12 +247,12 @@ filtered('pred_oof', title = 'filtered (out of fold)')
 
 # Partial dependence
 
-Mean predicted probability as each predictor varies, others at their
-observed values.
+Mean prediction (probability, or % cover for continuous models) as each
+predictor varies, others at their observed values.
 
 ```{r pdp, fig.width = 10, fig.height = 6}
 pdp_classification(fit, dat) |>
-  plot_pdp(ylab = "Predicted probability of forest")
+  plot_pdp(ylab = score_label)
 ```
 
 # Accumulated local effects
@@ -212,7 +267,11 @@ bin edges; each segment is the mean change in probability across a bin.
 
 ```{r ale, fig.width = 10, fig.height = 6}
 ale_classification(fit, dat) |>
-  plot_ale()
+  plot_ale(ylab = if (continuous) {
+    "ALE (change in predicted cover, %)"
+  } else {
+    "ALE (change in predicted probability)"
+  })
 ```
 
 ## Filtered accumulated local effects
@@ -225,7 +284,11 @@ variable in the fitted model.
 
 ```{r ale-filtered, fig.width = 10, fig.height = 9}
 ale_classification_filtered(fit, dat) |>
-  plot_ale_filtered()
+  plot_ale_filtered(ylab = if (continuous) {
+    "Cover scale, % (subset mean + ALE)"
+  } else {
+    "Probability scale (subset mean + ALE)"
+  })
 ```
 
 # Maps
@@ -266,18 +329,30 @@ plot_misclass("pred_oof", "Out-of-fold")
 
 ## Out-of-fold residuals at training pixels
 
-Mean over years of (predicted probability - observed class) per pixel.
-Positive: predicted more forest than observed.
+Mean over years of (prediction - observation) per pixel: predicted
+probability - observed class, or for continuous models predicted -
+observed % cover (colours capped at +/- 30). Positive: predicted more forest
+than observed. For models fit to log1p(cover), predicted cover is the
+back-transformed mean of log1p(cover), which runs below mean cover, so these
+residuals lean negative by construction; the classification is unaffected,
+because the cutoff is set on the same predictions.
 
 ```{r map-residuals, fig.width = 9, fig.height = 6}
 resid_sf <- dat |>
-  summarise(resid = mean(pred_oof - observed), .by = c(cell, x, y)) |>
+  mutate(resid = if (continuous) pred_oof - cover_obs else pred_oof - observed) |>
+  summarise(resid = mean(resid), .by = c(cell, x, y)) |>
   sf::st_as_sf(coords = c("x", "y"), crs = terra::crs(read_mask()))
 
 plot_points_conus(resid_sf, color_var = "resid", point_size = 0.3,
                   colorscale = scale_colour_gradient2(
-                    name = "Predicted -\nobserved", low = "#b2182b",
-                    high = "#2166ac", limits = c(-1, 1)))
+                    name = if (continuous) {
+                      "Predicted -\nobserved\n(% cover)"
+                    } else {
+                      "Predicted -\nobserved"
+                    },
+                    low = "#b2182b", high = "#2166ac",
+                    limits = if (continuous) c(-30, 30) else c(-1, 1),
+                    oob = scales::squish))
 ```
 
 ## Current climate
@@ -320,22 +395,25 @@ change_scale <- scale_fill_manual(name = NULL,
 ```
 
 ```{r raster-summary}
-terra::global(pred$current$prob, c("min", "mean", "max"), na.rm = TRUE)
+terra::global(pred$current[[score_layer]], c("min", "mean", "max"),
+              na.rm = TRUE)
 ```
 
 
 
 ```{r map-current, fig.width = 9, fig.height = 6}
-plot_map_conus(pred$current$prob,
+# continuous predictions can fall outside 0-100%; the colours are capped
+plot_map_conus(pred$current[[score_layer]],
                colorscale = scale_fill_gradient2(
-                    name = "Probability", 
+                    name = if (continuous) "Cover (%)" else "Probability",
                     low = "#b2182b",
                     high = "#2166ac",
                     mid = 'grey85',
                     midpoint = fit$threshold,
                     na.value = 'transparent',
-                    limits = c(0, 1)),
-               title = "Predicted probability of forest")
+                    limits = score_limits,
+                    oob = scales::squish),
+               title = score_label)
 
 plot_map_conus(as_class_raster(pred$current$class),
                colorscale = class_scale,

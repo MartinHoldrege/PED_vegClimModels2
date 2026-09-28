@@ -11,20 +11,33 @@
 # Every spec has:
 #   response      column in the cover training data
 #   rows          which pixel-years to fit to (see the fitting script)
-#   engine        "glmnet" (penalized regression) or "ranger" (random forest)
+#   engine        "glmnet" (penalized regression), "ranger" (random forest) or
+#                 "grpreg" (hierarchical group lasso: x^2 only enters with
+#                 x, and x:z with x and z; see hier_groups())
 #   pred_vars     predictors (short climate/soil names), with the log1p_
 #                 versions of log1p_vars appended by the constructor
 #   log1p_vars    predictors to add as log1p (e.g. MAP means log1p_MAP is used)
 #   squares       add squared terms
 #   interactions  add pairwise interactions
-#   alpha         glmnet penalty (1 = lasso); ignored by ranger
-#   ranger        list of arguments passed on to ranger::ranger(); NULL for
-#                 glmnet
+#   interact_log1p  let log1p_x interact even when x is also a predictor (never
+#                 x:log1p_x); see make_design_matrix()
+#   alpha         glmnet / grpreg penalty (1 = lasso); ignored by ranger
+#   ranger        list of arguments passed on to ranger::ranger(); NULL
+#                 otherwise
+#   grpreg        list of arguments passed on to grpreg::grpreg() (e.g.
+#                 nlambda); NULL otherwise
 #   cv            list: cluster_vars, k_clusters, select_rule
 #
 # classification specs add:
-#   cover_threshold   % cover dividing the two classes
-#   threshold_method  rule for turning probabilities into a class
+#   cover_threshold     % cover dividing the two classes
+#   threshold_method    rule for turning predictions into a class
+#   family              "binomial": fit to the class (cover above or below
+#                       cover_threshold). "gaussian" or "poisson": fit to
+#                       cover itself, then cut the predicted cover where the
+#                       predicted fraction of forest matches the observed one
+#                       (grpreg only)
+#   response_transform  applied to cover before fitting: "identity" or
+#                       "log1p"; predictions are back-transformed to % cover
 #
 # Specs are built with a constructor per model (e.g. .defaults_class_forest()),
 # so each version lists only what differs from the defaults.
@@ -39,22 +52,35 @@
 #'
 #' @param response Column in the cover training data.
 #' @param rows Which pixel-years to fit to.
-#' @param engine "glmnet" or "ranger".
+#' @param engine "glmnet", "ranger" or "grpreg".
+#' @param family "binomial" (fit to the class), or "gaussian" / "poisson"
+#'   (fit to cover; grpreg only).
+#' @param response_transform "identity" or "log1p", applied to cover before
+#'   fitting (continuous families only).
 #' @param cover_threshold Percent cover dividing the two classes, as stored.
-#' @param threshold_method See `?PresenceAbsence::optimal.thresholds`.
+#' @param threshold_method See `?PresenceAbsence::optimal.thresholds`; only
+#'   "PredPrev=Obs" for continuous families.
 #' @param pred_vars Predictors, in original units.
 #' @param log1p_vars Predictors to also add as `log1p_<var>`.
 #' @param squares,interactions Add squared terms / pairwise interactions.
-#' @param alpha glmnet penalty mixing (1 = lasso).
+#' @param interact_log1p Let `log1p_x` interact even when `x` is also a
+#'   predictor.
+#' @param alpha glmnet / grpreg penalty mixing (1 = lasso).
 #' @param ranger List of arguments for `ranger::ranger()`; required when
 #'   `engine = "ranger"`.
+#' @param grpreg List of extra arguments for `grpreg::grpreg()`. For grpreg
+#'   specs, `max.iter` defaults to 1e5: grpreg's own default (1e4) caps the
+#'   iterations for the whole lambda path, which can end a binomial path
+#'   early.
 #' @param cluster_vars,k_clusters Variables and number of environmental
 #'   clusters for the CV folds.
-#' @param select_rule "min" or "1se".
+#' @param select_rule "min" or "1se" ("min" only for grpreg).
 #' @return A spec list.
 .defaults_class_forest <- function(response = "cov_tree",
                                    rows = "all",
                                    engine = "glmnet",
+                                   family = "binomial",
+                                   response_transform = "identity",
                                    cover_threshold = 10,
                                    threshold_method = "PredPrev=Obs",
                                    pred_vars = c("MAT", "MAP", "PrecipTempCorr",
@@ -63,19 +89,36 @@
                                    log1p_vars = c("MAP", "clay_surface", "awc"),
                                    squares = TRUE,
                                    interactions = TRUE,
+                                   interact_log1p = FALSE,
                                    alpha = 1,
                                    ranger = NULL,
+                                   grpreg = list(nlambda = 25),
                                    cluster_vars = .default_cluster_vars,
                                    k_clusters = 10,
                                    select_rule = "min") {
-  stopifnot(engine %in% c("glmnet", "ranger"),
+  stopifnot(engine %in% c("glmnet", "ranger", "grpreg"),
+            family %in% c("binomial", "gaussian", "poisson"),
+            response_transform %in% c("identity", "log1p"),
             select_rule %in% c("min", "1se"),
-            engine != "ranger" || is.list(ranger))
+            engine != "ranger" || is.list(ranger),
+            # glmnet and ranger are fit to the class only
+            engine == "grpreg" || family == "binomial",
+            family != "binomial" || response_transform == "identity",
+            # predicted cover isn't a probability, so only prevalence matching
+            family == "binomial" || threshold_method == "PredPrev=Obs",
+            # grpreg models use cv.grpreg()'s lambda.min
+            engine != "grpreg" || select_rule == "min")
+  
+  if (engine == "grpreg") {
+    grpreg <- utils::modifyList(list(max.iter = 1e5), as.list(grpreg))
+  }
   
   list(
     response = response,
     rows = rows,
     engine = engine,
+    family = family,
+    response_transform = response_transform,
     cover_threshold = cover_threshold,
     threshold_method = threshold_method,
     # recycle0: with no log1p_vars, adds nothing rather than "log1p_"
@@ -83,8 +126,10 @@
     log1p_vars = log1p_vars,
     squares = squares,
     interactions = interactions,
+    interact_log1p = interact_log1p,
     alpha = alpha,
     ranger = ranger,
+    grpreg = grpreg,
     cv = list(cluster_vars = cluster_vars,
               k_clusters = k_clusters,
               select_rule = select_rule)
@@ -100,6 +145,12 @@ cover_specs <- list(
     forest = list(
       
       m01 = .defaults_class_forest(),
+      
+      # as m05, but fit to the class: the hierarchy alone, for comparison
+      # with m01 (same response, no hierarchy) and m05 (same hierarchy,
+      # continuous response)
+      m01.1 = .defaults_class_forest(engine = "grpreg",
+                                     interact_log1p = TRUE),
       
       # elastic net
       m02 = .defaults_class_forest(alpha = 0.5),
@@ -119,7 +170,21 @@ cover_specs <- list(
                                    squares = FALSE,
                                    interactions = FALSE,
                                    ranger = list(num.trees = 300,
-                                                 min.node.size = 100))
+                                                 min.node.size = 100)),
+      
+      # hierarchical group lasso on continuous tree cover. x^2 only enters
+      # with x, and an interaction only with both of its terms. Squares don't
+      # interact. log1p_x can enter without x and interacts on its own
+      # (log1p_MAP:MAT needs log1p_MAP, not MAP).
+      # Fit to log1p(cover): handles zeros, and spreads out the low covers
+      # around the 10% threshold while compressing high ones. Predicted cover
+      # is then cut where the predicted fraction of forest matches the
+      # observed one, as the probabilities are for m01
+      m05 = .defaults_class_forest(engine = "grpreg",
+                                   family = "gaussian",
+                                   response_transform = "log1p",
+                                   interact_log1p = TRUE)
+      
     )
     
     # zero_tree: trees vs no trees in non-forest, trained on a binarized

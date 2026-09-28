@@ -1,4 +1,8 @@
-# Helpers for the binomial (classification) cover models.
+# Helpers for the classification cover models (forest / non-forest).
+#
+# Binomial models predict a probability of forest. Continuous models (family
+# "gaussian" or "poisson") predict tree cover (%), which is cut into classes
+# the same way; "score" below means whichever of the two a model predicts.
 #
 # Each @examples block assigns every argument, so you can run it and then step
 # through the function body line by line.
@@ -44,24 +48,49 @@ choose_threshold <- function(obs, pred, method) {
 }
 
 
-#' Predicted probability from a fitted cover classification model
+#' Cutoff that makes the predicted fraction of forest match the observed one
+#'
+#' The "PredPrev=Obs" rule for predictions that aren't probabilities (e.g.
+#' predicted % cover): the quantile of the predictions at 1 - observed
+#' prevalence, so that about as many rows are above the cutoff as are
+#' observed forest.
+#'
+#' @param obs Observed class, 0 or 1.
+#' @param score Predictions, same length as `obs`; any scale.
+#' @return Numeric cutoff, on the scale of `score`.
+#' @examples
+#' set.seed(1)
+#' obs <- rbinom(500, size = 1, prob = 0.3)
+#' score <- exp(rnorm(500, mean = 1 + obs))
+#' cutoff <- prevalence_cutoff(obs = obs, score = score)
+#' c(observed = mean(obs), predicted = mean(score > cutoff))
+prevalence_cutoff <- function(obs, score) {
+  stopifnot(length(obs) == length(score), all(obs %in% c(0, 1)))
+  unname(quantile(score, probs = 1 - mean(obs)))
+}
+
+
+#' Prediction from a fitted cover classification model
 #'
 #' Dispatches on the engine the model was fit with, so callers don't need to
-#' know which one it was.
+#' know which one it was. Binomial models return the probability of forest;
+#' continuous ones return predicted tree cover (%), back-transformed from the
+#' scale the model was fit on (see `score_name()`).
 #'
 #' @param fit Object of class "cover_classification".
 #' @param x Design matrix from `prepare_predictors()`, with the same columns,
 #'   in the same order, as the matrix the model was fit to.
-#' @return Numeric vector of predicted probabilities, one per row of `x`.
+#' @return Numeric vector of predictions, one per row of `x`.
 #' @examples
 #' fit <- read_cover_model("classification", "forest", "c01", "m01")
 #' dat <- read_cover_training("c01")
 #' spec <- fit$config$spec
 #' x <- prepare_predictors(head(dat, 10), pred_vars = spec$pred_vars,
 #'                         scale_df = fit$scale_df, squares = spec$squares,
-#'                         interactions = spec$interactions)
-#' predict_prob(fit = fit, x = x)
-predict_prob <- function(fit, x) {
+#'                         interactions = spec$interactions,
+#'                         interact_log1p = isTRUE(spec$interact_log1p))
+#' predict_score(fit = fit, x = x)
+predict_score <- function(fit, x) {
   engine <- fit$config$spec$engine
   
   switch(
@@ -75,8 +104,41 @@ predict_prob <- function(fit, x) {
       requireNamespace("ranger")  # to get the predict() method
       predict(fit$fit, data = x)$predictions[, "1"]
     },
+    grpreg = {
+      requireNamespace("grpreg")  # to get the predict() method
+      # columns repeated once per group, as the model was fit
+      x_groups <- x[, fit$fit$groups$term, drop = FALSE]
+      mu <- predict(fit$fit$grpreg, x_groups, lambda = fit$lambda,
+                    type = "response")
+      .untransform_cover(as.vector(mu), fit$config$spec$response_transform)
+    },
     stop("unknown engine: ", engine)
   )
+}
+
+
+#' What a fitted classification model predicts
+#'
+#' @param fit Object of class "cover_classification".
+#' @return "prob" for binomial models (probability of forest), "cover" for
+#'   continuous ones (predicted % cover). Also the name of the first layer
+#'   `predict_raster()` returns.
+#' @examples
+#' fit <- read_cover_model("classification", "forest", "c01", "m01")
+#' score_name(fit = fit)
+score_name <- function(fit) {
+  family <- fit$config$spec$family
+  # models fit before the family field existed were all binomial
+  if (is.null(family) || family == "binomial") "prob" else "cover"
+}
+
+
+# internal: undo the transformation applied to cover before fitting
+.untransform_cover <- function(z, how) {
+  switch(how,
+         identity = z,
+         log1p = expm1(z),
+         stop("unknown response_transform: ", how))
 }
 
 
@@ -89,14 +151,17 @@ predict_prob <- function(fit, x) {
 #' fixed scaling, squares and interactions), and predicted in chunks of rows
 #' to limit memory.
 #'
+#' The first layer is named by `score_name()`: `prob` for binomial models,
+#' `cover` (predicted %) for continuous ones.
+#'
 #' @param fit Object of class "cover_classification" (from
 #'   `read_cover_model()`).
 #' @param rast `SpatRaster` of predictors in original units, with a layer for
 #'   each source variable (e.g. `MAP` for `log1p_MAP`).
 #' @param chunk_size Number of cells predicted at a time.
 #' @param ... Not used.
-#' @return Two-layer `SpatRaster`: `prob` (predicted probability) and
-#'   `class` (1 where prob > the model's threshold, else 0).
+#' @return Two-layer `SpatRaster`: `prob` or `cover` (the prediction) and
+#'   `class` (1 where the prediction > the model's threshold, else 0).
 #' @examples
 #' fit <- read_cover_model("classification", "forest", "c01", "m01")
 #' rast <- read_climate_raster("current") |> align_raster(read_mask())
@@ -114,25 +179,26 @@ predict_raster.cover_classification <- function(fit, rast, chunk_size = 1e6,
   rows <- seq_len(nrow(df))
   chunks <- split(rows, ceiling(rows / chunk_size))
   
-  prob <- map(chunks, \(i) {
+  score <- map(chunks, \(i) {
     x <- prepare_predictors(df[i, ],
                             pred_vars = spec$pred_vars,
                             scale_df = fit$scale_df,
                             squares = spec$squares,
-                            interactions = spec$interactions)
+                            interactions = spec$interactions,
+                            interact_log1p = isTRUE(spec$interact_log1p))
     # same columns, in the same order, as the fitted design matrix
     stopifnot(identical(colnames(x), fit$config$x_colnames))
-    predict_prob(fit, x)
+    predict_score(fit, x)
   }) |>
     unlist(use.names = FALSE)
   
-  r_prob <- terra::rast(rast, nlyrs = 1)
-  r_prob[df$cell] <- prob
+  r_score <- terra::rast(rast, nlyrs = 1)
+  r_score[df$cell] <- score
   
-  r_class <- r_prob > fit$threshold
+  r_class <- r_score > fit$threshold
   
-  out <- c(r_prob, r_class)
-  names(out) <- c("prob", "class")
+  out <- c(r_score, r_class)
+  names(out) <- c(score_name(fit), "class")
   out
 }
 
@@ -141,8 +207,8 @@ predict_raster.cover_classification <- function(fit, rast, chunk_size = 1e6,
 #'
 #' For each predictor (in original units, e.g. MAP for log1p_MAP), sets it to
 #' each value on a grid for every row of a background sample, predicts, and
-#' averages the predicted probability. Other predictors keep their observed
-#' values.
+#' averages the prediction (probability, or % cover for continuous models).
+#' Other predictors keep their observed values.
 #'
 #' @param fit Object of class "cover_classification".
 #' @param dat Training data in original units (the background).
@@ -170,8 +236,9 @@ pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
     x <- prepare_predictors(newdat, pred_vars = spec$pred_vars,
                             scale_df = fit$scale_df,
                             squares = spec$squares,
-                            interactions = spec$interactions)
-    mean(predict_prob(fit, x))
+                            interactions = spec$interactions,
+                            interact_log1p = isTRUE(spec$interact_log1p))
+    mean(predict_score(fit, x))
   }
   
   map(source_vars, \(v) {
@@ -188,14 +255,15 @@ pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
 }
 
 
-# internal: predicted probability for data in original units
+# internal: prediction (see predict_score()) for data in original units
 .predict_newdata <- function(fit, newdat) {
   spec <- fit$config$spec
   x <- prepare_predictors(newdat, pred_vars = spec$pred_vars,
                           scale_df = fit$scale_df,
                           squares = spec$squares,
-                          interactions = spec$interactions)
-  predict_prob(fit, x)
+                          interactions = spec$interactions,
+                          interact_log1p = isTRUE(spec$interact_log1p))
+  predict_score(fit, x)
 }
 
 
@@ -264,10 +332,11 @@ pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
 #' For each predictor (in original units, e.g. MAP for log1p_MAP), splits the
 #' data into quantile bins of that predictor, samples rows from each bin,
 #' moves each sampled row to its bin's lower and upper edge (other predictors
-#' unchanged), and averages the change in predicted probability within each
-#' bin. The running sum of those averages, centered to mean zero over the
-#' data, is the ALE curve (Apley & Zhu 2020). Unlike a PDP, the model is only
-#' evaluated near combinations of predictors that occur in the data.
+#' unchanged), and averages the change in prediction (probability, or % cover
+#' for continuous models) within each bin. The running sum of those averages,
+#' centered to mean zero over the data, is the ALE curve (Apley & Zhu 2020).
+#' Unlike a PDP, the model is only evaluated near combinations of predictors
+#' that occur in the data.
 #'
 #' @param fit Object of class "cover_classification".
 #' @param dat Training data in original units.
@@ -279,8 +348,8 @@ pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
 #'   Trimming the tails keeps a few extreme rows from setting the outermost
 #'   bin edges; rows outside the range are left out for that predictor.
 #' @return Tibble with `variable`, `x_value` (bin edges), `yhat` (centered
-#'   ALE, probability scale) and `mean_pred` (mean predicted probability over
-#'   the data), for `plot_ale()`.
+#'   ALE, on the prediction's scale) and `mean_pred` (mean prediction over the
+#'   data), for `plot_ale()`.
 #' @examples
 #' fit <- read_cover_model("classification", "forest", "c01", "m01")
 #' dat <- read_cover_training("c01")
@@ -319,8 +388,8 @@ ale_classification <- function(fit, dat, n_bins = 20, n_per_bin = 250,
 #' @param n_bins,n_per_bin,quantile_range As in `ale_classification()`, applied
 #'   within each subset.
 #' @return Tibble with `filter_var`, `percentile_category`, `variable`,
-#'   `x_value`, `yhat` and `mean_pred` (mean predicted probability within the
-#'   subset), for `plot_ale_filtered()`.
+#'   `x_value`, `yhat` and `mean_pred` (mean prediction within the subset),
+#'   for `plot_ale_filtered()`.
 #' @examples
 #' fit <- read_cover_model("classification", "forest", "c01", "m01")
 #' dat <- read_cover_training("c01")
