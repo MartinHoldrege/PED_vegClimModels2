@@ -22,7 +22,7 @@ vc <- "c01"  # cover data version
 
 # model versions to run, by family and model
 cover_runs <- list(
-  classification = list(forest = "m04"),
+  classification = list(forest = c("m01.2")),
   cover          = list(),
   proportion     = list()
 )

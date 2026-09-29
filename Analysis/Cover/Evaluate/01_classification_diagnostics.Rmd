@@ -47,7 +47,8 @@ in_title <- if (engine == "ranger") {
 }
 
 # binomial models predict a probability of forest; continuous ones (family
-# gaussian or poisson) predict tree cover (%), cut into classes the same way
+# gaussian, poisson or quasibinomial) predict tree cover (%), cut into classes
+# the same way
 score_layer <- score_name(fit)  # "prob" or "cover"
 continuous <- score_layer == "cover"
 score_label <- if (continuous) {
@@ -95,7 +96,9 @@ deviance +/- 1 SE; dashed line at the selected lambda) and the non-zero
 coefficients, each summed over the groups it was fit
 in. Squares only appear with their main effect, and interactions with
 both of their terms.
-for these binomial models (where it's succeses out of 1 try) binomial deviance is just -2*log likelihood
+for these binomial models (where it's succeses out of 1 try) binomial deviance is just -2*log likelihood.
+For quasibinomial glmnet models the CV curve is the binomial deviance of
+cover as a proportion (cover / 100), not of the class.
 
 ```{r fit-summary}
 if (engine == "glmnet") {
@@ -148,9 +151,17 @@ chose lambda, so they are mildly optimistic. The other set is in-sample for
 glmnet and grpreg, and out-of-bag for ranger.
 
 ```{r performance}
+
 perf <- function(pred) {
+  # PresenceAbsence wants the cutoff in 0-1, so predicted cover (%) goes on
+  # the 0-1 scale
+  cutoff <- fit$threshold
+  if (continuous) {
+    pred <- pred / 100
+    cutoff <- cutoff / 100
+  }
   pa <- data.frame(id = seq_len(nrow(dat)), obs = dat$observed, pred = pred)
-  cm <- PresenceAbsence::cmx(pa, threshold = fit$threshold) # confusion matrix
+  cm <- PresenceAbsence::cmx(pa, threshold = cutoff) # confusion matrix
   tibble(
     #the probability that a randomly chosen forest pixel gets a higher p̂ than a
     #randomly chosen non-forest pixel. 0.5 is random and 1 is perfect ranking.
@@ -161,7 +172,8 @@ perf <- function(pred) {
          # Of the pixels that are actually non-forest, it's the fraction called non-forest.
          specificity = PresenceAbsence::specificity(cm, st.dev = FALSE),
          observed_prevalence = mean(dat$observed),
-         predicted_prevalence = mean(pred > fit$threshold))
+         predicted_prevalence = mean(pred > cutoff))
+  
 }
 
 bind_rows(perf(dat$pred_in), perf(dat$pred_oof)) |>
@@ -335,7 +347,8 @@ observed % cover (colours capped at +/- 30). Positive: predicted more forest
 than observed. For models fit to log1p(cover), predicted cover is the
 back-transformed mean of log1p(cover), which runs below mean cover, so these
 residuals lean negative by construction; the classification is unaffected,
-because the cutoff is set on the same predictions.
+because the cutoff is set on the same predictions. Quasibinomial models
+predict mean cover directly, so this bias doesn't apply to them.
 
 ```{r map-residuals, fig.width = 9, fig.height = 6}
 resid_sf <- dat |>

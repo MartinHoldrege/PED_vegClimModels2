@@ -1,8 +1,9 @@
 # Helpers for the classification cover models (forest / non-forest).
 #
 # Binomial models predict a probability of forest. Continuous models (family
-# "gaussian" or "poisson") predict tree cover (%), which is cut into classes
-# the same way; "score" below means whichever of the two a model predicts.
+# "gaussian", "poisson" or "quasibinomial") predict tree cover (%), which is
+# cut into classes the same way; "score" below means whichever of the two a
+# model predicts.
 #
 # Each @examples block assigns every argument, so you can run it and then step
 # through the function body line by line.
@@ -97,8 +98,10 @@ predict_score <- function(fit, x) {
     engine,
     glmnet = {
       requireNamespace("glmnet")  # to get the predict() method
-      as.numeric(predict(fit$fit, newx = x, s = fit$lambda,
-                         type = "response"))
+      p <- as.numeric(predict(fit$fit, newx = x, s = fit$lambda,
+                              type = "response"))
+      # quasibinomial: fit to cover / 100, so back to % cover
+      if (identical(fit$config$spec$family, "quasibinomial")) p * 100 else p
     },
     ranger = {
       requireNamespace("ranger")  # to get the predict() method

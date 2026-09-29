@@ -35,7 +35,10 @@
 #                       cover_threshold). "gaussian" or "poisson": fit to
 #                       cover itself, then cut the predicted cover where the
 #                       predicted fraction of forest matches the observed one
-#                       (grpreg only)
+#                       (grpreg only). "quasibinomial": fit to cover as a
+#                       proportion with a binomial likelihood (logit link;
+#                       glmnet only), predicting mean cover (0-100%), cut the
+#                       same way as the continuous families
 #   response_transform  applied to cover before fitting: "identity" or
 #                       "log1p"; predictions are back-transformed to % cover
 #
@@ -53,10 +56,11 @@
 #' @param response Column in the cover training data.
 #' @param rows Which pixel-years to fit to.
 #' @param engine "glmnet", "ranger" or "grpreg".
-#' @param family "binomial" (fit to the class), or "gaussian" / "poisson"
-#'   (fit to cover; grpreg only).
+#' @param family "binomial" (fit to the class), "gaussian" / "poisson"
+#'   (fit to cover; grpreg only), or "quasibinomial" (fit to cover / 100 with
+#'   a binomial likelihood; glmnet only).
 #' @param response_transform "identity" or "log1p", applied to cover before
-#'   fitting (continuous families only).
+#'   fitting (gaussian / poisson only).
 #' @param cover_threshold Percent cover dividing the two classes, as stored.
 #' @param threshold_method See `?PresenceAbsence::optimal.thresholds`; only
 #'   "PredPrev=Obs" for continuous families.
@@ -97,13 +101,18 @@
                                    k_clusters = 10,
                                    select_rule = "min") {
   stopifnot(engine %in% c("glmnet", "ranger", "grpreg"),
-            family %in% c("binomial", "gaussian", "poisson"),
+            family %in% c("binomial", "quasibinomial", "gaussian", "poisson"),
             response_transform %in% c("identity", "log1p"),
             select_rule %in% c("min", "1se"),
             engine != "ranger" || is.list(ranger),
-            # glmnet and ranger are fit to the class only
-            engine == "grpreg" || family == "binomial",
-            family != "binomial" || response_transform == "identity",
+            # glmnet and ranger are fit to the class (glmnet also to the
+            # proportion); gaussian / poisson are grpreg only
+            engine == "grpreg" || family %in% c("binomial", "quasibinomial"),
+            # grpreg's binomial needs a 0/1 response, and ranger isn't set up
+            # for proportions
+            family != "quasibinomial" || engine == "glmnet",
+            !family %in% c("binomial", "quasibinomial") ||
+              response_transform == "identity",
             # predicted cover isn't a probability, so only prevalence matching
             family == "binomial" || threshold_method == "PredPrev=Obs",
             # grpreg models use cv.grpreg()'s lambda.min
@@ -151,6 +160,18 @@ cover_specs <- list(
       # continuous response)
       m01.1 = .defaults_class_forest(engine = "grpreg",
                                      interact_log1p = TRUE),
+      # complex covarariate comparison,
+      # selected as 10 vars w/ ~95% coverage, to compare what happens
+      # when allow near maximum complexity
+      m01.2 = .defaults_class_forest(
+
+        pred_vars = c("MAT", "P_wettestMonth", "PrecipTempCorr", "isothermality",
+                      "WDD_mean", "soilDepth", "clay_surface", "sand", "coarse",
+                      "carbon"),
+        log1p_vars = c("P_wettestMonth", "WDD_mean", "soilDepth", "clay_surface", 
+                       "sand", "coarse", 'carbon'),
+        interact_log1p = TRUE
+        ),
       
       # elastic net
       m02 = .defaults_class_forest(alpha = 0.5),
@@ -183,7 +204,14 @@ cover_specs <- list(
       m05 = .defaults_class_forest(engine = "grpreg",
                                    family = "gaussian",
                                    response_transform = "log1p",
-                                   interact_log1p = TRUE)
+                                   interact_log1p = TRUE),
+      
+      # as m01 (glmnet lasso, same predictors), but fit to cover / 100 with a
+      # binomial likelihood (what quasibinomial estimates; the dispersion
+      # doesn't matter for the lasso). Predicts mean cover, which stays in
+      # 0-100% unlike m05, and is cut where the predicted fraction of forest
+      # matches the observed one, as m05 is
+      m06 = .defaults_class_forest(family = "quasibinomial")
       
     )
     

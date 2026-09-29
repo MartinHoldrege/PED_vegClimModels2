@@ -17,7 +17,10 @@
 # spec$cover_threshold). "gaussian" or "poisson" (grpreg only): cover itself,
 # after spec$response_transform; the predicted cover is then cut where the
 # predicted fraction of forest matches the observed one, as a probability
-# would be.
+# would be. "quasibinomial" (glmnet only): cover / 100 as a proportion, fit
+# with glmnet's binomial likelihood on a two-column response cbind(1 - p, p)
+# (the same estimates as quasibinomial); predictions are mean cover (%), cut
+# the same way as the continuous families.
 #
 # Predictors: log1p (where named "log1p_") -> standardized with the fixed
 # global parameters -> squares and interactions (prepare_predictors()), so
@@ -86,6 +89,9 @@ obs <- as.integer(cover > spec$cover_threshold)
 # what the model is fit to: the class, or (continuous families) cover itself
 if (spec$family == "binomial") {
   y_fit <- obs
+} else if (spec$family == "quasibinomial") {
+  stopifnot(all(cover >= 0 & cover <= 100))
+  y_fit <- cover / 100
 } else {
   stopifnot(all(cover >= 0))
   y_fit <- switch(spec$response_transform,
@@ -125,7 +131,15 @@ if (spec$engine == "glmnet") {
 # standardize = TRUE (the default) rescales every column internally before
 # penalizing, so squares and interactions are penalized on the same footing;
 # the coefficients returned are on the scale of x
-fit <- cv.glmnet(x = x, y = obs,
+# quasibinomial: a two-column matrix of proportions (second column is the
+# target), so the binomial deviance is computed on cover rather than the class
+y_glmnet <- if (spec$family == "quasibinomial") {
+  cbind(1 - y_fit, y_fit)
+} else {
+  obs
+}
+
+fit <- cv.glmnet(x = x, y = y_glmnet,
                  family = "binomial",
                  alpha = spec$alpha,
                  foldid = foldid,
@@ -136,11 +150,14 @@ lambda <- switch(spec$cv$select_rule,
                  "min" = fit$lambda.min,
                  stop("unknown select_rule: ", spec$cv$select_rule))
 
-pred_in <- as.numeric(predict(fit, newx = x, s = lambda, type = "response"))
+# probability of forest, or (quasibinomial) % cover
+pred_in <- predict_score(list(fit = fit, lambda = lambda,
+                              config = list(spec = spec)), x)
 
 # fit$fit.preval: out-of-fold predictions on the link scale, one column per
 # lambda. From the same folds that chose lambda, so mildly optimistic.
 pred_oof <- plogis(fit$fit.preval[, match(lambda, fit$lambda)])
+if (spec$family == "quasibinomial") pred_oof <- pred_oof * 100
 
   # fit.preval holds out-of-fold predictions for every lambda (large); dropped
   # now that the column at the selected lambda has been taken
