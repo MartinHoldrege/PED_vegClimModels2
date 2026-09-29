@@ -249,7 +249,7 @@ cover_specs <- list(
                                       squares = FALSE,
                                       interactions = FALSE,
                                       ranger = list(num.trees = 300,
-                                                    min.node.size = 100)),
+                                                    min.node.size = 100))
     )
     
     # zero_tree: trees vs no trees in non-forest, trained on a binarized
