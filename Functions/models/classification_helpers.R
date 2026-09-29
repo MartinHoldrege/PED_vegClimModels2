@@ -9,6 +9,37 @@
 # through the function body line by line.
 
 
+#' Pixel-years to fit to
+#'
+#' Applies `spec$rows` to the training data. "all" (or NULL) keeps every
+#' row; otherwise `rows` is a quoted condition on the columns of `dat`, in
+#' original units, e.g. `quote(MAP < 700)`. Rows where the condition is NA
+#' are dropped, as in `dplyr::filter()`.
+#'
+#' @param dat Cover training data (e.g. from `read_cover_training()`).
+#' @param rows "all", NULL, or a quoted expression.
+#' @return `dat`, filtered.
+#' @examples
+#' dat <- data.frame(MAP = c(300, 650, 900, NA), cov_tree = c(0, 5, 40, 2))
+#' rows <- quote(MAP < 700)
+#' select_rows(dat = dat, rows = rows)
+#' select_rows(dat = dat, rows = "all")
+select_rows <- function(dat, rows) {
+  if (is.null(rows) || identical(rows, "all")) {
+    return(dat)
+  }
+  if (!is.language(rows)) {
+    stop("spec$rows must be \"all\", NULL or a quoted expression, e.g. ",
+         "quote(MAP < 700)")
+  }
+  out <- dplyr::filter(dat, !!rows)
+  if (nrow(out) == 0) {
+    stop("no rows left after filtering on ", deparse1(rows))
+  }
+  out
+}
+
+
 #' Probability cutoff that turns predictions into classes
 #'
 #' Wraps `PresenceAbsence::optimal.thresholds()`. With method "PredPrev=Obs"

@@ -67,11 +67,7 @@ out_file <- cover_model_path(opt$cover_type, opt$cover_model, opt$vc,
 dat <- read_cover_training(opt$vc)
 
 # which pixel-years to fit to
-dat <- switch(
-  spec$rows,
-  all = dat,
-  stop("unknown spec$rows: ", spec$rows)
-)
+dat <- select_rows(dat, spec$rows)
 
 # rows with the response and every source column; log1p_MAP comes from MAP
 source_vars <- unique(c(str_remove(spec$pred_vars, "^log1p_"),

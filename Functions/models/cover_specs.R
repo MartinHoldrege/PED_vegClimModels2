@@ -10,7 +10,9 @@
 #
 # Every spec has:
 #   response      column in the cover training data
-#   rows          which pixel-years to fit to (see the fitting script)
+#   rows          which pixel-years to fit to: "all", or a quoted condition on
+#                 the training data in original units, e.g. quote(MAP < 700)
+#                 (see select_rows())
 #   engine        "glmnet" (penalized regression), "ranger" (random forest) or
 #                 "grpreg" (hierarchical group lasso: x^2 only enters with
 #                 x, and x:z with x and z; see hier_groups())
@@ -54,7 +56,8 @@
 #' `log1p_vars` to `pred_vars`, and nests the CV settings under `cv`.
 #'
 #' @param response Column in the cover training data.
-#' @param rows Which pixel-years to fit to.
+#' @param rows Which pixel-years to fit to: "all", or a quoted condition such
+#'   as `quote(MAP < 700)`; see `select_rows()`.
 #' @param engine "glmnet", "ranger" or "grpreg".
 #' @param family "binomial" (fit to the class), "gaussian" / "poisson"
 #'   (fit to cover; grpreg only), or "quasibinomial" (fit to cover / 100 with
@@ -100,7 +103,8 @@
                                    cluster_vars = .default_cluster_vars,
                                    k_clusters = 10,
                                    select_rule = "min") {
-  stopifnot(engine %in% c("glmnet", "ranger", "grpreg"),
+  stopifnot(identical(rows, "all") || is.language(rows),
+            engine %in% c("glmnet", "ranger", "grpreg"),
             family %in% c("binomial", "quasibinomial", "gaussian", "poisson"),
             response_transform %in% c("identity", "log1p"),
             select_rule %in% c("min", "1se"),
@@ -211,8 +215,41 @@ cover_specs <- list(
       # doesn't matter for the lasso). Predicts mean cover, which stays in
       # 0-100% unlike m05, and is cut where the predicted fraction of forest
       # matches the observed one, as m05 is
-      m06 = .defaults_class_forest(family = "quasibinomial")
+      m06 = .defaults_class_forest(family = "quasibinomial"),
       
+      # models fit to a filtered subset of the data
+      m07.0 = .defaults_class_forest(rows = quote(MAP < 700)),
+      m07.1 = .defaults_class_forest(rows = quote(MAP >= 700)),
+      m07.2 =  .defaults_class_forest(engine = "ranger",
+                                     rows = quote(MAP < 700),
+                                    log1p_vars = character(0),
+                                    squares = FALSE,
+                                    interactions = FALSE,
+                                    ranger = list(num.trees = 300,
+                                                  min.node.size = 100)),
+      m07.3 =  .defaults_class_forest(engine = "ranger",
+                                     rows = quote(MAP >= 700),
+                                    log1p_vars = character(0),
+                                    squares = FALSE,
+                                    interactions = FALSE,
+                                    ranger = list(num.trees = 300,
+                                                  min.node.size = 100)),
+      m07.4 = .defaults_class_forest(rows = quote(MAP < 800)),
+      m07.5 = .defaults_class_forest(rows = quote(MAP >= 800)),
+      m07.6 =  .defaults_class_forest(engine = "ranger",
+                                      rows = quote(MAP < 800),
+                                      log1p_vars = character(0),
+                                      squares = FALSE,
+                                      interactions = FALSE,
+                                      ranger = list(num.trees = 300,
+                                                    min.node.size = 100)),
+      m07.7 =  .defaults_class_forest(engine = "ranger",
+                                      rows = quote(MAP >= 800),
+                                      log1p_vars = character(0),
+                                      squares = FALSE,
+                                      interactions = FALSE,
+                                      ranger = list(num.trees = 300,
+                                                    min.node.size = 100)),
     )
     
     # zero_tree: trees vs no trees in non-forest, trained on a binarized

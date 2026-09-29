@@ -37,11 +37,7 @@ if (is.null(spec)) {
 # same rows as the fitting script, so the folds match
 dat <- read_cover_training(opt$vc)
 
-dat <- switch(
-  spec$rows,
-  all = dat,
-  stop("unknown spec$rows: ", spec$rows)
-)
+dat <- select_rows(dat, spec$rows)
 
 source_vars <- unique(c(str_remove(spec$pred_vars, "^log1p_"),
                         spec$cv$cluster_vars))
