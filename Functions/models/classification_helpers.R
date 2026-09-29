@@ -136,6 +136,58 @@ score_name <- function(fit) {
 }
 
 
+#' Outcome labels for a binary classification
+#'
+#' @param class_label Name of the positive class (e.g. "forest", "zero tree").
+#' @return Character vector: true positive, true negative, false positive,
+#'   false negative, e.g. "forest, correct", "not forest, correct",
+#'   "false forest", "missed forest".
+#' @examples
+#' outcome_labels("zero tree")
+outcome_labels <- function(class_label = "forest") {
+  c(paste0(class_label, ", correct"),
+    paste0("not ", class_label, ", correct"),
+    paste("false", class_label),
+    paste("missed", class_label))
+}
+
+
+#' Label each row by observed vs predicted class
+#'
+#' @param df Data frame with an observed class column (0/1, 1 = the positive
+#'   class) and a prediction column.
+#' @param pred_col Name of the prediction column (e.g. "pred_oof").
+#' @param threshold Cutoff on the prediction; above it is predicted positive.
+#' @param class_label Name of the positive class, used in the labels.
+#' @param obs_col Name of the observed class column.
+#' @return `df` with `predicted` (0/1) and `outcome`, a factor with levels
+#'   from `outcome_labels(class_label)`.
+#' @examples
+#' df <- tibble(observed = c(1, 0, 0, 1), pred_oof = c(0.8, 0.1, 0.7, 0.2))
+#' pred_col <- "pred_oof"
+#' threshold <- 0.5
+#' class_label <- "forest"
+#' obs_col <- "observed"
+#' classify_outcome(df = df, pred_col = pred_col, threshold = threshold,
+#'                  class_label = class_label, obs_col = obs_col)
+classify_outcome <- function(df, pred_col, threshold, class_label = "forest",
+                             obs_col = "observed") {
+  stopifnot(all(c(obs_col, pred_col) %in% names(df)),
+            all(df[[obs_col]] %in% c(0, 1)))
+  labels <- outcome_labels(class_label)
+  obs <- df[[obs_col]]
+  df |>
+    mutate(predicted = as.integer(.data[[pred_col]] > threshold),
+           outcome = case_when(
+             obs == 1 & predicted == 1 ~ labels[1],
+             obs == 0 & predicted == 0 ~ labels[2],
+             obs == 0 & predicted == 1 ~ labels[3],
+             obs == 1 & predicted == 0 ~ labels[4]
+           ),
+           outcome = factor(outcome, levels = labels))
+}
+
+
 # internal: undo the transformation applied to cover before fitting
 .untransform_cover <- function(z, how) {
   switch(how,

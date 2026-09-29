@@ -57,6 +57,7 @@ score_label <- if (continuous) {
   "Predicted probability of forest"
 }
 score_limits <- if (continuous) c(0, 100) else c(0, 1)
+class_label <- "forest"  # name of the positive class, for outcome labels
 
 # predictors in original units (log1p_MAP is plotted as MAP)
 source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
@@ -314,29 +315,37 @@ per pixel, using its most recent year.
 plot_misclass <- function(pred_col, title) {
   misclass_sf <- dat |>
     slice_max(year, n = 1, by = cell) |>
-    mutate(predicted = as.integer(.data[[pred_col]] > fit$threshold),
-           outcome = case_when(
-             observed == 1 & predicted == 1 ~ "forest, correct",
-             observed == 0 & predicted == 0 ~ "not forest, correct",
-             observed == 0 & predicted == 1 ~ "false forest",
-             observed == 1 & predicted == 0 ~ "missed forest"
-           )) |>
+    classify_outcome(pred_col, threshold = fit$threshold) |>
     sf::st_as_sf(coords = c("x", "y"), crs = terra::crs(read_mask()))
   
   plot_points_conus(misclass_sf, color_var = "outcome", point_size = 0.3,
                     title = title,
                     colorscale = scale_colour_manual(
                       name = NULL,
-                      values = c("forest, correct" = "darkgreen",
-                                 "not forest, correct" = "grey75",
-                                 "false forest" = "#2166ac",
-                                 "missed forest" = "orange"))) +
+                      values = outcome_colours())) +
     # larger points in the legend only
     guides(colour = guide_legend(override.aes = list(size = 3)))
 }
 
 plot_misclass("pred_in", in_title)
 plot_misclass("pred_oof", "Out-of-fold")
+```
+
+## Predictor distributions by classification outcome
+
+Density of each predictor (original units, e.g. MAP rather than log1p_MAP)
+for the four outcomes in the map above, over all pixel-years. Each line
+integrates to 1, so rare outcomes (e.g. missed forest) are as visible as
+common ones; the lines show where along a predictor each outcome occurs, not
+how many pixel-years it has.
+
+```{r density-misclass, fig.width = 10, fig.height = 7}
+dat |>
+  classify_outcome("pred_in", threshold = fit$threshold) |>
+  plot_outcome_density(source_vars, title = in_title)
+dat |>
+  classify_outcome("pred_oof", threshold = fit$threshold) |>
+  plot_outcome_density(source_vars, title = "Out-of-fold")
 ```
 
 ## Out-of-fold residuals at training pixels

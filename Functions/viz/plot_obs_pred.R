@@ -198,6 +198,54 @@ plot_bias_ratio <- function(data,
   g
 }
 
+#' Colours for classification outcomes (see `classify_outcome()`)
+#'
+#' @param class_label Name of the positive class, as in `classify_outcome()`.
+#' @return Named character vector, one colour per outcome level (true
+#'   positive, true negative, false positive, false negative).
+outcome_colours <- function(class_label = "forest") {
+  purrr::set_names(c("darkgreen", "grey75", "#2166ac", "orange"),
+                   outcome_labels(class_label))
+}
+
+
+#' Density of each predictor by classification outcome
+#'
+#' One panel per predictor, one line per outcome. Each density integrates to
+#' 1, so rare outcomes are as visible as common ones: the lines show where
+#' each outcome falls along a predictor, not how many rows it has.
+#'
+#' @param df Data frame with `outcome` (from `classify_outcome()`) and the
+#'   predictor columns.
+#' @param pred_vars Names of the predictor columns (original units).
+#' @param title Plot title.
+#' @return A ggplot object.
+#' @examples
+#' df <- tibble(observed = rbinom(400, 1, 0.4), pred = runif(400),
+#'              MAT = rnorm(400, 10, 5), MAP = rlnorm(400, 6, 0.5)) |>
+#'   classify_outcome("pred", threshold = 0.5, class_label = "zero tree")
+#' pred_vars <- c("MAT", "MAP")
+#' title <- NULL
+#' plot_outcome_density(df = df, pred_vars = pred_vars, title = title)
+plot_outcome_density <- function(df, pred_vars, title = NULL) {
+  stopifnot(all(c("outcome", pred_vars) %in% names(df)),
+            is.factor(df$outcome), nlevels(df$outcome) == 4)
+  # levels come from outcome_labels(), in the order the colours are assigned
+  colours <- purrr::set_names(outcome_colours(), levels(df$outcome))
+  df |>
+    dplyr::select(outcome, dplyr::all_of(pred_vars)) |>
+    tidyr::pivot_longer(-outcome, names_to = "predictor",
+                        values_to = "value") |>
+    dplyr::mutate(predictor = factor(predictor, levels = pred_vars)) |>
+    ggplot(aes(x = value, colour = outcome)) +
+    geom_density() +
+    facet_wrap(~ predictor, scales = "free") +
+    scale_colour_manual(name = NULL, values = colours) +
+    labs(x = NULL, y = "Density", title = title) +
+    theme(legend.position = "top")
+}
+
+
 # takes output from compare_to_bigmap()
 bigmap_scatter <- function(df) {
   ggplot(df, aes(x = bigmap, y = predicted)) +
