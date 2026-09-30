@@ -99,7 +99,9 @@ in. Squares only appear with their main effect, and interactions with
 both of their terms.
 for these binomial models (where it's succeses out of 1 try) binomial deviance is just -2*log likelihood.
 For quasibinomial glmnet models the CV curve is the binomial deviance of
-cover as a proportion (cover / 100), not of the class.
+cover as a proportion (cover / 100), not of the class. For gaussian glmnet
+models it is the mean squared error of cover on the scale it was fit on
+(e.g. log1p cover).
 
 ```{r fit-summary}
 if (engine == "glmnet") {
@@ -315,14 +317,15 @@ per pixel, using its most recent year.
 plot_misclass <- function(pred_col, title) {
   misclass_sf <- dat |>
     slice_max(year, n = 1, by = cell) |>
-    classify_outcome(pred_col, threshold = fit$threshold) |>
+    classify_outcome(pred_col, threshold = fit$threshold,
+                     class_label = class_label) |>
     sf::st_as_sf(coords = c("x", "y"), crs = terra::crs(read_mask()))
   
   plot_points_conus(misclass_sf, color_var = "outcome", point_size = 0.3,
                     title = title,
                     colorscale = scale_colour_manual(
                       name = NULL,
-                      values = outcome_colours())) +
+                      values = outcome_colours(class_label))) +
     # larger points in the legend only
     guides(colour = guide_legend(override.aes = list(size = 3)))
 }
@@ -341,10 +344,12 @@ how many pixel-years it has.
 
 ```{r density-misclass, fig.width = 10, fig.height = 7}
 dat |>
-  classify_outcome("pred_in", threshold = fit$threshold) |>
+  classify_outcome("pred_in", threshold = fit$threshold,
+                   class_label = class_label) |>
   plot_outcome_density(source_vars, title = in_title)
 dat |>
-  classify_outcome("pred_oof", threshold = fit$threshold) |>
+  classify_outcome("pred_oof", threshold = fit$threshold,
+                   class_label = class_label) |>
   plot_outcome_density(source_vars, title = "Out-of-fold")
 ```
 

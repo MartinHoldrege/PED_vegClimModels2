@@ -131,8 +131,18 @@ predict_score <- function(fit, x) {
       requireNamespace("glmnet")  # to get the predict() method
       p <- as.numeric(predict(fit$fit, newx = x, s = fit$lambda,
                               type = "response"))
-      # quasibinomial: fit to cover / 100, so back to % cover
-      if (identical(fit$config$spec$family, "quasibinomial")) p * 100 else p
+      family <- fit$config$spec$family
+      # models fit before the family field existed were all binomial
+      if (is.null(family)) family <- "binomial"
+      switch(
+        family,
+        binomial = p,
+        # fit to cover / 100, so back to % cover
+        quasibinomial = p * 100,
+        # fit to cover or log1p(cover), so back to % cover
+        gaussian = .untransform_cover(p, fit$config$spec$response_transform),
+        stop("family not set up for glmnet: ", family)
+      )
     },
     ranger = {
       requireNamespace("ranger")  # to get the predict() method

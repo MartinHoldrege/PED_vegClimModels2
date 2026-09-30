@@ -37,7 +37,8 @@
 #                       cover_threshold). "gaussian" or "poisson": fit to
 #                       cover itself, then cut the predicted cover where the
 #                       predicted fraction of forest matches the observed one
-#                       (grpreg only). "quasibinomial": fit to cover as a
+#                       (gaussian: glmnet or grpreg; poisson: grpreg only).
+#                       "quasibinomial": fit to cover as a
 #                       proportion with a binomial likelihood (logit link;
 #                       glmnet only), predicting mean cover (0-100%), cut the
 #                       same way as the continuous families
@@ -60,7 +61,8 @@
 #'   as `quote(MAP < 700)`; see `select_rows()`.
 #' @param engine "glmnet", "ranger" or "grpreg".
 #' @param family "binomial" (fit to the class), "gaussian" / "poisson"
-#'   (fit to cover; grpreg only), or "quasibinomial" (fit to cover / 100 with
+#'   (fit to cover; gaussian with glmnet or grpreg, poisson with grpreg
+#'   only), or "quasibinomial" (fit to cover / 100 with
 #'   a binomial likelihood; glmnet only).
 #' @param response_transform "identity" or "log1p", applied to cover before
 #'   fitting (gaussian / poisson only).
@@ -109,9 +111,10 @@
             response_transform %in% c("identity", "log1p"),
             select_rule %in% c("min", "1se"),
             engine != "ranger" || is.list(ranger),
-            # glmnet and ranger are fit to the class (glmnet also to the
-            # proportion); gaussian / poisson are grpreg only
-            engine == "grpreg" || family %in% c("binomial", "quasibinomial"),
+            # ranger is fit to the class only; glmnet also to the proportion
+            # and (gaussian) to cover; poisson is grpreg only
+            engine != "ranger" || family == "binomial",
+            engine == "grpreg" || family != "poisson",
             # grpreg's binomial needs a 0/1 response, and ranger isn't set up
             # for proportions
             family != "quasibinomial" || engine == "glmnet",
@@ -168,7 +171,6 @@ cover_specs <- list(
       # selected as 10 vars w/ ~95% coverage, to compare what happens
       # when allow near maximum complexity
       m01.2 = .defaults_class_forest(
-
         pred_vars = c("MAT", "P_wettestMonth", "PrecipTempCorr", "isothermality",
                       "WDD_mean", "soilDepth", "clay_surface", "sand", "coarse",
                       "carbon"),
@@ -249,7 +251,14 @@ cover_specs <- list(
                                       squares = FALSE,
                                       interactions = FALSE,
                                       ranger = list(num.trees = 300,
-                                                    min.node.size = 100))
+                                                    min.node.size = 100)),
+      # same idea as 7.0 and 7.1, but with continuous model
+      m07.8 = .defaults_class_forest(rows = quote(MAP < 700),
+                                   family = "gaussian",
+                                   response_transform = "log1p"),
+      m07.9 = .defaults_class_forest(rows = quote(MAP >= 700),
+                                     family = "gaussian",
+                                     response_transform = "log1p")
     )
     
     # zero_tree: trees vs no trees in non-forest, trained on a binarized

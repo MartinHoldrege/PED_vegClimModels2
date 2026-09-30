@@ -128,15 +128,18 @@ if (spec$engine == "glmnet") {
 # penalizing, so squares and interactions are penalized on the same footing;
 # the coefficients returned are on the scale of x
 # quasibinomial: a two-column matrix of proportions (second column is the
-# target), so the binomial deviance is computed on cover rather than the class
-y_glmnet <- if (spec$family == "quasibinomial") {
-  cbind(1 - y_fit, y_fit)
-} else {
-  obs
-}
+# target), so the binomial deviance is computed on cover rather than the class.
+# gaussian: cover (or log1p cover), with CV error as mean squared error on
+# that scale
+y_glmnet <- switch(spec$family,
+                   binomial = obs,
+                   quasibinomial = cbind(1 - y_fit, y_fit),
+                   gaussian = y_fit,
+                   stop("family not set up for glmnet: ", spec$family))
+glmnet_family <- if (spec$family == "gaussian") "gaussian" else "binomial"
 
 fit <- cv.glmnet(x = x, y = y_glmnet,
-                 family = "binomial",
+                 family = glmnet_family,
                  alpha = spec$alpha,
                  foldid = foldid,
                  keep = TRUE)  # keeps the out-of-fold predictions
@@ -146,14 +149,19 @@ lambda <- switch(spec$cv$select_rule,
                  "min" = fit$lambda.min,
                  stop("unknown select_rule: ", spec$cv$select_rule))
 
-# probability of forest, or (quasibinomial) % cover
+# probability of forest, or (quasibinomial, gaussian) % cover
 pred_in <- predict_score(list(fit = fit, lambda = lambda,
                               config = list(spec = spec)), x)
 
 # fit$fit.preval: out-of-fold predictions on the link scale, one column per
 # lambda. From the same folds that chose lambda, so mildly optimistic.
-pred_oof <- plogis(fit$fit.preval[, match(lambda, fit$lambda)])
-if (spec$family == "quasibinomial") pred_oof <- pred_oof * 100
+eta_oof <- fit$fit.preval[, match(lambda, fit$lambda)]
+pred_oof <- switch(spec$family,
+                   binomial = plogis(eta_oof),
+                   quasibinomial = plogis(eta_oof) * 100,
+                   gaussian = .untransform_cover(eta_oof,
+                                                 spec$response_transform))
+rm(eta_oof)
 
   # fit.preval holds out-of-fold predictions for every lambda (large); dropped
   # now that the column at the selected lambda has been taken
