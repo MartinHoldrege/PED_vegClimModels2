@@ -222,7 +222,7 @@ cover_specs <- list(
       m02 = .defaults_class_forest(alpha = 0.5),
       
       # less climate extrapolation
-      m03 = .defaults_class_forest(k_clusters = 50),
+      m03 = .defaults_class_forest(n_folds = 50),
       
       # random forest, as a benchmark for how well the same predictors can do
       # without the constraint of an equation.  Not a candidate for prediction.
@@ -303,11 +303,17 @@ cover_specs <- list(
       # Same predictors as m01, fit to the class
       m08.0 = .defaults_class_forest(engine = "gam",
                                    log1p_vars = character(0),
+                                   gam = list(
+                                     log10_mult = seq(-1, 3, by = 0.5)
+                                     ),
                                    interactions = TRUE),
       # as m08, but fit to cover / 100, as m06
       m08.1 = .defaults_class_forest(engine = "gam",
                                      family = "quasibinomial",
                                      log1p_vars = character(0),
+                                     gam = list(
+                                       log10_mult = seq(-1, 3, by = 0.5)
+                                       ),
                                      interactions = TRUE)
     )
     

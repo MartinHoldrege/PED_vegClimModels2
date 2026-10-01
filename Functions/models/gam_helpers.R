@@ -57,6 +57,8 @@ gam_formula <- function(response, pred_vars, k, bs = "cs",
 #' @param family Family object, e.g. `binomial()`.
 #' @param sp_reml Per-term smoothing parameters from a REML fit, or NULL.
 #' @param mult Multiplier on `sp_reml`; ignored when `sp_reml` is NULL.
+#' @param nthreads Number of cores `bam()` uses; by default all physical
+#'   cores but one.
 #' @return A `bam` object.
 #' @examples
 #' set.seed(1)
@@ -64,18 +66,16 @@ gam_formula <- function(response, pred_vars, k, bs = "cs",
 #' data$.y <- rbinom(2000, 1, plogis(sin(data$a)))
 #' formula <- gam_formula(".y", c("a", "b"), k = 5)
 #' family <- binomial()
-#' m0 <- fit_gam(formula, data, family)
-#' sp_reml <- m0$sp
-#' mult <- 15
+#' sp_reml <- fit_gam(formula, data, family)$sp
+#' mult <- 10
+#' nthreads <- pmax(1, parallel::detectCores(logical = FALSE) - 1)
 #' m <- fit_gam(formula = formula, data = data, family = family,
-#'              sp_reml = sp_reml, mult = mult)
-#'  par(mfrow = c(2, 2))
-#' plot(m0)
-#' plot(m)
-fit_gam <- function(formula, data, family, sp_reml = NULL, mult = 1) {
+#'              sp_reml = sp_reml, mult = mult, nthreads = nthreads)
+fit_gam <- function(formula, data, family, sp_reml = NULL, mult = 1,
+                    nthreads = pmax(1, parallel::detectCores(logical = FALSE) - 1)) {
   sp <- if (is.null(sp_reml)) NULL else sp_reml * mult
   mgcv::bam(formula, data = data, family = family, method = "fREML",
-            discrete = TRUE, sp = sp)
+            discrete = TRUE, sp = sp, nthreads = nthreads)
 }
 
 
@@ -96,6 +96,8 @@ fit_gam <- function(formula, data, family, sp_reml = NULL, mult = 1) {
 #' @param metric Name of a metric in `get_metric_fun()`, computed on the
 #'   scale the model is fit on (e.g. probability, proportion, log1p cover).
 #' @param rule Selection rule passed to `select_lambda()`: "min" or "1se".
+#' @param nthreads Number of cores `bam()` uses; by default all physical
+#'   cores but one.
 #' @return List: `mult` (the selected multiplier), `summary` (one row per
 #'   multiplier: weighted mean `score` and its `score_se`), `scores` (one row
 #'   per fold and multiplier) and `oof` (out-of-fold predictions at the
@@ -110,11 +112,13 @@ fit_gam <- function(formula, data, family, sp_reml = NULL, mult = 1) {
 #' mults <- 10^seq(-3, 3, by = 0.5)
 #' metric <- "deviance_binomial"
 #' rule <- "min"
+#' nthreads <- pmax(1, parallel::detectCores(logical = FALSE) - 1)
 #' cv <- cv_gam_mult(formula = formula, data = data, family = family,
 #'                   foldid = foldid, mults = mults, metric = metric,
-#'                   rule = rule)
+#'                   rule = rule, nthreads = nthreads)
 #' cv$summary
-cv_gam_mult <- function(formula, data, family, foldid, mults, metric, rule) {
+cv_gam_mult <- function(formula, data, family, foldid, mults, metric, rule,
+                        nthreads = pmax(1, parallel::detectCores(logical = FALSE) - 1)) {
   stopifnot(length(foldid) == nrow(data), !anyNA(foldid))
   y <- data[[all.vars(formula)[1]]]
   metric_fun <- get_metric_fun(metric)
@@ -123,10 +127,11 @@ cv_gam_mult <- function(formula, data, family, foldid, mults, metric, rule) {
   oof <- matrix(NA_real_, nrow = nrow(data), ncol = length(mults))
   for (f in unique(foldid)) {
     test <- foldid == f
-    sp_reml <- fit_gam(formula, data[!test, ], family)$sp
+    sp_reml <- fit_gam(formula, data[!test, ], family,
+                       nthreads = nthreads)$sp
     for (j in seq_along(mults)) {
-      m <- fit_gam(formula, data[!test, ], family, sp_reml = sp_reml, 
-                   mult = mults[j])
+      m <- fit_gam(formula, data[!test, ], family, sp_reml, mults[j],
+                   nthreads = nthreads)
       oof[test, j] <- predict(m, data[test, ], type = "response",
                               discrete = FALSE)
     }

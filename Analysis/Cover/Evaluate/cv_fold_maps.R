@@ -48,7 +48,7 @@ dat <- dat[complete.cases(dat[c(spec$response, source_vars)]), ]
 clusters <- make_env_clusters(dat,
                               vars = spec$cv$cluster_vars,
                               iter.max = 500,
-                              k = spec$cv$k_clusters,
+                              k = spec$cv$n_folds,
                               seed = 1,
                               group = dat$cell)
 
