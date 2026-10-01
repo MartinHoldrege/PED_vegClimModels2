@@ -2,7 +2,8 @@
 Annual RAP v3 cover (tree, shrub, herbaceous) on the daymet snap grid, masked to
 the thinned (every 5th cell) CONUS snap raster. One GeoTIFF per functional
 group, one band per year. Also exports a wall-to-wall (all cells, same masks)
-image for 2021, with one band per functional group.
+image for 2021, with one band per functional group. Areas that burned in prior 20 years
+are masked out
 
 Author: Martin Holdrege
 Started: August 2026
