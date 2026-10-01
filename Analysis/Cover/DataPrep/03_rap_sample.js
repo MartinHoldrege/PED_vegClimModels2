@@ -1,7 +1,8 @@
 /*
 Annual RAP v3 cover (tree, shrub, herbaceous) on the daymet snap grid, masked to
 the thinned (every 5th cell) CONUS snap raster. One GeoTIFF per functional
-group, one band per year.
+group, one band per year. Also exports a wall-to-wall (all cells, same masks)
+image for 2021, with one band per functional group.
 
 Author: Martin Holdrege
 Started: August 2026
@@ -71,6 +72,18 @@ for (var k = 0; k < pfts.length; k++) {
   fg.exportDrive(out, fileName, driveFolder);
 }
 
+// wall-to-wall (all cells, not thinned) for a single year, one band per pft
+var fullYear = 2021;
+var fullMask = fg.maskConus.gt(0);
+var fullKeep = fullMask.and(lcmapMask).and(fg.fireMaskYear(fullYear));
+
+var fullImage = pftBands(
+  ee.Image(rap.filter(ee.Filter.calendarRange(fullYear, fullYear, 'year')).first())
+).updateMask(fullKeep).toFloat();
+
+var fullFileName = 'RAP_v3_cover_' + fullYear + fg.resLabel;
+fg.exportDrive(fullImage, fullFileName, driveFolder);
+
 // visualize ----------------------------------------
 var viz = {min: 0, max: 1, palette:['white', 'black']};
 Map.addLayer(fg.fireMaskYear(2020), viz, 'fire mask', false);
@@ -78,3 +91,5 @@ Map.addLayer(snapMask, viz, 'thin mask', false);
 Map.addLayer(lcmapMask, viz, 'lcmap mask', false);
 Map.addLayer(stacks.shrub.select(bandPrefix + yearEnd),
   {min: 0, max: 40, palette: ['white', 'black']}, 'shrub ' + yearEnd, false);
+Map.addLayer(fullImage.select('shrub'),
+  {min: 0, max: 40, palette: ['white', 'black']}, 'shrub ' + fullYear + ' (full)', false);
