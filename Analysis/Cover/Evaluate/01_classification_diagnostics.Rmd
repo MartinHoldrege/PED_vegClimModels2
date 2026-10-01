@@ -143,6 +143,23 @@ tibble(term = rownames(coefs), coefficient = as.numeric(coefs)) |>
     knitr::kable(digits = 3) |>
     print()
   
+} else if (engine == "gam") {
+  
+  # CV curve over the multiplier on REML's smoothing parameters (x1 is
+  # REML's own choice; larger is smoother)
+  cv_plot <- ggplot(fit$fit$cv, aes(x = log10(lambda), y = cvm)) +
+    geom_pointrange(aes(ymin = cvm - cvsd, ymax = cvm + cvsd), size = 0.2) +
+    geom_vline(xintercept = log10(fit$lambda), linetype = 2) +
+    labs(x = "log10(multiplier on REML smoothing parameters)",
+         y = paste0("Out-of-fold ", spec$gam$metric))
+  print(cv_plot)
+  
+  # effective degrees of freedom per smooth: ~1 near linear, ~0 dropped out
+  fit$fit$edf |>
+    arrange(desc(edf)) |>
+    knitr::kable(digits = 2) |>
+    print()
+  
 }
 ```
 

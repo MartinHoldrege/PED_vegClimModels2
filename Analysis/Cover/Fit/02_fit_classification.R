@@ -9,24 +9,26 @@
 #
 # spec$engine picks the fitting engine: "glmnet" (penalized logistic
 # regression), "ranger" (random forest, as a benchmark for how well the same
-# predictors can do without the constraint of an equation) or "grpreg"
+# predictors can do without the constraint of an equation), "grpreg"
 # (hierarchical group lasso: x^2 can only enter with x, and x:z with x and
-# z; see hier_groups()).
+# z; see hier_groups()) or "gam" (one smooth per predictor, smoothing tuned
+# by CV; see gam_helpers.R).
 #
 # spec$family picks the response. "binomial": the class (cover above
 # spec$cover_threshold). "gaussian" or "poisson" (grpreg only): cover itself,
 # after spec$response_transform; the predicted cover is then cut where the
 # predicted fraction of forest matches the observed one, as a probability
-# would be. "quasibinomial" (glmnet only): cover / 100 as a proportion, fit
+# would be. "quasibinomial" (glmnet or gam): cover / 100 as a proportion, fit
 # with glmnet's binomial likelihood on a two-column response cbind(1 - p, p)
-# (the same estimates as quasibinomial); predictions are mean cover (%), cut
+# (the same estimates as quasibinomial), or mgcv's quasibinomial; predictions are mean cover (%), cut
 # the same way as the continuous families.
 #
 # Predictors: log1p (where named "log1p_") -> standardized with the fixed
 # global parameters -> squares and interactions (prepare_predictors()), so
 # coefficients mean the same thing wherever the model is applied. Ranger specs
 # turn off log1p, squares and interactions, so the same function returns the
-# main effects alone.
+# main effects alone; so do gam specs, which smooth the products of pairs
+# in the formula instead (gam_formula()).
 #
 # Inputs:
 #   cover_clim_soils_<vc>.csv  - 08_combine_cover_and_covariates.R
@@ -269,6 +271,45 @@ rm(eta_oof)
   pred_oof <- .untransform_cover(cv_fit$Y[, cv_fit$min],
                                  spec$response_transform)
   rm(cv_fit)
+  
+} else if (spec$engine == "gam") {
+  
+  # one smooth per standardized predictor, plus (spec$gam$interactions) one
+  # per product of a pair, which mgcv computes from the predictor columns.
+  # REML sets each term's smoothing; CV on the environmental folds picks one
+  # multiplier on all of them, stored as lambda (see gam_helpers.R)
+  gam_dat <- as.data.frame(x)
+  gam_dat$.y <- y_fit  # the class, cover / 100, or transformed cover
+  form <- gam_formula(".y", colnames(x), k = spec$gam$k, bs = spec$gam$bs,
+                      interactions = spec$gam$interactions)
+  family <- get(spec$family, mode = "function")()  # e.g. binomial()
+  
+  cv <- cv_gam_mult(form, data = gam_dat, family = family, foldid = foldid,
+                    mults = 10^spec$gam$log10_mult,
+                    metric = spec$gam$metric,
+                    rule = spec$cv$select_rule)
+  lambda <- cv$mult
+  
+  # global model: REML on all rows, then the selected multiplier
+  sp_reml <- fit_gam(form, gam_dat, family)$sp
+  gam_fit <- fit_gam(form, gam_dat, family, sp_reml = sp_reml, mult = lambda)
+  
+  # cv: mean out-of-fold score per multiplier (and its SE), in the columns
+  # the grpreg report also uses
+  fit <- list(gam = strip_gam(gam_fit),
+              sp_reml = sp_reml,
+              edf = gam_edf(gam_fit),
+              cv = tibble(lambda = cv$summary$lambda,
+                          cvm = cv$summary$score,
+                          cvsd = cv$summary$score_se))
+  rm(gam_fit, gam_dat)
+  
+  pred_in <- predict_score(list(fit = fit, config = list(spec = spec)), x)
+  
+  # out-of-fold predictions at the selected multiplier, from the same folds
+  # that chose it (so mildly optimistic), on the scale predict_score() uses
+  pred_oof <- .fit_scale_to_score(cv$oof, spec)
+  rm(cv)
   
 } else {
   stop("unknown engine: ", spec$engine)

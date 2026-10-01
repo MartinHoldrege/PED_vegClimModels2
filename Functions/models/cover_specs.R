@@ -13,9 +13,10 @@
 #   rows          which pixel-years to fit to: "all", or a quoted condition on
 #                 the training data in original units, e.g. quote(MAP < 700)
 #                 (see select_rows())
-#   engine        "glmnet" (penalized regression), "ranger" (random forest) or
+#   engine        "glmnet" (penalized regression), "ranger" (random forest),
 #                 "grpreg" (hierarchical group lasso: x^2 only enters with
-#                 x, and x:z with x and z; see hier_groups())
+#                 x, and x:z with x and z; see hier_groups()) or "gam" (one
+#                 smooth per predictor; see gam_helpers.R)
 #   pred_vars     predictors (short climate/soil names), with the log1p_
 #                 versions of log1p_vars appended by the constructor
 #   log1p_vars    predictors to add as log1p (e.g. MAP means log1p_MAP is used)
@@ -28,6 +29,12 @@
 #                 otherwise
 #   grpreg        list of arguments passed on to grpreg::grpreg() (e.g.
 #                 nlambda); NULL otherwise
+#   gam           list: k (knots per smooth), bs (basis), log10_mult
+#                 (multipliers on REML's smoothing parameters to try, as
+#                 log10), metric (CV score), interactions (moved here from
+#                 the interactions argument: a smooth of x * z for every
+#                 pair); NULL otherwise. For gam, interactions, squares and
+#                 interact_log1p are then FALSE, so x has main effects only
 #   cv            list: cluster_vars, k_clusters, select_rule
 #
 # classification specs add:
@@ -59,7 +66,7 @@
 #' @param response Column in the cover training data.
 #' @param rows Which pixel-years to fit to: "all", or a quoted condition such
 #'   as `quote(MAP < 700)`; see `select_rows()`.
-#' @param engine "glmnet", "ranger" or "grpreg".
+#' @param engine "glmnet", "ranger", "grpreg" or "gam".
 #' @param family "binomial" (fit to the class), "gaussian" / "poisson"
 #'   (fit to cover; gaussian with glmnet or grpreg, poisson with grpreg
 #'   only), or "quasibinomial" (fit to cover / 100 with
@@ -83,6 +90,11 @@
 #'   early.
 #' @param cluster_vars,k_clusters Variables and number of environmental
 #'   clusters for the CV folds.
+#' @param gam List of settings for `engine = "gam"`, overriding the
+#'   defaults (see function body for defaults) `interactions = TRUE` adds a smooth of
+#'   the product of each pair (see gam_formula()); it is stored as
+#'   `gam$interactions`, and `interactions`, `squares` and `interact_log1p`
+#'   are set to FALSE, so the design matrix holds the main effects only.
 #' @param select_rule "min" or "1se" ("min" only for grpreg).
 #' @return A spec list.
 .defaults_class_forest <- function(response = "cov_tree",
@@ -102,11 +114,12 @@
                                    alpha = 1,
                                    ranger = NULL,
                                    grpreg = list(nlambda = 25),
+                                   gam = NULL,
                                    cluster_vars = .default_cluster_vars,
                                    k_clusters = 10,
                                    select_rule = "min") {
   stopifnot(identical(rows, "all") || is.language(rows),
-            engine %in% c("glmnet", "ranger", "grpreg"),
+            engine %in% c("glmnet", "ranger", "grpreg", "gam"),
             family %in% c("binomial", "quasibinomial", "gaussian", "poisson"),
             response_transform %in% c("identity", "log1p"),
             select_rule %in% c("min", "1se"),
@@ -117,7 +130,9 @@
             engine == "grpreg" || family != "poisson",
             # grpreg's binomial needs a 0/1 response, and ranger isn't set up
             # for proportions
-            family != "quasibinomial" || engine == "glmnet",
+            family != "quasibinomial" || engine %in% c("glmnet", "gam"),
+            # gam smooths the predictors, so no log1p transforms
+            engine != "gam" || length(log1p_vars) == 0,
             !family %in% c("binomial", "quasibinomial") ||
               response_transform == "identity",
             # predicted cover isn't a probability, so only prevalence matching
@@ -127,6 +142,23 @@
   
   if (engine == "grpreg") {
     grpreg <- utils::modifyList(list(max.iter = 1e5), as.list(grpreg))
+  }
+  if (engine == "gam") {
+    gam_default <- list(
+      k = 5,
+      bs = "cs",
+      log10_mult = seq(-1, 3, by = 0.2),
+      # as glmnet's CV: deviance, or mean squared error for gaussian
+      metric = if (family == "gaussian") "mse" else "deviance_binomial",
+      # smooths of products, built by gam_formula() rather than as columns
+      # of the design matrix
+      interactions = interactions
+    )
+    gam <- utils::modifyList(gam_default, as.list(gam))
+    # x: main effects only (a smooth already covers x^2)
+    interactions <- FALSE
+    squares <- FALSE
+    interact_log1p <- FALSE
   }
   
   list(
@@ -146,6 +178,7 @@
     alpha = alpha,
     ranger = ranger,
     grpreg = grpreg,
+    gam = gam,
     cv = list(cluster_vars = cluster_vars,
               k_clusters = k_clusters,
               select_rule = select_rule)
@@ -186,10 +219,7 @@ cover_specs <- list(
       m03 = .defaults_class_forest(k_clusters = 50),
       
       # random forest, as a benchmark for how well the same predictors can do
-      # without the constraint of an equation. No log1p, squares or
-      # interactions: tree splits are invariant to monotone transforms, and
-      # the forest finds interactions itself. Not a candidate for prediction
-      # under future climate, which falls outside the training range.
+      # without the constraint of an equation.  Not a candidate for prediction.
       # min.node.size is the smallest node that can be split, not the smallest
       # leaf. min.bucket (smallest leaf) was tried and roughly tripled fit time
       m04 = .defaults_class_forest(engine = "ranger",
@@ -258,7 +288,21 @@ cover_specs <- list(
                                    response_transform = "log1p"),
       m07.9 = .defaults_class_forest(rows = quote(MAP >= 700),
                                      family = "gaussian",
-                                     response_transform = "log1p")
+                                     response_transform = "log1p"),
+      
+      # GAM: one smooth per predictor in place of log1p and squares; main
+      # effects only here (interactions = TRUE adds a smooth of each pair's
+      # product). REML sets each term's smoothing, and CV on the
+      # environmental folds scales it all up or down (see gam_helpers.R).
+      # Same predictors as m01, fit to the class
+      m08.0 = .defaults_class_forest(engine = "gam",
+                                   log1p_vars = character(0),
+                                   interactions = TRUE),
+      # as m08, but fit to cover / 100, as m06
+      m08.1 = .defaults_class_forest(engine = "gam",
+                                     family = "quasibinomial",
+                                     log1p_vars = character(0),
+                                     interactions = TRUE)
     )
     
     # zero_tree: trees vs no trees in non-forest, trained on a binarized

@@ -156,6 +156,13 @@ predict_score <- function(fit, x) {
                     type = "response")
       .untransform_cover(as.vector(mu), fit$config$spec$response_transform)
     },
+    gam = {
+      requireNamespace("mgcv")  # to get the predict() method
+      # discrete = FALSE: exact predictions (discretized ones are approximate)
+      p <- predict(fit$fit$gam, newdata = as.data.frame(x),
+                   type = "response", discrete = FALSE)
+      .fit_scale_to_score(as.numeric(p), fit$config$spec)
+    },
     stop("unknown engine: ", engine)
   )
 }
@@ -235,6 +242,18 @@ classify_outcome <- function(df, pred_col, threshold, class_label = "forest",
          identity = z,
          log1p = expm1(z),
          stop("unknown response_transform: ", how))
+}
+
+
+# internal: predictions on the scale the model was fit on (probability,
+# cover / 100, or transformed cover) to what predict_score() returns
+# (probability, or % cover)
+.fit_scale_to_score <- function(p, spec) {
+  switch(spec$family,
+         binomial = p,
+         quasibinomial = p * 100,
+         gaussian = .untransform_cover(p, spec$response_transform),
+         stop("family not set up: ", spec$family))
 }
 
 

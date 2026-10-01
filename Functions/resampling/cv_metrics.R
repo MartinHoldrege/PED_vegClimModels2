@@ -74,6 +74,31 @@ metric_cor <- function(truth, estimate) {
   stats::cor(truth, estimate)
 }
 
+#' Mean squared error
+#'
+#' @param truth Numeric vector of observed values.
+#' @param estimate Numeric vector of predicted values.
+#'
+#' @return Numeric scalar.
+metric_mse <- function(truth, estimate) {
+  mean((truth - estimate)^2)
+}
+
+#' Binomial deviance per observation
+#'
+#' R's binomial deviance (as glm() uses), with predictions clamped to
+#' [1e-5, 1 - 1e-5] as `cv.glmnet()` does; the result then matches
+#' `cv.glmnet()`'s CV deviance. `truth` can be 0/1 or a proportion.
+#'
+#' @param truth Observed 0/1 or proportion.
+#' @param estimate Predicted probability.
+#'
+#' @return Numeric scalar.
+metric_deviance_binomial <- function(truth, estimate) {
+  p <- pmin(pmax(estimate, 1e-5), 1 - 1e-5)
+  mean(stats::binomial()$dev.resids(truth, p, wt = 1))
+}
+
 #' Get a metric function by name
 #'
 #' Returns a metric function for use in tuning and scoring.
@@ -83,7 +108,8 @@ metric_cor <- function(truth, estimate) {
 #' @return A function with arguments `truth` and `estimate`.
 get_metric_fun <- function(metric = c("mae_log1p", "rmse_log1p",
                                       "mae_log", "rmse_log", "mae", 
-                                      "rmse", "cor")) {
+                                      "rmse", "cor", "mse",
+                                      "deviance_binomial")) {
   metric <- match.arg(metric)
   
   switch(
@@ -94,7 +120,9 @@ get_metric_fun <- function(metric = c("mae_log1p", "rmse_log1p",
     rmse_log = metric_rmse_log,
     mae = metric_mae,
     rmse = metric_rmse,
-    cor = metric_cor
+    cor = metric_cor,
+    mse = metric_mse,
+    deviance_binomial = metric_deviance_binomial
   )
 }
 
@@ -387,7 +415,21 @@ select_lambda <- function(score_df,
 # misc --------------------------------------------------------------------
 
 
-summarize_scores <- function(scores, metric_cols) {
+#' Mean and SE of fold scores for each lambda
+#'
+#' @param scores Data frame with a `lambda` column, one row per fold and
+#'   lambda.
+#' @param metric_cols Metric columns to summarize.
+#' @param weight_col Optional column of fold weights (e.g. rows per fold).
+#'   NULL: plain mean across folds, SE = sd / sqrt(n folds). Otherwise the
+#'   weighted mean, and SE as `cv.glmnet()` computes it; with equal weights
+#'   the two give the same result.
+#' @return One row per lambda: each metric, its `<metric>_se`, and `n`
+#'   (number of folds).
+summarize_scores <- function(scores, metric_cols, weight_col = NULL) {
+  if (!is.null(weight_col)) {
+    return(.summarize_scores_weighted(scores, metric_cols, weight_col))
+  }
   se <- function(x) sd(x)/sqrt(length(x))
   score_summary <- scores |>
     dplyr::group_by(.data$lambda) |>
@@ -406,6 +448,27 @@ summarize_scores <- function(scores, metric_cols) {
       .groups = "drop"
     )
   score_summary$summary_stat <- "mean"
+  score_summary
+}
+
+# internal: summarize_scores() with fold weights, as cv.glmnet() does
+.summarize_scores_weighted <- function(scores, metric_cols, weight_col) {
+  stopifnot(weight_col %in% names(scores))
+  w_se <- function(x, w) {
+    sqrt(weighted.mean((x - weighted.mean(x, w))^2, w) / (length(x) - 1))
+  }
+  scores$.w <- scores[[weight_col]]
+  score_summary <- scores |>
+    dplyr::group_by(.data$lambda) |>
+    dplyr::summarise(
+      dplyr::across(dplyr::all_of(metric_cols), \(x) w_se(x, .w),
+                    .names = "{.col}_se"),
+      dplyr::across(dplyr::all_of(metric_cols), \(x) weighted.mean(x, .w),
+                    .names = "{.col}"),
+      n = dplyr::n(),
+      .groups = "drop"
+    )
+  score_summary$summary_stat <- "weighted_mean"
   score_summary
 }
 
