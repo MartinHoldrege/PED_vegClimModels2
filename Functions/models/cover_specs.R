@@ -35,7 +35,7 @@
 #                 the interactions argument: a smooth of x * z for every
 #                 pair); NULL otherwise. For gam, interactions, squares and
 #                 interact_log1p are then FALSE, so x has main effects only
-#   cv            list: cluster_vars, k_clusters, select_rule
+#   cv            list: cluster_vars, n_folds, env_clusters, select_rule
 #
 # classification specs add:
 #   cover_threshold     % cover dividing the two classes
@@ -88,8 +88,11 @@
 #'   specs, `max.iter` defaults to 1e5: grpreg's own default (1e4) caps the
 #'   iterations for the whole lambda path, which can end a binomial path
 #'   early.
-#' @param cluster_vars,k_clusters Variables and number of environmental
-#'   clusters for the CV folds.
+#' @param cluster_vars Variables for the environmental clusters.
+#' @param n_folds Number of CV folds.
+#' @param env_clusters Number of environmental clusters (k-means), randomly
+#'   grouped into the `n_folds` folds. NULL (the default) uses `n_folds`:
+#'   one cluster per fold.
 #' @param gam List of settings for `engine = "gam"`, overriding the
 #'   defaults (see function body for defaults) `interactions = TRUE` adds a smooth of
 #'   the product of each pair (see gam_formula()); it is stored as
@@ -116,13 +119,15 @@
                                    grpreg = list(nlambda = 25),
                                    gam = NULL,
                                    cluster_vars = .default_cluster_vars,
-                                   k_clusters = 10,
+                                   n_folds = 10,
+                                   env_clusters = NULL,
                                    select_rule = "min") {
   stopifnot(identical(rows, "all") || is.language(rows),
             engine %in% c("glmnet", "ranger", "grpreg", "gam"),
             family %in% c("binomial", "quasibinomial", "gaussian", "poisson"),
             response_transform %in% c("identity", "log1p"),
             select_rule %in% c("min", "1se"),
+            is.null(env_clusters) || env_clusters >= n_folds,
             engine != "ranger" || is.list(ranger),
             # ranger is fit to the class only; glmnet also to the proportion
             # and (gaussian) to cover; poisson is grpreg only
@@ -180,7 +185,8 @@
     grpreg = grpreg,
     gam = gam,
     cv = list(cluster_vars = cluster_vars,
-              k_clusters = k_clusters,
+              n_folds = n_folds,
+              env_clusters = if (is.null(env_clusters)) n_folds else env_clusters,
               select_rule = select_rule)
   )
 }

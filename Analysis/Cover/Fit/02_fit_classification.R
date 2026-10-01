@@ -110,15 +110,21 @@ stopifnot(nrow(x) == length(obs))
 # folds -------------------------------------------------------------------
 
 # environmental blocking: k-means clusters in climate space (the variables
-# are standardized inside make_env_clusters()), one fold per cluster
+# are standardized inside make_env_clusters()), randomly grouped into folds
+# (one cluster per fold when env_clusters equals n_folds)
 clusters <- make_env_clusters(dat,
                               vars = spec$cv$cluster_vars,
                               iter.max = 500,
-                              k = spec$cv$k_clusters,
+                              k = spec$cv$env_clusters,
                               seed = 1,
                               # forcing cells with multiple years to all go to the same fold
                               group = dat$cell)
-foldid <- clusters$env_cluster
+folds <- make_cluster_folds(clusters$env_cluster, n_folds = spec$cv$n_folds,
+                            seed = 1)
+foldid <- clusters_to_fold_id(clusters$env_cluster, folds)
+# which clusters make up each fold, for assign_to_clusters() later
+clusters$fold_clusters <- purrr::map(folds, "test_clusters")
+rm(folds)
 
 stopifnot(length(foldid) == nrow(dat), !anyNA(foldid))
 
