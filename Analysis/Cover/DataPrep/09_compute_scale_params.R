@@ -75,12 +75,7 @@ if (!file.exists(p_global) || rerun) {
   # never logged. log1p rather than log so nothing fails on a zero in any
   # dataset the equations are later applied to (future climate, gridMET). Computing a few that no
   # model uses is harmless.
-  log_vars <- c("MAP", "P_wettestMonth", "P_driestMonth",
-                      "P_seasonality", "WDD_mean", "WDD_p05",
-                      "frost_free_days", "frost_free_days_p05",
-                      "VPD_mean", "VPD_max", "VPD_max_p95",
-                      "soilDepth", "clay_surface", "clay", "sand", "coarse",
-                      "carbon", "awc")
+  log_vars <- .possible_log_vars() # defined in models/predictors.R
   
   stopifnot(log_vars %in% names(r))
 

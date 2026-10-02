@@ -168,3 +168,18 @@ hier_groups <- function(terms) {
   stopifnot(all(groups$term %in% terms))
   groups
 }
+
+# variables that can be log transformed
+.possible_log_vars <- function(x = NULL, return_possibles = FALSE) {
+  possibles <- c("MAP", "P_wettestMonth", "P_driestMonth",
+    "P_seasonality", "WDD_mean", "WDD_p05",
+    "frost_free_days", "frost_free_days_p05",
+    "VPD_mean", "VPD_max", "VPD_max_p95",
+    "soilDepth", "clay_surface", "clay", "sand", "coarse",
+    "carbon", "awc")
+  if (return_possibles) {
+    return(possibles)
+  }
+  
+  x[x %in%possibles]
+}

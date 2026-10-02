@@ -91,7 +91,9 @@ print(spec)
 
 For glmnet, the cross-validation curve (binomial deviance vs log(lambda);
 dashed lines mark min and 1se) and the non-zero coefficients at the selected
-lambda. For ranger, the forest settings and the out-of-bag error. For grpreg
+lambda. For ranger, the forest settings and the out-of-bag error, and
+variable importance if the spec asked for it (`importance` in `spec$ranger`).
+For grpreg
 (hierarchical group lasso), the cross-validation curve (mean out-of-fold
 deviance +/- 1 SE; dashed line at the selected lambda) and the non-zero
 coefficients, each summed over the groups it was fit
@@ -127,6 +129,16 @@ tibble(term = rownames(coefs), coefficient = as.numeric(coefs)) |>
     enframe(name = "setting", value = "value") |>
     knitr::kable() |>
     print()
+  
+  # variable importance, if the forest was fit with it
+  if (!is.null(fit$fit$variable.importance)) {
+    vip_plot <- ranger::importance(fit$fit) |>
+      enframe(name = "variable", value = "importance") |>
+      ggplot(aes(x = importance, y = reorder(variable, importance))) +
+      geom_col() +
+      labs(x = paste0("Importance (", fit$fit$importance.mode, ")"), y = NULL)
+    print(vip_plot)
+  }
   
 } else if (engine == "grpreg") {
   

@@ -55,13 +55,17 @@
 # Specs are built with a constructor per model (e.g. .defaults_class_forest()),
 # so each version lists only what differs from the defaults.
 
-
+source('Functions/models/predictors.R')
 .default_cluster_vars <- c("MAT", "MAP", "PrecipTempCorr", "awc")
 
 # complex model (for comparisons)
 .pred_vars_complex1 <- c("MAT", "P_wettestMonth", "PrecipTempCorr", "isothermality",
                          "WDD_mean", "soilDepth", "clay_surface", "sand", "coarse",
                          "carbon")
+
+.pred_vars_complex2	<-  c("MAT", "MAP", "P_driestMonth", "PrecipTempCorr", 
+                          "isothermality", "WD_mean", "VPD_max_p95", 
+                          "clay_surface", "coarse", "carbon", "awc")
 
 #' Spec for the forest / non-forest classification
 #'
@@ -157,7 +161,7 @@
     gam_default <- list(
       k = 5,
       bs = "cs",
-      log10_mult = seq(-1, 3, by = 0.2),
+      log10_mult = seq(-1, 4, by = 0.5),
       # as glmnet's CV: deviance, or mean squared error for gaussian
       metric = if (family == "gaussian") "mse" else "deviance_binomial",
       # smooths of products, built by gam_formula() rather than as columns
@@ -203,7 +207,7 @@ cover_specs <- list(
     
     # forest / non-forest: tree cover above or below 10%
     forest = list(
-      
+      # binomial GLM
       m01 = .defaults_class_forest(),
       
       # as m05, but fit to the class: the hierarchy alone, for comparison
@@ -211,18 +215,15 @@ cover_specs <- list(
       # continuous response)
       m01.1 = .defaults_class_forest(engine = "grpreg",
                                      interact_log1p = TRUE),
-      # complex covarariate comparison,
-      # selected as 10 vars w/ ~95% coverage, to compare what happens
-      # when allow near maximum complexity
+      # complex covarariate comparison
       m01.2 = .defaults_class_forest(
-        pred_vars = .pred_vars_complex1,
-        log1p_vars = c("P_wettestMonth", "WDD_mean", "soilDepth", "clay_surface", 
-                       "sand", "coarse", 'carbon'),
+        pred_vars = .pred_vars_complex2,
+        log1p_vars = .possible_log_vars(.pred_vars_complex2),
         interact_log1p = TRUE
         ),
       # less climate extrapolation
       m01.3 = .defaults_class_forest(n_folds = 10, env_clusters = 20),
-      
+
       # elastic net
       m02 = .defaults_class_forest(alpha = 0.5),
       
@@ -238,14 +239,16 @@ cover_specs <- list(
                                    squares = FALSE,
                                    interactions = FALSE,
                                    ranger = list(num.trees = 300,
-                                                 min.node.size = 100)),
+                                                 min.node.size = 100,
+                                                 importance = "permutation")),
       m04.1 = .defaults_class_forest(engine = "ranger",
-                                   pred_vars = .pred_vars_complex1,
+                                   pred_vars = .pred_vars_complex2,
                                    log1p_vars = character(0),
                                    squares = FALSE,
                                    interactions = FALSE,
                                    ranger = list(num.trees = 300,
-                                                 min.node.size = 100)),
+                                                 min.node.size = 100,
+                                                 importance = "permutation")),
       
       # hierarchical group lasso on continuous tree cover. x^2 only enters
       # with x, and an interaction only with both of its terms. Squares don't
@@ -316,7 +319,7 @@ cover_specs <- list(
       m08.0 = .defaults_class_forest(engine = "gam",
                                    log1p_vars = character(0),
                                    gam = list(
-                                     log10_mult = seq(-1, 3, by = 0.5)
+                                     log10_mult = seq(-1, 4, by = 0.5)
                                      ),
                                    interactions = TRUE),
       # as m08, but fit to cover / 100, as m06
@@ -324,22 +327,22 @@ cover_specs <- list(
                                      family = "quasibinomial",
                                      log1p_vars = character(0),
                                      gam = list(
-                                       log10_mult = seq(-1, 3, by = 0.5)
+                                       log10_mult = seq(-1, 4, by = 0.5)
                                        ),
                                      interactions = TRUE),
-      # 8.0 but complex set of models
+      # 8.0 but complex set of predictors
       m08.2 = .defaults_class_forest(engine = "gam",
                                      pred_vars = .pred_vars_complex1,
                                      log1p_vars = character(0),
                                      gam = list(
-                                       log10_mult = seq(-1, 3, by = 0.5)
+                                       log10_mult = seq(-1, 4, by = 0.5)
                                      ),
                                      interactions = TRUE),
       # 8.0 but w/ less climat extrapolation
       m08.3 = .defaults_class_forest(engine = "gam",
                                      log1p_vars = character(0),
                                      gam = list(
-                                       log10_mult = seq(-1, 3, by = 0.5)
+                                       log10_mult = seq(-1, 4, by = 0.5)
                                      ),
                                      interactions = TRUE,
                                      n_folds = 10,

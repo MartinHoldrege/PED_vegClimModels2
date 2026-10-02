@@ -179,11 +179,11 @@ rm(eta_oof)
   
   lambda <- NA_real_  # no penalty to select
   
-  fit_rf <- function(x, y) {
+  fit_rf <- function(x, y, args = spec$ranger) {
     do.call(ranger::ranger,
             c(list(x = x, y = factor(y, levels = c(0, 1)),
                    probability = TRUE, seed = 1),
-              spec$ranger))
+              args))
   }
   
   fit <- fit_rf(x, obs)
@@ -202,7 +202,10 @@ rm(eta_oof)
   pred_oof <- rep(NA_real_, length(obs))
   for (f in unique(foldid)) {
     i <- foldid == f
-    pred_oof[i] <- predict(fit_rf(x[!i, , drop = FALSE], obs[!i]),
+    # importance (if in the spec) only on the global forest: it isn't needed
+    # for predictions, and permutation importance is slow
+    fold_args <- utils::modifyList(as.list(spec$ranger), list(importance = "none"))
+    pred_oof[i] <- predict(fit_rf(x[!i, , drop = FALSE], obs[!i], fold_args),
                            data = x[i, , drop = FALSE])$predictions[, "1"]
   }
   stopifnot(!anyNA(pred_oof))
