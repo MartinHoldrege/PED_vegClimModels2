@@ -58,6 +58,11 @@
 
 .default_cluster_vars <- c("MAT", "MAP", "PrecipTempCorr", "awc")
 
+# complex model (for comparisons)
+.pred_vars_complex1 <- c("MAT", "P_wettestMonth", "PrecipTempCorr", "isothermality",
+                         "WDD_mean", "soilDepth", "clay_surface", "sand", "coarse",
+                         "carbon")
+
 #' Spec for the forest / non-forest classification
 #'
 #' Arguments override the defaults. Appends the `log1p_` names of
@@ -210,13 +215,13 @@ cover_specs <- list(
       # selected as 10 vars w/ ~95% coverage, to compare what happens
       # when allow near maximum complexity
       m01.2 = .defaults_class_forest(
-        pred_vars = c("MAT", "P_wettestMonth", "PrecipTempCorr", "isothermality",
-                      "WDD_mean", "soilDepth", "clay_surface", "sand", "coarse",
-                      "carbon"),
+        pred_vars = .pred_vars_complex1,
         log1p_vars = c("P_wettestMonth", "WDD_mean", "soilDepth", "clay_surface", 
                        "sand", "coarse", 'carbon'),
         interact_log1p = TRUE
         ),
+      # less climate extrapolation
+      m01.3 = .defaults_class_forest(n_folds = 10, env_clusters = 20),
       
       # elastic net
       m02 = .defaults_class_forest(alpha = 0.5),
@@ -229,6 +234,13 @@ cover_specs <- list(
       # min.node.size is the smallest node that can be split, not the smallest
       # leaf. min.bucket (smallest leaf) was tried and roughly tripled fit time
       m04 = .defaults_class_forest(engine = "ranger",
+                                   log1p_vars = character(0),
+                                   squares = FALSE,
+                                   interactions = FALSE,
+                                   ranger = list(num.trees = 300,
+                                                 min.node.size = 100)),
+      m04.1 = .defaults_class_forest(engine = "ranger",
+                                   pred_vars = .pred_vars_complex1,
                                    log1p_vars = character(0),
                                    squares = FALSE,
                                    interactions = FALSE,
@@ -314,7 +326,24 @@ cover_specs <- list(
                                      gam = list(
                                        log10_mult = seq(-1, 3, by = 0.5)
                                        ),
-                                     interactions = TRUE)
+                                     interactions = TRUE),
+      # 8.0 but complex set of models
+      m08.2 = .defaults_class_forest(engine = "gam",
+                                     pred_vars = .pred_vars_complex1,
+                                     log1p_vars = character(0),
+                                     gam = list(
+                                       log10_mult = seq(-1, 3, by = 0.5)
+                                     ),
+                                     interactions = TRUE),
+      # 8.0 but w/ less climat extrapolation
+      m08.3 = .defaults_class_forest(engine = "gam",
+                                     log1p_vars = character(0),
+                                     gam = list(
+                                       log10_mult = seq(-1, 3, by = 0.5)
+                                     ),
+                                     interactions = TRUE,
+                                     n_folds = 10,
+                                     env_clusters = 20)
     )
     
     # zero_tree: trees vs no trees in non-forest, trained on a binarized
