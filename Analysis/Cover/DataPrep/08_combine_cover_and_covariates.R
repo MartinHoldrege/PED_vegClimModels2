@@ -25,6 +25,12 @@ source_functions()
 
 vc <- opt$vc  # cover data version
 
+if(vc == 'c02') {
+  stop("cover data version 'c02' is created in 
+       Analysis/Cover/DataPrep/05_rap_training_sample.R
+       that version can't be created in this script")
+}
+
 # params ------------------------------------------------------------------
 
 cov_dir  <- file.path(paths$large, "Data_processed/cover_combined")

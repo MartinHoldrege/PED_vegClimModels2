@@ -17,7 +17,8 @@ base_local <- file.path(paths$large, "Data_processed")
 file_specs <- tribble(
   ~pattern,             ~local_dir,
   "^(LCMAP|MTBS).*gt",      file.path(base_local, "masks"),
-  "^RAP_v\\d_cover.*thin",    file.path(base_local, "CoverData/rap")
+  "^RAP_v\\d_cover.*thin",    file.path(base_local, "CoverData/rap"),
+  "^RAP_v\\d_cover_\\d{4}",    file.path(base_local, "CoverData/rap")
 )
 
 walk(file_specs$local_dir, dir.create, recursive = TRUE, showWarnings = FALSE)

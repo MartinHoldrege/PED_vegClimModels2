@@ -532,7 +532,9 @@ read_available_mask <- function(year = 2023, root = paths$large) {
 #'   c3_grass, c4_grass (share of herbaceous).
 #' @param normalize Logical; z-score the climate and soil columns with the
 #'   CONUS-wide means and sds, and divide the anomalies by their sd across
-#'   training pixel-years (see `read_scale_params()`).
+#'   training pixel-years (see `read_scale_params()`). For versions without
+#'   anomalies (c02), only the climate and soils parameters are used, and
+#'   anomaly columns are an error.
 #' @param as_sf Logical; return an sf data frame of cell-centre points in the
 #'   CRS of `read_mask()`. The x and y columns are kept.
 #' @param root Root path for large files.
@@ -565,7 +567,18 @@ read_cover_training <- function(vc, group = NULL, normalize = FALSE,
   names(out)[names(out) == "AWHC"] <- climate_name_lookup("AWHC")
   
   if (normalize) {
-    sp <- read_scale_params(vc, root = root)
+    # versions without anomalies (c02: 2021 RAP-only sample, 05_rap2021_*.R)
+    # have no anomaly scale params; use the shared climate and soils ones
+    if (vc %in% c("c02")) {
+      anom_cols <- stringr::str_subset(names(out), "_3yrAnom$")
+      if (length(anom_cols) > 0) {
+        stop(vc, " is not expected to have anomaly columns, but has: ",
+             paste(anom_cols, collapse = ", "))
+      }
+      sp <- read_scale_params(root = root)
+    } else {
+      sp <- read_scale_params(vc, root = root)
+    }
     soil_vars <- c("soilDepth", "clay_surface", "clay", "sand", "coarse",
                    "carbon", "awc")
     vars <- c(new, soil_vars)
