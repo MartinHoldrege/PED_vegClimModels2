@@ -14,8 +14,11 @@ var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.
 var yearStartRap = 2021;
 var yearEndRap = 2021;
 
-var cutoffs = [3, 5, 10];
+var cutoffs = [3];
+var zeroTreeFracCutoff = 0.9; // cuttoff for faction of 1km 
 
+var export2Drive = true;
+var export2Asset = false;
 // 1km masks
 var cellKeep = fg.lcmapMaskBinary().and(fg.fireMaskYear(yearEndRap));
 
@@ -39,22 +42,27 @@ for (var i = 0; i < cutoffs.length; i++) {
     })
     .updateMask(cellKeep)
     .rename('fracNotForest');
+    
+  var zeroTree = fracNotForest
+    .gte(zeroTreeFracCutoff)
+    .rename('zeroTreeBinary_' + zeroTreeFracCutoff*100);
+  
+  fracNotForest = fracNotForest.addBands(zeroTree);
   
   // visualize ----------------------------------------
   Map.addLayer(fracNotForest, {min: 0, max: 1, palette: ['white', 'black']},
     'frac not forest (unburned, natural land)', false);
-  
+  Map.addLayer(zeroTree.selfMask(), {palette: ['black']}, 'zero tree area', false);
   // export -------------------------------------------
   var fileName = 'RAP_v3_fracNotForest_lt' + cutoff + '_' +
     yearStartRap + '-' + yearEndRap + fg.resLabel;
+
+  if(export2Drive) {
+    fg.exportDrive(fracNotForest, fileName, 'PED_vegClimModels2');
+  }
   
-  Export.image.toAsset({
-    image: fracNotForest,
-    description: fileName,
-    assetId: fg.pathAsset + 'rap/' + fileName,
-    crs: fg.crs,
-    crsTransform: fg.crsTransform,
-    region: fg.region,
-    maxPixels: 1e12
-  });
+  if(export2Asset) {
+    fg.exportAsset(fracNotForest, fileName, fg.pathAsset + 'rap/');
+  }
+  
 }
