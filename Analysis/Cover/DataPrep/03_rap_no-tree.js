@@ -1,7 +1,7 @@
 /*
 Determine which pixels have no or close to no tree cover (based on RAP),
-masked to exclude burned (MTBS 2000-2023) and developed/cropland/water
-(LCMAP 2021) pixels.
+masked to exclude burned (MTBS, 20 years up to and including yearEndRap) and
+developed/cropland/water (LCMAP 2021) pixels.
 
 Author: Martin Holdrege
 Started: April 6, 2026
@@ -11,20 +11,26 @@ Started: April 6, 2026
 var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.js');
 
 // params -------------------------------------------
-var yearStartRap = 2019;
-var yearEndRap = 2023;
-var yearStartFire = 2000;
-var yearEndFire = 2023;
+var yearStartRap = 2021;
+var yearEndRap = 2021;
+var windowLength = 20; // fire window (years), inclusive of yearEndRap
 
 var cutoffs = [3, 5, 10];
 // read in data -------------------------------------
 var rap = ee.ImageCollection('projects/rap-data-365417/assets/vegetation-cover-v3')
   .filter(ee.Filter.calendarRange(yearStartRap, yearEndRap, 'year'));
 
-// created in 01_mtbs_everBurned.js
-var everBurned = ee.Image(fg.pathAsset + 'fire/MTBS_everBurned_30m_' +
-  yearStartFire + '-' + yearEndFire)
-  .unmask(0);
+var mtbs = ee.ImageCollection('USFS/GTAC/MTBS/annual_burn_severity_mosaics/v1')
+  .filter(ee.Filter.stringContains('system:index', 'CONUS'))
+  .filter(ee.Filter.calendarRange(yearEndRap - windowLength + 1, yearEndRap, 'year'))
+  .map(function(img) {
+    // band is named 'Burn_Severity' in some years, so select by position
+    var severity = img.select([0]);
+    return severity.gte(2).and(severity.lte(5));
+  });
+
+// burned in window; unmask so unmapped areas count as unburned
+var everBurned = mtbs.max().unmask(0);
 
 // process ------------------------------------------
 var rapMean = rap.select(['TRE']).mean();

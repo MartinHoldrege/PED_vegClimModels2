@@ -1,6 +1,7 @@
 /*
-Fraction of unburned, natural-land 30m pixels per daymet cell 
-that have <x% tree cover.
+Fraction of natural-land 30m pixels per daymet cell 
+that have <x% tree cover. Cells are masked with the 1km fire mask
+(02_fire_fracUnburned.js) and LCMAP mask, as in 03_rap_sample.js.
 
 Author: Martin Holdrege
 Started: April 2026
@@ -10,15 +11,18 @@ Started: April 2026
 var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.js');
 
 // params -------------------------------------------
-var yearStartRap = 2019;
-var yearEndRap = 2023;
+var yearStartRap = 2021;
+var yearEndRap = 2021;
 
 var cutoffs = [3, 5, 10];
+
+// 1km masks
+var cellKeep = fg.lcmapMaskBinary().and(fg.fireMaskYear(yearEndRap));
 
 for (var i = 0; i < cutoffs.length; i++) {
   var cutoff = cutoffs[i];
   // read in data -------------------------------------
-  // created in 03_rap_notForest.js (masked by fire + LCMAP)
+  // created in 03_rap_no-tree.js (masked by LCMAP)
   var notForest30 = ee.Image(fg.pathAsset + 'rap/RAP_v3_tree-lt' + cutoff + '_masked_' +
     yearStartRap + '-' + yearEndRap + '_30m');
   
@@ -33,6 +37,7 @@ for (var i = 0; i < cutoffs.length; i++) {
       crs: fg.crs,
       crsTransform: fg.crsTransform
     })
+    .updateMask(cellKeep)
     .rename('fracNotForest');
   
   // visualize ----------------------------------------
