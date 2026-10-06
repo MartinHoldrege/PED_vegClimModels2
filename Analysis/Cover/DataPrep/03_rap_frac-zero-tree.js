@@ -41,7 +41,7 @@ for (var i = 0; i < cutoffs.length; i++) {
       crsTransform: fg.crsTransform
     })
     .updateMask(cellKeep)
-    .rename('fracNotForest');
+    .rename('fracZeroTree');
     
   var zeroTree = fracNotForest
     .gt(zeroTreeFracCutoff)
@@ -52,7 +52,7 @@ for (var i = 0; i < cutoffs.length; i++) {
     .toFloat();
   
   // visualize ----------------------------------------
-  Map.addLayer(fracNotForest, {min: 0, max: 1, palette: ['white', 'black']},
+  Map.addLayer(fracNotForest.select('fracZeroTree'), {min: 0, max: 1, palette: ['white', 'black']},
     'frac not forest (unburned, natural land)', false);
   Map.addLayer(zeroTree.selfMask(), {palette: ['black']}, 'zero tree area', false);
   // export -------------------------------------------
