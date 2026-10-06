@@ -44,10 +44,12 @@ for (var i = 0; i < cutoffs.length; i++) {
     .rename('fracNotForest');
     
   var zeroTree = fracNotForest
-    .gte(zeroTreeFracCutoff)
+    .gt(zeroTreeFracCutoff)
     .rename('zeroTree_' + zeroTreeFracCutoff*100);
   
-  fracNotForest = fracNotForest.addBands(zeroTree);
+  fracNotForest = fracNotForest
+    .addBands(zeroTree)
+    .toFloat();
   
   // visualize ----------------------------------------
   Map.addLayer(fracNotForest, {min: 0, max: 1, palette: ['white', 'black']},
