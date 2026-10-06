@@ -15,7 +15,7 @@ var yearStartRap = 2021;
 var yearEndRap = 2021;
 var windowLength = 20; // fire window (years), inclusive of yearEndRap
 
-var cutoffs = [3, 5, 10];
+var cutoffs = [3];
 // read in data -------------------------------------
 var rap = ee.ImageCollection('projects/rap-data-365417/assets/vegetation-cover-v3')
   .filter(ee.Filter.calendarRange(yearStartRap, yearEndRap, 'year'));
