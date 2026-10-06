@@ -45,7 +45,7 @@ for (var i = 0; i < cutoffs.length; i++) {
     
   var zeroTree = fracNotForest
     .gte(zeroTreeFracCutoff)
-    .rename('zeroTreeBinary_' + zeroTreeFracCutoff*100);
+    .rename('zeroTree_' + zeroTreeFracCutoff*100);
   
   fracNotForest = fracNotForest.addBands(zeroTree);
   
