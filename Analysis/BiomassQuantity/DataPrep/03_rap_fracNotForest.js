@@ -1,6 +1,6 @@
 /*
 Fraction of unburned, natural-land 30m pixels per daymet cell 
-that have <1% tree cover.
+that have <x% tree cover.
 
 Author: Martin Holdrege
 Started: April 2026
