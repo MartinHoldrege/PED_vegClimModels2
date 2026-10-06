@@ -56,7 +56,7 @@ for (var i = 0; i < cutoffs.length; i++) {
     'frac not forest (unburned, natural land)', false);
   Map.addLayer(zeroTree.selfMask(), {palette: ['black']}, 'zero tree area', false);
   // export -------------------------------------------
-  var fileName = 'RAP_v3_fracNotForest_lt' + cutoff + '_' +
+  var fileName = 'RAP_v3_fracZeroTree_lt' + cutoff + '_' +
     yearStartRap + '-' + yearEndRap + fg.resLabel;
 
   if(export2Drive) {
