@@ -46,18 +46,29 @@ in_title <- if (engine == "ranger") {
   "In-sample (model fit to all data)"
 }
 
-# binomial models predict a probability of forest; continuous ones (family
-# gaussian, poisson or quasibinomial) predict tree cover (%), cut into classes
-# the same way
+# what is classified: forest (from tree cover) or zero tree (from the % of a
+# cell's natural land with no trees); sets the labels throughout
+zero_tree <- spec$response == "pct_zero_tree"
+class_label <- if (zero_tree) "zero tree" else "forest"  # the positive class
+cover_name <- if (zero_tree) "zero-tree area (%)" else "tree cover (%)"
+class_colour <- if (zero_tree) "tan3" else "darkgreen"
+change_colours <- if (zero_tree) {
+  c(lost = "#1b7837", gained = "tan3")
+} else {
+  c(lost = "orange", gained = "#1b7837")
+}
+
+# binomial models predict a probability of the class; continuous ones (family
+# gaussian, poisson or quasibinomial) predict cover (%), cut into classes the
+# same way
 score_layer <- score_name(fit)  # "prob" or "cover"
 continuous <- score_layer == "cover"
 score_label <- if (continuous) {
-  "Predicted tree cover (%)"
+  paste("Predicted", cover_name)
 } else {
-  "Predicted probability of forest"
+  paste("Predicted probability of", class_label)
 }
 score_limits <- if (continuous) c(0, 100) else c(0, 1)
-class_label <- "forest"  # name of the positive class, for outcome labels
 
 # predictors in original units (log1p_MAP is plotted as MAP)
 source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
@@ -79,7 +90,7 @@ pred_dir <- file.path(paths$large, "Data_processed", "CoverData", "Predictions")
 Model `r cover_type`/`r cover_model`, data `r vc`, version `r vmc`, engine
 `r engine`, family `r if (continuous) spec$family else "binomial"`:
 `r nrow(dat)` pixel-years; cutoff `r round(fit$threshold, 3)`
-`r if (continuous) "% predicted cover (observed classes split at 10%)" else ""`
+`r if (continuous) paste0("% predicted cover (observed classes split at ", spec$cover_threshold, "%)") else ""`
 
 ```{r info}
 print(spec)
@@ -215,16 +226,17 @@ bind_rows(perf(dat$pred_in), perf(dat$pred_oof)) |>
 # confusion matrix (counts of pixel-years), out-of-fold
 table(observed = dat$observed,
       predicted = as.integer(dat$pred_oof > fit$threshold)) |>
-  knitr::kable(caption = "Out-of-fold confusion matrix (0 = not forest, 1 = forest)")
+  knitr::kable(caption = paste0("Out-of-fold confusion matrix (0 = not ",
+                                class_label, ", 1 = ", class_label, ")"))
 ```
 
 ## Predicted vs observed cover
 
-Continuous models only. Out-of-fold predicted against observed tree cover
-(log1p axes; predictions outside 0-100% are drawn at the limits). Dashed
-lines: the 10% threshold (vertical) and the cutoff on predicted cover
-(horizontal), so the top-left corner is false forest and the bottom-right
-missed forest.
+Continuous models only. Out-of-fold predicted against observed cover (tree
+cover, or zero-tree area) (log1p axes; predictions outside 0-100% are drawn
+at the limits). Dashed lines: the threshold dividing the classes (vertical)
+and the cutoff on predicted cover (horizontal), so the top-left corner is
+false positives and the bottom-right missed positives.
 
 ```{r cover-fit, eval = continuous, fig.width = 7, fig.height = 5}
 ggplot(dat, aes(x = cover_obs, y = pmin(pmax(pred_oof, 0), 100))) +
@@ -241,7 +253,8 @@ ggplot(dat, aes(x = cover_obs, y = pmin(pmax(pred_oof, 0), 100))) +
 
 # Quantile plots
 
-Points: proportion of pixel-years that are forest, observed and predicted
+Points: proportion of pixel-years in the class (forest or zero tree),
+observed and predicted
 (predicted class = prediction above the cutoff), within quantiles of each
 predictor. Both are classes, so they're directly comparable.
 
@@ -259,10 +272,10 @@ quant_oof <- quant_df("pred_oof")
 ```
 
 ```{r quantile-plots, fig.width = 10, fig.height = 7}
-decile_dotplot("forest", quant_in, ylab = "Proportion forest",
+decile_dotplot("forest", quant_in, ylab = paste("Proportion", class_label),
                add_predicted = TRUE, title = in_title,
                add_ribbon = FALSE)
-decile_dotplot("forest", quant_oof, ylab = "Proportion forest",
+decile_dotplot("forest", quant_oof, ylab = paste("Proportion", class_label),
                add_predicted = TRUE, title = "Out-of-fold",
                add_ribbon = FALSE)
 ```
@@ -280,7 +293,7 @@ filtered <- function(pred_col, title) {
   predvars2deciles(response_vars = c("forest", "forest_pred"),
                    pred_vars = source_vars, filter_var = TRUE,
                    filter_vars = source_vars) |>
-  decile_dotplot_filtered("forest", df = _, ylab = "Proportion forest",
+  decile_dotplot_filtered("forest", df = _, ylab = paste("Proportion", class_label),
                           title = title)
 }
 
@@ -367,7 +380,7 @@ plot_misclass("pred_oof", "Out-of-fold")
 
 Density of each predictor (original units, e.g. MAP rather than log1p_MAP)
 for the four outcomes in the map above, over all pixel-years. Each line
-integrates to 1, so rare outcomes (e.g. missed forest) are as visible as
+integrates to 1, so rare outcomes (e.g. missed positives) are as visible as
 common ones; the lines show where along a predictor each outcome occurs, not
 how many pixel-years it has.
 
@@ -386,8 +399,8 @@ dat |>
 
 Mean over years of (prediction - observation) per pixel: predicted
 probability - observed class, or for continuous models predicted -
-observed % cover (colours capped at +/- 30). Positive: predicted more forest
-than observed. For models fit to log1p(cover), predicted cover is the
+observed % cover (colours capped at +/- 30). Positive: predicted more of the
+class (forest or zero tree) than observed. For models fit to log1p(cover), predicted cover is the
 back-transformed mean of log1p(cover), which runs below mean cover, so these
 residuals lean negative by construction; the classification is unaffected,
 because the cutoff is set on the same predictions. Quasibinomial models
@@ -428,25 +441,29 @@ pred <- map(scenarios, read_pred) |> set_names(scenarios)
 # than a continuous color bar
 as_class_raster <- function(r) {
   r <- terra::as.int(r)
-  levels(r) <- data.frame(value = c(0, 1), class = c("not forest", "forest"))
+  levels(r) <- data.frame(value = c(0, 1),
+                          class = c(paste("not", class_label), class_label))
   r
 }
 class_scale <- scale_fill_manual(name = NULL,
-                                 values = c("not forest" = "grey85",
-                                            "forest" = "darkgreen"),
+                                 values = setNames(c("grey85", class_colour),
+                                                   c(paste("not", class_label),
+                                                     class_label)),
                                  na.translate = FALSE)
 
 as_change_raster <- function(r) {
   r <- terra::as.int(r)
   levels(r) <- data.frame(value = c(-1, 0, 1),
-                          change = c("forest lost", "no change",
-                                     "forest gained"))
+                          change = c(paste(class_label, "lost"), "no change",
+                                     paste(class_label, "gained")))
   r
 }
 change_scale <- scale_fill_manual(name = NULL,
-                                  values = c("forest lost" = "orange",
-                                             "no change" = "grey90",
-                                             "forest gained" = "#1b7837"),
+                                  values = setNames(
+                                    c(change_colours[["lost"]], "grey90",
+                                      change_colours[["gained"]]),
+                                    c(paste(class_label, "lost"), "no change",
+                                      paste(class_label, "gained"))),
                                   na.translate = FALSE)
 ```
 
@@ -476,10 +493,41 @@ plot_map_conus(as_class_raster(pred$current$class),
                title = "Predicted class")
 ```
 
+## Misclassification, wall-to-wall
+
+Zero-tree models only. As the training-pixel map, but everywhere the RAP
+zero-tree raster has data (the LCMAP and fire masks): observed class (zero-tree
+area above the threshold, as in fitting) vs the predicted class under current
+climate. The training pixels are a sample of these cells. The table gives
+the share of cells in each outcome.
+
+```{r map-misclass-wall, eval = zero_tree, fig.width = 9, fig.height = 6}
+obs_class <- 100 * read_zero_tree_raster("fracZeroTree") > spec$cover_threshold
+obs_class <- align_raster(obs_class, pred$current)  # exported one cell larger
+stopifnot(terra::compareGeom(obs_class, pred$current))
+
+# 0-3 = 2 * observed + predicted, labelled as classify_outcome() does
+outcome_r <- 2 * obs_class + pred$current$class
+levels(outcome_r) <- data.frame(
+  value = 0:3,
+  outcome = outcome_labels(class_label)[c(2, 3, 4, 1)])
+
+plot_map_conus(outcome_r,
+               colorscale = scale_fill_manual(
+                 name = NULL, values = outcome_colours(class_label),
+                 na.translate = FALSE),
+               title = "Observed vs predicted class (current climate)")
+
+terra::freq(outcome_r) |>
+  mutate(percent = 100 * count / sum(count)) |>
+  select(outcome = value, count, percent) |>
+  knitr::kable(digits = 1)
+```
+
 ## Future climate
 
 Class under each future scenario, and the change from current (+1 becomes
-forest, -1 stops being forest).
+the class, -1 leaves it).
 
 ```{r map-future, fig.width = 9, fig.height = 6}
 walk(setdiff(scenarios, "current"), \(scenario) {

@@ -5,12 +5,19 @@
 # 1991-2020 climate normals and soils at each cell. For trying the forest
 # classification on a large, spatially even dataset. No anomalies.
 #
+# Also the zero-tree area at the same cells: pct_zero_tree, the % of a cell's
+# natural-land 30 m pixels with < 3% RAP tree cover, and zero_tree (1 where
+# that is above 90%), for the zero-tree classification. The cells are chosen
+# without regard to it, so it can be NA where its masks differ from the RAP
+# cover's (those rows drop out when it is the response).
+#
 # Written in the same format as 08_combine_cover_and_covariates.R (long
 # _CLIM climate names, NA columns for the field-only variables), except soil
 # AWC is written as awc, so it can be read with read_cover_training("c02").
 #
 # Inputs:
 #   RAP_v3_cover_2021_1000m.tif          - 03_rap_sample.js (04_download)
+#   RAP_v3_fracZeroTree_lt3_2021-2021_1000m.tif - 03_rap_frac-zero-tree.js
 #   DaymetClimateData_1991-2020_CLIM.tif - 01_summarise_daymet_climate_data.R
 #   soil_covariates_solus100_1000m.tif   - 02_soils_calculate_variables.R
 #   EPA_L3_ecoregion_daymet_1000m.tif    - 01_rasterize_ecoregions.R
@@ -33,6 +40,7 @@ vc          <- "c02"  # cover data version this script creates
 year        <- 2021
 n_sample    <- 3e5
 tree_cutoff <- 10     # percent; RAP understorey invalid at or above (as in 06)
+zero_tree_cutoff <- 90  # percent; as in 03_rap_frac-zero-tree.js (> cutoff)
 seed        <- 5817
 
 rap_file  <- file.path(paths$large, "Data_processed/CoverData/rap",
@@ -51,6 +59,11 @@ rap <- terra::rast(rap_file) |>
   align_raster(snap)
 stopifnot(names(rap) == c("tree", "shrub", "herbaceous", "bare_ground"))
 names(rap) <- paste0("cov_", names(rap))
+
+# zero-tree class and fraction (0-1); also exported one cell larger
+zero_tree <- c(read_zero_tree_raster("zeroTree"),
+               read_zero_tree_raster("fracZeroTree")) |>
+  align_raster(snap)
 
 # climate (short names) and soils
 clim_r <- read_climate_raster(path = clim_file)
@@ -85,7 +98,7 @@ set.seed(seed)
 cell <- sort(sample(pool, n_sample))
 xy <- terra::xyFromCell(snap, cell)
 
-vals <- c(rap, clim_r, eco)[cell] |>
+vals <- c(rap, zero_tree, clim_r, eco)[cell] |>
   as_tibble()
 
 # combine -----------------------------------------------------------------
@@ -101,10 +114,14 @@ out <- vals |>
   # RAP understorey is not usable under tree canopy (as in 06)
   mutate(under_tree     = cov_tree >= tree_cutoff,
          cov_shrub      = if_else(under_tree, NA_real_, cov_shrub),
-         cov_herbaceous = if_else(under_tree, NA_real_, cov_herbaceous)) |>
+         cov_herbaceous = if_else(under_tree, NA_real_, cov_herbaceous),
+         # % (not 0-1), like cover, so cover_threshold and the quasibinomial
+         # fit (response / 100) work on it unchanged
+         pct_zero_tree  = 100 * fracZeroTree,
+         zero_tree      = as.integer(zeroTree)) |>
   rename(any_of(setNames(clim_short, clim_long))) |>
   select(cell, year, cov_tree, cov_shrub, cov_herbaceous, cov_bare_ground,
-         n_plots, sources, x, y, eco_code, eco_name, all_of(clim_long), 
+         pct_zero_tree, zero_tree, n_plots, sources, x, y, eco_code, eco_name, all_of(clim_long), 
          all_of(soil_vars))
 
 # checks ------------------------------------------------------------------
@@ -113,11 +130,16 @@ stopifnot(
   nrow(out) == n_sample,
   !anyDuplicated(out$cell),
   all(terra::cellFromXY(snap, as.matrix(out[c("x", "y")])) == out$cell),
-  !anyNA(out[c("cell", "year", "x", "y", "eco_code", "eco_name", "cov_tree")])
+  !anyNA(out[c("cell", "year", "x", "y", "eco_code", "eco_name", "cov_tree")]),
+  all(out$zero_tree %in% c(0, 1, NA)),
+  all(between(out$pct_zero_tree, 0, 100), na.rm = TRUE)
 )
 
 message("rows with tree cover > ", tree_cutoff, "%: ",
         round(100 * mean(out$cov_tree > tree_cutoff), 1), "%")
 message("rows missing soils: ", sum(!complete.cases(out[soil_vars])))
+message("rows missing zero-tree data: ", sum(is.na(out$zero_tree)))
+message("rows zero tree: ", round(100 * mean(out$zero_tree, na.rm = TRUE), 1), "%")
+
 
 write_csv(out, out_file)

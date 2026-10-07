@@ -67,6 +67,9 @@ source('Functions/models/predictors.R')
                           "isothermality", "WD_mean", "VPD_max_p95", 
                           "clay_surface", "coarse", "carbon", "awc")
 
+# zero tree model defaults
+.thresh_zt <- 90 # zt stands for 'zero tree', % of pixel threshold 
+
 #' Spec for the forest / non-forest classification
 #'
 #' Arguments override the defaults. Appends the `log1p_` names of
@@ -347,10 +350,46 @@ cover_specs <- list(
                                      interactions = TRUE,
                                      n_folds = 10,
                                      env_clusters = 20)
-    )
+    ),
     
-    # zero_tree: trees vs no trees in non-forest, trained on a binarized
-    # RAP raster. Needs its own data-reading function; not specified yet.
+    # zero tree: % of a cell's natural land with < 3% RAP tree cover; above
+    # 90% = zero tree. Data: c02 only (05_rap_training_sample.R)
+    zero_tree = list(
+      # binomial GLM
+      m01.0 = .defaults_class_forest(response = "pct_zero_tree",
+                                     interact_log1p = TRUE,
+                                     cover_threshold = .thresh_zt),
+      m01.2 = .defaults_class_forest(
+        response = "pct_zero_tree",
+        cover_threshold = .thresh_zt,
+        pred_vars = .pred_vars_complex2,
+        log1p_vars = .possible_log_vars(.pred_vars_complex2),
+        interact_log1p = TRUE
+      ),
+      # random forest
+      m04.0 = .defaults_class_forest(
+        response = "pct_zero_tree",
+        cover_threshold = .thresh_zt,
+        engine = "ranger",
+       log1p_vars = character(0),
+       squares = FALSE,
+       interactions = FALSE,
+       ranger = list(num.trees = 300,
+                     min.node.size = 100,
+                     importance = "permutation")),
+      m04.1 = .defaults_class_forest(
+        response = "pct_zero_tree",
+        cover_threshold = .thresh_zt,
+        engine = "ranger",
+         pred_vars = .pred_vars_complex2,
+         log1p_vars = character(0),
+         squares = FALSE,
+         interactions = FALSE,
+         ranger = list(num.trees = 300,
+                       min.node.size = 100,
+                       importance = "permutation"))
+    )
+
   ),
   
   # continuous cover: tree cover in forest and in non-forest, herbaceous,

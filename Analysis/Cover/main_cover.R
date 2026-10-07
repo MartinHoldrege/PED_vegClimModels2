@@ -23,8 +23,9 @@ vc <- "c02"  # cover data version
 # model versions to run, by family and model
 cover_runs <- list(
   classification = list(
-    forest = c("m01", "m01.2","m01.3", "m04", "m04.1",
-               "m06", "m08.0", "m08.1", "m08.2", "m08.3")),
+    #forest = c(),
+    zero_tree = c('m01.0', 'm01.2', 'm04.0')
+    ),
   cover          = list(),
   proportion     = list()
 )
