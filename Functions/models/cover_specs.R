@@ -425,7 +425,8 @@ cover_specs <- list(
   # benchmark (as forest m04)
   cover = list(
     tree_forest = list(
-      m01.0 = .defaults_cover(rows = quote(cov_tree > 10), interact_log1p = TRUE),
+      m01.0 = .defaults_cover(rows = quote(cov_tree > 10), 
+                              interact_log1p = TRUE),
       m04.0 = .defaults_cover(rows = quote(cov_tree > 10),
                             engine = "ranger", family = "gaussian",
                             log1p_vars = character(0), squares = FALSE,
@@ -434,7 +435,8 @@ cover_specs <- list(
                                           min.node.size = 100))
     ),
     tree_nonforest = list(
-      m01.0 = .defaults_cover(rows = quote(cov_tree <= 10), interact_log1p = TRUE),
+      m01.0 = .defaults_cover(rows = quote(cov_tree <= 10), 
+                              interact_log1p = TRUE),
       m04.0 = .defaults_cover(rows = quote(cov_tree <= 10),
                             engine = "ranger", family = "gaussian",
                             log1p_vars = character(0), squares = FALSE,

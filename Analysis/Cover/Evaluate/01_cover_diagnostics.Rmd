@@ -1,0 +1,451 @@
+---
+title: "Cover model diagnostics"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  cover_type: "cover"
+  cover_model: null   # null uses opt$cover_model
+  vc: null            # null uses opt$vc
+  vmc: null           # null uses opt$vmc
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Setup
+
+```{r setup-data}
+source("Functions/init.R")
+source_functions()
+library(glmnet)
+theme_set(theme_custom1())
+
+cover_type  <- params$cover_type
+cover_model <- if (is.null(params$cover_model)) opt$cover_model else params$cover_model
+vc          <- if (is.null(params$vc)) opt$vc else params$vc
+vmc         <- if (is.null(params$vmc)) opt$vmc else params$vmc
+
+fit  <- read_cover_model(cover_type, cover_model, vc, vmc)
+spec <- fit$config$spec
+stopifnot(inherits(fit, "cover_continuous"))
+
+engine <- spec$engine
+# for ranger, pred_in holds out-of-bag rather than in-sample predictions
+in_label <- if (engine == "ranger") "out_of_bag" else "in_sample"
+in_title <- if (engine == "ranger") {
+  "Out-of-bag"
+} else {
+  "In-sample (model fit to all data)"
+}
+
+# e.g. "Tree cover (%)" for cov_tree
+cover_label <- paste0(str_to_sentence(str_remove(spec$response, "^cov_")),
+                      " cover (%)")
+
+# predictors in original units (log1p_MAP is plotted as MAP)
+source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
+
+# training data joined to the saved predictions (both % cover)
+dat <- read_cover_training(vc) |>
+  inner_join(fit$predictions, by = c("cell", "year")) |>
+  mutate(cover_obs = .data[[spec$response]])
+stopifnot(nrow(dat) == nrow(fit$predictions), !anyNA(dat$cover_obs))
+
+scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
+pred_dir <- file.path(paths$large, "Data_processed", "CoverData", "Predictions")
+
+# wall-to-wall comparison with the RAP raster: only for tree cover fit to c02,
+# which is a sample of that same raster (05_rap_training_sample.R)
+wall <- spec$response == "cov_tree" && vc == "c02"
+
+#' Fit metrics for predicted vs observed % cover
+#'
+#' MAE, RMSE and R^2 from yardstick (R^2 as 1 - SSE/SST, `rsq_trad()`, so it
+#' can be negative, unlike the squared correlation); bias =
+#' mean(predicted - observed).
+#'
+#' @param obs,pred Observed and predicted cover (%).
+#' @return One-row tibble.
+#' @examples
+#' obs <- c(0, 10, 50, 80)
+#' pred <- c(5, 12, 40, 70)
+#' cover_metrics(obs = obs, pred = pred)
+cover_metrics <- function(obs, pred) {
+  tibble(MAE  = yardstick::mae_vec(obs, pred),
+         RMSE = yardstick::rmse_vec(obs, pred),
+         R2   = yardstick::rsq_trad_vec(obs, pred),
+         bias = mean(pred - obs),
+         mean_observed  = mean(obs),
+         mean_predicted = mean(pred),
+         n = length(obs))
+}
+```
+
+# Model info
+
+Model `r cover_type`/`r cover_model`, data `r vc`, version `r vmc`, engine
+`r engine`, family `r spec$family`: `r nrow(dat)` pixel-years. Rows fit to:
+`r if (is.language(spec$rows)) deparse1(spec$rows) else spec$rows`.
+
+```{r info}
+print(spec)
+```
+
+# Fit
+
+## Fitted model
+
+For glmnet, the cross-validation curve and the non-zero coefficients at the
+selected lambda. The CV error is the binomial deviance of cover as a
+proportion (cover / 100) for quasibinomial models, or the mean squared error
+of cover on the scale it was fit on for gaussian models. For ranger, the
+forest settings and out-of-bag error (mean squared error on the fit scale),
+and variable importance if the spec asked for it. For gam, the
+cross-validation curve over the smoothing multiplier and the effective
+degrees of freedom of each smooth.
+
+```{r fit-summary}
+if (engine == "glmnet") {
+
+  plot(fit$fit)
+
+  coefs <- coef(fit$fit, s = fit$lambda)
+  tibble(term = rownames(coefs), coefficient = as.numeric(coefs)) |>
+    filter(coefficient != 0) |>
+    arrange(desc(abs(coefficient))) |>
+    knitr::kable(digits = 3) |>
+    print()
+
+} else if (engine == "ranger") {
+
+  # selected fields only: print(fit$fit) deparses fit$call, which can hold
+  # the whole training matrix. r.squared is the out-of-bag R^2
+  fit$fit[c("treetype", "num.trees", "mtry", "min.node.size", "splitrule",
+            "num.samples", "num.independent.variables",
+            "prediction.error", "r.squared")] |>
+    map_chr(\(v) format(v, digits = 3)) |>
+    enframe(name = "setting", value = "value") |>
+    knitr::kable() |>
+    print()
+
+  # variable importance, if the forest was fit with it
+  if (!is.null(fit$fit$variable.importance)) {
+    vip_plot <- ranger::importance(fit$fit) |>
+      enframe(name = "variable", value = "importance") |>
+      ggplot(aes(x = importance, y = reorder(variable, importance))) +
+      geom_col() +
+      labs(x = paste0("Importance (", fit$fit$importance.mode, ")"), y = NULL)
+    print(vip_plot)
+  }
+
+} else if (engine == "grpreg") {
+
+  cv_plot <- ggplot(fit$fit$cv, aes(x = log(lambda), y = cvm)) +
+    geom_pointrange(aes(ymin = cvm - cvsd, ymax = cvm + cvsd), size = 0.2) +
+    geom_vline(xintercept = log(fit$lambda), linetype = 2) +
+    labs(y = paste0("Out-of-fold ", spec$family, " deviance"))
+  print(cv_plot)
+
+  tibble(term = names(fit$fit$coef), coefficient = fit$fit$coef) |>
+    filter(coefficient != 0) |>
+    arrange(desc(abs(coefficient))) |>
+    knitr::kable(digits = 3) |>
+    print()
+
+} else if (engine == "gam") {
+
+  cv_plot <- ggplot(fit$fit$cv, aes(x = log10(lambda), y = cvm)) +
+    geom_pointrange(aes(ymin = cvm - cvsd, ymax = cvm + cvsd), size = 0.2) +
+    geom_vline(xintercept = log10(fit$lambda), linetype = 2) +
+    labs(x = "log10(multiplier on REML smoothing parameters)",
+         y = paste0("Out-of-fold ", spec$gam$metric))
+  print(cv_plot)
+
+  fit$fit$edf |>
+    arrange(desc(edf)) |>
+    knitr::kable(digits = 2) |>
+    print()
+
+}
+```
+
+## Performance
+
+Predicted vs observed cover (%) at the training pixel-years. Out-of-fold
+predictions come from the environmental folds; for glmnet, grpreg and gam
+those are the same folds that chose the penalty, so they are mildly
+optimistic. The other set is in-sample for glmnet, grpreg and gam, and
+out-of-bag for ranger. R^2 is 1 - SSE/SST (negative when the model does worse
+than the mean); bias is mean(predicted - observed).
+
+```{r performance}
+bind_rows(cover_metrics(dat$cover_obs, dat$pred_in),
+          cover_metrics(dat$cover_obs, dat$pred_oof)) |>
+  mutate(predictions = c(in_label, "out_of_fold"), .before = 1) |>
+  knitr::kable(digits = 3)
+```
+
+## Predicted vs observed
+
+Out-of-fold predictions. Grey line: 1:1.
+
+```{r obs-pred, fig.width = 7, fig.height = 5}
+ggplot(dat, aes(x = cover_obs, y = pred_oof)) +
+  geom_bin2d(bins = 60) +
+  geom_abline(colour = "grey40") +
+  scale_fill_viridis_c(trans = "log10", name = "Pixel-years") +
+  labs(x = paste("Observed", str_to_lower(cover_label)),
+       y = paste("Out-of-fold predicted", str_to_lower(cover_label)))
+```
+
+# Quantile plots
+
+Points: mean cover, observed and predicted, within quantiles of each
+predictor.
+
+```{r quantile-data}
+# decile_dotplot() expects the predicted column to be <yvar>_pred
+quant_df <- function(pred_col) {
+  dat |>
+    mutate(cover = cover_obs,
+           cover_pred = .data[[pred_col]]) |>
+    predvars2deciles(response_vars = c("cover", "cover_pred"),
+                     pred_vars = source_vars)
+}
+quant_in  <- quant_df("pred_in")
+quant_oof <- quant_df("pred_oof")
+```
+
+```{r quantile-plots, fig.width = 10, fig.height = 7}
+decile_dotplot("cover", quant_in, ylab = cover_label,
+               add_predicted = TRUE, title = in_title,
+               add_ribbon = FALSE)
+decile_dotplot("cover", quant_oof, ylab = cover_label,
+               add_predicted = TRUE, title = "Out-of-fold",
+               add_ribbon = FALSE)
+```
+
+## Filtered quantile plots
+
+Only pixel-years in the lower and upper 20% of each filter variable, to see
+whether the fit holds at the climate extremes.
+
+```{r quantile-filtered, fig.width = 10, fig.height = 9}
+filtered <- function(pred_col, title) {
+  dat |>
+    mutate(cover = cover_obs,
+           cover_pred = .data[[pred_col]]) |>
+    predvars2deciles(response_vars = c("cover", "cover_pred"),
+                     pred_vars = source_vars, filter_var = TRUE,
+                     filter_vars = source_vars) |>
+    decile_dotplot_filtered("cover", df = _, ylab = cover_label,
+                            title = title)
+}
+
+filtered("pred_in", title = paste0("filtered (", in_title, ")"))
+filtered("pred_oof", title = "filtered (out of fold)")
+```
+
+# Partial dependence
+
+Mean predicted cover as each predictor varies, others at their observed
+values. (`pdp_classification()` and the ALE functions work for any cover
+model: they predict with `predict_score()`.)
+
+```{r pdp, fig.width = 10, fig.height = 6}
+pdp_classification(fit, dat) |>
+  plot_pdp(ylab = paste("Predicted", str_to_lower(cover_label)))
+```
+
+# Accumulated local effects
+
+Change in predicted cover as each predictor increases, relative to the
+average prediction (Apley & Zhu 2020), using only pixels near each value, so
+unlike the partial dependence plots it does not evaluate the model at
+combinations of predictors that don't occur. Middle 98% of each predictor.
+
+```{r ale, fig.width = 10, fig.height = 6}
+ale_classification(fit, dat) |>
+  plot_ale(ylab = "ALE (change in predicted cover, %)")
+```
+
+## Filtered accumulated local effects
+
+ALE within the lowest and highest 20% of each filter variable. Each line is
+the subset's mean predicted cover plus its ALE.
+
+```{r ale-filtered, fig.width = 10, fig.height = 9}
+ale_classification_filtered(fit, dat) |>
+  plot_ale_filtered(ylab = "Cover, % (subset mean + ALE)")
+```
+
+# Maps
+
+## Training pixels
+
+Observed and out-of-fold predicted cover, and their difference, at the
+training pixels (mean over years per pixel). Shared colour scale for the
+first two, capped at the 99th percentile of observed cover.
+
+```{r map-training, fig.width = 9, fig.height = 6}
+px <- dat |>
+  summarise(observed = mean(cover_obs), predicted = mean(pred_oof),
+            .by = c(cell, x, y)) |>
+  mutate(resid = predicted - observed) |>
+  sf::st_as_sf(coords = c("x", "y"), crs = terra::crs(read_mask()))
+
+upper <- quantile(px$observed, 0.99, names = FALSE)
+cover_scale_pts <- colorscale_cover(name = "Cover (%)", limits = c(0, upper),
+                                    aesthetics = "colour")
+
+plot_points_conus(px, color_var = "observed", point_size = 0.3,
+                  colorscale = cover_scale_pts,
+                  title = paste("Observed", str_to_lower(cover_label)))
+plot_points_conus(px, color_var = "predicted", point_size = 0.3,
+                  colorscale = cover_scale_pts,
+                  title = paste("Out-of-fold predicted",
+                                str_to_lower(cover_label)))
+
+plot_points_conus(px, color_var = "resid", point_size = 0.3,
+                  colorscale = scale_colour_gradient2(
+                    name = "Predicted -\nobserved\n(% cover)",
+                    low = "#b2182b", high = "#2166ac",
+                    limits = c(-30, 30), oob = scales::squish),
+                  title = "Out-of-fold residuals")
+```
+
+## Current climate
+
+Predictions on all of CONUS (snap mask), not only the model's domain
+(`spec$rows`) or the available area.
+
+```{r map-read}
+read_pred <- function(scenario) {
+  terra::rast(file.path(pred_dir, paste0(cover_type, "_", cover_model, "_",
+                                         vc, "-", vmc, "_", scenario,
+                                         ".tif")))[["cover"]]
+}
+pred <- map(scenarios, read_pred) |> set_names(scenarios)
+
+terra::global(pred$current, c("min", "mean", "max"), na.rm = TRUE)
+```
+
+```{r map-current, fig.width = 9, fig.height = 6}
+upper_r <- raster_quantile(pred$current, 0.99)
+cover_scale <- colorscale_cover(name = "Cover (%)", limits = c(0, upper_r))
+
+plot_map_conus(pred$current, colorscale = cover_scale,
+               title = paste("Predicted", str_to_lower(cover_label),
+                             "(current climate)"))
+```
+
+## Wall-to-wall comparison with RAP
+
+Tree cover models fit to c02 only. The observed layer is the 2021 RAP tree
+cover raster that c02 was sampled from, in the cells passing the LCMAP and
+fire masks, and restricted to the model's domain (`spec$rows`, e.g. tree
+cover > 10%) as in fitting. The predictions are those above (current climate,
+model fit to all training data), so the training pixels are included, and
+neighbouring cells are not independent of them: this shows the spatial
+pattern of the errors rather than an out-of-sample test. Metrics and the
+scatter plot are from a random sample of cells.
+
+```{r wall-data, eval = wall}
+rap_file <- file.path(paths$large, "Data_processed/CoverData/rap",
+                      "RAP_v3_cover_2021_1000m.tif")
+obs_r <- terra::rast(rap_file)[["tree"]] |>
+  align_raster(pred$current)  # GEE exports are one cell larger
+names(obs_r) <- "cov_tree"
+stopifnot(terra::compareGeom(obs_r, pred$current))
+
+# the model's domain, applied to the raster with select_rows() as in fitting;
+# spec$rows may also use climate or soil variables
+if (is.language(spec$rows)) {
+  extra_vars <- setdiff(all.vars(spec$rows), "cov_tree")
+  r_rows <- obs_r
+  if (length(extra_vars) > 0) {
+    r_rows <- c(r_rows, read_climate_raster("current")[[extra_vars]] |>
+                  align_raster(pred$current))
+  }
+  keep <- terra::as.data.frame(r_rows, cells = TRUE, na.rm = TRUE) |>
+    select_rows(spec$rows)
+  domain <- terra::rast(obs_r)
+  domain[keep$cell] <- 1
+  obs_r <- terra::mask(obs_r, domain)
+}
+
+pred_r <- terra::mask(pred$current, obs_r)
+diff_r <- pred_r - obs_r
+
+set.seed(1)
+samp <- terra::spatSample(c(obs_r, pred_r), size = 2e5, method = "random",
+                          na.rm = TRUE)
+names(samp) <- c("observed", "predicted")
+```
+
+```{r wall-metrics, eval = wall}
+cover_metrics(samp$observed, samp$predicted) |>
+  mutate(cells = "random sample of RAP cells in the domain", .before = 1) |>
+  knitr::kable(digits = 3)
+```
+
+```{r wall-scatter, eval = wall, fig.width = 7, fig.height = 5}
+ggplot(samp, aes(x = observed, y = predicted)) +
+  geom_bin2d(bins = 60) +
+  geom_abline(colour = "grey40") +
+  scale_fill_viridis_c(trans = "log10", name = "Cells") +
+  labs(x = "RAP tree cover (%)", y = "Predicted tree cover (%)")
+```
+
+```{r wall-maps, eval = wall, fig.width = 9, fig.height = 6}
+upper_w <- raster_quantile(obs_r, 0.99)
+wall_scale <- colorscale_cover(name = "Cover (%)", limits = c(0, upper_w))
+
+plot_map_conus(obs_r, colorscale = wall_scale,
+               title = "RAP tree cover, 2021 (model domain)")
+plot_map_conus(pred_r, colorscale = wall_scale,
+               title = "Predicted tree cover (same cells)")
+
+diff_lim <- max(abs(c(raster_quantile(diff_r, 0.01),
+                      raster_quantile(diff_r, 0.99))))
+plot_map_conus(diff_r,
+               colorscale = colorscale_diverging(
+                 name = "Predicted -\nRAP (% cover)",
+                 limits = c(-diff_lim, diff_lim)),
+               title = "Predicted - RAP tree cover")
+```
+
+## Future climate
+
+Predicted cover under each future scenario, and the change from current.
+
+```{r map-future, fig.width = 9, fig.height = 6}
+walk(setdiff(scenarios, "current"), \(scenario) {
+  change <- pred[[scenario]] - pred$current
+  change_lim <- max(abs(c(raster_quantile(change, 0.01),
+                          raster_quantile(change, 0.99))))
+
+  print(plot_map_conus(pred[[scenario]], colorscale = cover_scale,
+                       title = paste("Predicted", str_to_lower(cover_label),
+                                     scenario)))
+
+  print(plot_map_conus(change,
+                       colorscale = colorscale_diverging(
+                         name = "Change\n(% cover)",
+                         limits = c(-change_lim, change_lim)),
+                       title = paste("Change in cover,", scenario,
+                                     "vs current")))
+})
+```
+
+# Session info
+
+```{r session-info}
+sessionInfo()
+```

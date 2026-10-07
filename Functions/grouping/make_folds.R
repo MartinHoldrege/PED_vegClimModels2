@@ -93,6 +93,40 @@ make_cluster_folds <- function(env_cluster = NULL,
   folds
 }
 
+#' Environmental CV folds for a cover model
+#'
+#' k-means clusters in climate space (the variables are standardized inside
+#' `make_env_clusters()`), randomly grouped into `spec$cv$n_folds` folds (one
+#' cluster per fold when `env_clusters` equals `n_folds`). All years of a cell
+#' go to the same fold.
+#'
+#' @param dat Training data, one row per pixel-year, in original units.
+#' @param spec Model spec (from `cover_specs`).
+#' @return List: `foldid` (fold of each row of `dat`) and `clusters` (from
+#'   `make_env_clusters()`, plus `fold_clusters`, the clusters in each fold,
+#'   for `assign_to_clusters()` later).
+#' @examples
+#' dat <- read_cover_training("c02")
+#' spec <- cover_specs$classification$forest$m01
+#' folds <- make_cover_folds(dat = dat, spec = spec)
+make_cover_folds <- function(dat, spec) {
+  clusters <- make_env_clusters(dat,
+                                vars = spec$cv$cluster_vars,
+                                iter.max = 500,
+                                k = spec$cv$env_clusters,
+                                seed = 1,
+                                # all years of a cell go to the same fold
+                                group = dat$cell)
+  folds <- make_cluster_folds(clusters$env_cluster, n_folds = spec$cv$n_folds,
+                              seed = 1)
+  foldid <- clusters_to_fold_id(clusters$env_cluster, folds)
+  clusters$fold_clusters <- purrr::map(folds, "test_clusters")
+  
+  stopifnot(length(foldid) == nrow(dat), !anyNA(foldid))
+  list(foldid = foldid, clusters = clusters)
+}
+
+
 #' Subset data into training and test sets for one fold
 #'
 #' @param data Data frame used for modeling.

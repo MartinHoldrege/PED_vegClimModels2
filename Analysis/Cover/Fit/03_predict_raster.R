@@ -9,10 +9,12 @@
 # left to the maps.
 #
 # Inputs:
-#   fitted model - 02_fit_classification.R (read_cover_model())
+#   fitted model - 02_fit_classification.R or 02_fit_cover.R
+#                  (read_cover_model())
 #   DaymetClimateData_1991-2020_CLIM.tif, soils - read_climate_raster()
 #
-# Output (one file per climate scenario: current, BNU-ESM, IPSL-CM5A-MR):
+# Output (one file per climate scenario: current, BNU-ESM, IPSL-CM5A-MR; layers
+# prob or cover, and class for classification models):
 #   Data_processed/CoverData/Predictions/
 #     <cover_type>_<cover_model>_<vc>-<vmc>_<scenario>.tif
 #

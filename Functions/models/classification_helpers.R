@@ -146,7 +146,15 @@ predict_score <- function(fit, x) {
     },
     ranger = {
       requireNamespace("ranger")  # to get the predict() method
-      predict(fit$fit, data = x)$predictions[, "1"]
+      p <- predict(fit$fit, data = x)$predictions
+      # probability forest: probability of the class; regression forest
+      # (family "gaussian"): back to % cover
+      family <- fit$config$spec$family
+      if (is.null(family) || family == "binomial") {
+        p[, "1"]
+      } else {
+        .fit_scale_to_score(p, fit$config$spec)
+      }
     },
     grpreg = {
       requireNamespace("grpreg")  # to get the predict() method
@@ -277,6 +285,8 @@ classify_outcome <- function(df, pred_col, threshold, class_label = "forest",
 #' @param ... Not used.
 #' @return Two-layer `SpatRaster`: `prob` or `cover` (the prediction) and
 #'   `class` (1 where the prediction > the model's threshold, else 0).
+#'   Continuous cover models (class "cover_continuous", from 03_fit_cover.R)
+#'   have no threshold, so only the `cover` layer.
 #' @examples
 #' fit <- read_cover_model("classification", "forest", "c01", "m01")
 #' rast <- read_climate_raster("current") |> align_raster(read_mask())
@@ -309,6 +319,9 @@ predict_raster.cover_classification <- function(fit, rast, chunk_size = 1e6,
   
   r_score <- terra::rast(rast, nlyrs = 1)
   r_score[df$cell] <- score
+  names(r_score) <- score_name(fit)
+  
+  if (is.null(fit$threshold)) return(r_score)
   
   r_class <- r_score > fit$threshold
   
@@ -316,6 +329,9 @@ predict_raster.cover_classification <- function(fit, rast, chunk_size = 1e6,
   names(out) <- c(score_name(fit), "class")
   out
 }
+
+# continuous cover models predict the same way, minus the class layer
+predict_raster.cover_continuous <- predict_raster.cover_classification
 
 
 #' Partial dependence for a cover classification model

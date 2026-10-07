@@ -156,6 +156,8 @@ assign_to_clusters <- function(data, clustering) {
   })
 }
 
+
+
 #' Map cluster assignments to CV fold test sets
 #'
 #' Given cluster assignments and fold definitions, determines which

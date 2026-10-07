@@ -23,25 +23,30 @@ vc <- "c02"  # cover data version
 # model versions to run, by family and model
 cover_runs <- list(
   classification = list(
-    #forest = c(),
-    zero_tree = c('m01.0', 'm01.2', 'm04.0')
+    # forest = c('m01.0', 'm04.1')
+    #zero_tree = c('m01.0', 'm01.2', 'm04.0')
     ),
-  cover          = list(),
+  cover          = list(
+    tree_forest = c('m01.0'),
+    tree_nonforest = c('m01.0')
+  ),
   proportion     = list()
 )
 
 # scripts ------------------------------------------------------------------
 
-# fitting script per family (only classification exists so far)
+# fitting script per family
 fit_scripts <- c(
-  classification = "Analysis/Cover/Fit/02_fit_classification.R"
+  classification = "Analysis/Cover/Fit/02_fit_classification.R",
+  cover          = "Analysis/Cover/Fit/02_fit_cover.R"
 )
 
 predict_script <- "Analysis/Cover/Fit/03_predict_raster.R"
 
-# evaluation report per family
+# evaluation report per family 
 eval_rmds <- c(
-  classification = "Analysis/Cover/Evaluate/01_classification_diagnostics.Rmd"
+  classification = "Analysis/Cover/Evaluate/01_classification_diagnostics.Rmd",
+  cover          = "Analysis/Cover/Evaluate/01_cover_diagnostics.Rmd"
 )
 
 report_dirs <- c(classification = "Reports/Cover/classification",
@@ -58,8 +63,7 @@ runs <- imap(cover_runs, \(models, cover_type) {
 }) |>
   bind_rows()
 
-stopifnot(all(runs$cover_type %in% names(fit_scripts)),
-          all(runs$cover_type %in% names(eval_rmds)))
+stopifnot(all(runs$cover_type %in% names(fit_scripts)))
 print(runs)
 
 
@@ -84,7 +88,7 @@ pwalk(runs, \(cover_type, cover_model, vmc) {
     callr::rscript(predict_script, cmdargs = cmdargs)
   }
   
-  if (run_evaluate) {
+  if (run_evaluate && cover_type %in% names(eval_rmds)) {
     out_dir <- report_dirs[[cover_type]]
     dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
     
