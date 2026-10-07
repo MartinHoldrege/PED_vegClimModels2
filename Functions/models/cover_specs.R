@@ -5,7 +5,9 @@
 # (m01, m02, ...) is one set of decisions for that response.
 #
 #   classification  binomial lasso           02_fit_classification.R
-#   cover           continuous cover (beta)  03_fit_cover.R
+#   cover           continuous cover         03_fit_cover.R
+#                   (quasibinomial, or a ranger regression forest; beta
+#                   later)
 #   proportion      shares of a total (beta) 04_fit_proportion.R
 #
 # Every spec has:
@@ -37,14 +39,16 @@
 #                 interact_log1p are then FALSE, so x has main effects only
 #   cv            list: cluster_vars, n_folds, env_clusters, select_rule
 #
-# classification specs add:
+# classification specs add (cover specs, from .defaults_cover(), don't have
+# cover_threshold or threshold_method):
 #   cover_threshold     % cover dividing the two classes
 #   threshold_method    rule for turning predictions into a class
 #   family              "binomial": fit to the class (cover above or below
 #                       cover_threshold). "gaussian" or "poisson": fit to
 #                       cover itself, then cut the predicted cover where the
 #                       predicted fraction of forest matches the observed one
-#                       (gaussian: glmnet or grpreg; poisson: grpreg only).
+#                       (gaussian: glmnet, grpreg or ranger, a regression
+#                       forest; poisson: grpreg only).
 #                       "quasibinomial": fit to cover as a
 #                       proportion with a binomial likelihood (logit link;
 #                       glmnet only), predicting mean cover (0-100%), cut the
@@ -64,8 +68,8 @@ source('Functions/models/predictors.R')
                          "carbon")
 
 .pred_vars_complex2	<-  c("MAT", "MAP", "P_driestMonth", "PrecipTempCorr", 
-                          "isothermality", "WD_mean", "VPD_max_p95", 
-                          "clay_surface", "coarse", "carbon", "awc")
+                          "isothermality",  "WD_mean", "VPD_max", "clay_surface", 
+                          "sand", "coarse", "awc")
 
 # zero tree model defaults
 .thresh_zt <- 90 # zt stands for 'zero tree', % of pixel threshold 
@@ -80,8 +84,8 @@ source('Functions/models/predictors.R')
 #'   as `quote(MAP < 700)`; see `select_rows()`.
 #' @param engine "glmnet", "ranger", "grpreg" or "gam".
 #' @param family "binomial" (fit to the class), "gaussian" / "poisson"
-#'   (fit to cover; gaussian with glmnet or grpreg, poisson with grpreg
-#'   only), or "quasibinomial" (fit to cover / 100 with
+#'   (fit to cover; gaussian with glmnet, grpreg or ranger, poisson with
+#'   grpreg only), or "quasibinomial" (fit to cover / 100 with
 #'   a binomial likelihood; glmnet only).
 #' @param response_transform "identity" or "log1p", applied to cover before
 #'   fitting (gaussian / poisson only).
@@ -122,7 +126,7 @@ source('Functions/models/predictors.R')
                                    pred_vars = c("MAT", "MAP", "PrecipTempCorr",
                                                  "isothermality", "WD_p95",
                                                  "clay_surface", "awc"),
-                                   log1p_vars = c("MAP", "clay_surface", "awc"),
+                                   log1p_vars = .possible_log_vars(pred_vars),
                                    squares = TRUE,
                                    interactions = TRUE,
                                    interact_log1p = FALSE,
@@ -141,9 +145,9 @@ source('Functions/models/predictors.R')
             select_rule %in% c("min", "1se"),
             is.null(env_clusters) || env_clusters >= n_folds,
             engine != "ranger" || is.list(ranger),
-            # ranger is fit to the class only; glmnet also to the proportion
-            # and (gaussian) to cover; poisson is grpreg only
-            engine != "ranger" || family == "binomial",
+            # ranger: a probability forest on the class, or (gaussian) a
+            # regression forest on cover; poisson is grpreg only
+            engine != "ranger" || family %in% c("binomial", "gaussian"),
             engine == "grpreg" || family != "poisson",
             # grpreg's binomial needs a 0/1 response, and ranger isn't set up
             # for proportions
@@ -203,6 +207,34 @@ source('Functions/models/predictors.R')
   )
 }
 
+.defaults_zero_tree = function(response = "pct_zero_tree",
+                               cover_threshold = .thresh_zt, ...) {
+  spec <- .defaults_class_forest(response = response, 
+                                 cover_threshold = cover_threshold, ...)
+  spec
+}
+
+#' Spec for a continuous cover model (03_fit_cover.R)
+#'
+#' As `.defaults_class_forest()`, which it calls (all its arguments can be
+#' given), but quasibinomial by default (fit to cover / 100, predicting mean %
+#' cover), and without the classification fields (`cover_threshold`,
+#' `threshold_method`). For a ranger regression forest use `engine = "ranger"`
+#' with `family = "gaussian"`.
+#'
+#' @param response Cover column in the training data, e.g. "cov_tree".
+#' @param family "quasibinomial" or "gaussian" (not "binomial").
+#' @param ... Other arguments to `.defaults_class_forest()`.
+#' @return A spec list.
+.defaults_cover <- function(response = "cov_tree", family = "quasibinomial",
+                            ...) {
+  stopifnot(family != "binomial")
+  spec <- .defaults_class_forest(response = response, family = family, ...)
+  spec$cover_threshold <- NULL
+  spec$threshold_method <- NULL
+  spec
+}
+
 
 cover_specs <- list(
   
@@ -212,7 +244,7 @@ cover_specs <- list(
     forest = list(
       # binomial GLM
       m01 = .defaults_class_forest(),
-      
+      m01.0 = .defaults_class_forest(interact_log1p = TRUE),
       # as m05, but fit to the class: the hierarchy alone, for comparison
       # with m01 (same response, no hierarchy) and m05 (same hierarchy,
       # continuous response)
@@ -356,20 +388,14 @@ cover_specs <- list(
     # 90% = zero tree. Data: c02 only (05_rap_training_sample.R)
     zero_tree = list(
       # binomial GLM
-      m01.0 = .defaults_class_forest(response = "pct_zero_tree",
-                                     interact_log1p = TRUE,
-                                     cover_threshold = .thresh_zt),
-      m01.2 = .defaults_class_forest(
-        response = "pct_zero_tree",
-        cover_threshold = .thresh_zt,
+      m01.0 = .defaults_zero_tree(interact_log1p = TRUE),
+      m01.2 = .defaults_zero_tree(
         pred_vars = .pred_vars_complex2,
         log1p_vars = .possible_log_vars(.pred_vars_complex2),
         interact_log1p = TRUE
       ),
       # random forest
-      m04.0 = .defaults_class_forest(
-        response = "pct_zero_tree",
-        cover_threshold = .thresh_zt,
+      m04.0 = .defaults_zero_tree(
         engine = "ranger",
        log1p_vars = character(0),
        squares = FALSE,
@@ -377,9 +403,7 @@ cover_specs <- list(
        ranger = list(num.trees = 300,
                      min.node.size = 100,
                      importance = "permutation")),
-      m04.1 = .defaults_class_forest(
-        response = "pct_zero_tree",
-        cover_threshold = .thresh_zt,
+      m04.1 = .defaults_zero_tree(
         engine = "ranger",
          pred_vars = .pred_vars_complex2,
          log1p_vars = character(0),
@@ -392,10 +416,33 @@ cover_specs <- list(
 
   ),
   
-  # continuous cover: tree cover in forest and in non-forest, herbaceous,
-  # shrub. Not specified yet.
-  cover = list(),
-  
+    # continuous cover. Tree cover is fit separately above and at or below 10%
+  # (the forest threshold), so neither is pulled toward the other's mean; the
+  # two are blended at 10%, and zero-tree areas set to 0 afterwards. Zeros are
+  # kept. In c02, shrub and herbaceous cover are NA wherever tree cover is
+  # >= 10% (RAP understorey), so those models are non-forest only there.
+  # m01: glmnet lasso, quasibinomial. m02: ranger regression forest, as a
+  # benchmark (as forest m04)
+  cover = list(
+    tree_forest = list(
+      m01.0 = .defaults_cover(rows = quote(cov_tree > 10), interact_log1p = TRUE),
+      m04.0 = .defaults_cover(rows = quote(cov_tree > 10),
+                            engine = "ranger", family = "gaussian",
+                            log1p_vars = character(0), squares = FALSE,
+                            interactions = FALSE,
+                            ranger = list(num.trees = 300,
+                                          min.node.size = 100))
+    ),
+    tree_nonforest = list(
+      m01.0 = .defaults_cover(rows = quote(cov_tree <= 10), interact_log1p = TRUE),
+      m04.0 = .defaults_cover(rows = quote(cov_tree <= 10),
+                            engine = "ranger", family = "gaussian",
+                            log1p_vars = character(0), squares = FALSE,
+                            interactions = FALSE,
+                            ranger = list(num.trees = 300,
+                                          min.node.size = 100))
+    )
+  ),
   # shares: needleleaf (of tree), forb / C3 / C4 (of herbaceous, rescaled to
   # sum to 1 at prediction time). Not specified yet.
   proportion = list()

@@ -45,7 +45,7 @@ year_end   <- 2099        # last year (full available span: 32 years)
 maca_chunks <- c("2066_2085", "2086_2099")
 
 # Directory holding the raw MACA NetCDFs (a subdirectory of paths$large0).
-maca_dir <- file.path(paths$large0, "Data_raw/macaClimateProjections/Data")
+maca_dir <- file.path(paths$large, "Data_raw/macaClimateProjections/Data")
 
 # MACA variable name -> our short name. tasmin/tasmax are in Kelvin; pr in mm.
 maca_vars <- c(tasmin = "tmin", tasmax = "tmax", pr = "prcp")
