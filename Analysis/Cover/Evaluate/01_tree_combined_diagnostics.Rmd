@@ -1,0 +1,160 @@
+---
+title: "Combined tree cover diagnostics"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  vmc: null   # combination version; null uses opt$vmc
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Setup
+
+```{r setup-data}
+source("Functions/init.R")
+source_functions()
+theme_set(theme_custom1())
+
+vmc <- if (is.null(params$vmc)) opt$vmc else params$vmc
+
+# component models and blending parameters (04_combine_tree.R)
+blend <- read_csv(combined_tree_path(vmc, "blend"), show_col_types = FALSE)
+
+scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
+pred <- map(scenarios, \(s) terra::rast(combined_tree_path(vmc, "prediction", s))) |>
+  set_names(scenarios)
+
+# observed: 2021 RAP tree cover, set to 0 where the RAP zero-tree layer says
+# zero tree (with the threshold the zero-tree model was fit with). Cells
+# missing either layer are NA
+zt <- filter(blend, component == "zero_tree")
+zt_threshold <- read_cover_model(zt$cover_type, zt$cover_model, zt$vc,
+                                 zt$vmc)$config$spec$cover_threshold
+
+rap_tree <- terra::rast(file.path(paths$large, "Data_processed/CoverData/rap",
+                                  "RAP_v3_cover_2021_1000m.tif"))[["tree"]]
+rap_zero <- 100 * read_zero_tree_raster("fracZeroTree") > zt_threshold
+# GEE exports are one cell larger than the snap grid
+rap_tree <- align_raster(rap_tree, pred$current)
+rap_zero <- align_raster(rap_zero, pred$current)
+obs <- terra::ifel(rap_zero == 1, 0, rap_tree) |>
+  terra::mask(rap_tree) |>  # NA where either layer is missing
+  terra::mask(rap_zero)
+names(obs) <- "observed"
+stopifnot(terra::compareGeom(obs, pred$current))
+
+pred_cur <- terra::mask(pred$current$cover, obs)  # cells with RAP data
+diff_r <- pred_cur - obs
+
+
+# colour scale for cover: exact zeros get their own colour
+upper <- raster_quantile(obs, 0.99)
+cover_scale <- colorscale_cover(name = "Tree\ncover (%)", limits = c(0, upper),
+                                zero_color = "tan")
+```
+
+# Combination
+
+Component models and blending parameters. Away from the forest boundary the
+forest or non-forest model is used as is; between `score_low` and
+`score_high` (`blend_prop` of CONUS cells on each side of the forest
+threshold, under current climate) the two are blended, with the weight on
+the forest model rising linearly from 0 to 1 through 0.5 at the threshold.
+After blending, tree cover is set to 0 in cells classified non-forest and
+zero tree.
+
+```{r blend-table}
+knitr::kable(blend, digits = 3)
+```
+
+```{r map-weight, fig.width = 9, fig.height = 6}
+
+# weight 0 (non-forest model only) and 1 (forest model only) get their own
+# colours; the blending band (0 < w < 1) gets a separate ramp
+eps  <- 1e-6
+ramp <- viridisLite::plasma(9, begin = 0.1, end = 0.9)
+weight_scale <- scale_fill_gradientn(
+  name = "Weight on\nforest model",
+  colours = c("grey85", ramp, "darkgreen"),
+  values  = c(0, seq(eps, 1 - eps, length.out = length(ramp)), 1),
+  limits  = c(0, 1),
+  na.value = "transparent"
+)
+
+plot_map_conus(pred$current$weight, colorscale = weight_scale,
+               title = "Blending weight (current climate)") +
+  labs(subtitle = "Grey: non-forest model only (weight 0). Green: forest model only (weight 1).")
+```
+
+# Current climate vs RAP
+
+Observed is 2021 RAP tree cover, with zero-tree cells (RAP zero-tree layer)
+set to 0, in the cells passing the LCMAP and fire masks. Predictions are
+compared in those cells only. Exact zeros are shown in tan, so they can be
+told apart from low cover. The training data were sampled from these rasters,
+so this shows the spatial pattern of the errors rather than an independent
+test. Metrics are over all cells with both layers.
+
+```{r metrics}
+v <- terra::values(c(obs, pred_cur), mat = TRUE, na.rm = TRUE)
+cover_metrics(v[, "observed"], v[, "cover"]) |>
+  knitr::kable(digits = 3)
+rm(v)
+```
+
+```{r map-current, fig.width = 9, fig.height = 6}
+plot_map_conus(obs, colorscale = cover_scale,
+               title = "RAP tree cover, 2021 (zero-tree cells set to 0)")
+plot_map_conus(pred_cur, colorscale = cover_scale,
+               title = "Predicted tree cover (same cells)")
+plot_map_conus(pred$current$cover, colorscale = cover_scale,
+               title = "Predicted tree cover (all cells)")
+
+diff_lim <- max(abs(c(raster_quantile(diff_r, 0.05),
+                      raster_quantile(diff_r, 0.95))))
+plot_map_conus(diff_r,
+               colorscale = colorscale_diverging(
+                 name = "Predicted -\nRAP (% cover)",
+                 limits = c(-diff_lim, diff_lim)),
+               title = "Predicted - RAP tree cover",
+               inset_hist = TRUE)
+```
+
+# Future climate
+
+Predicted tree cover under each future scenario, and the change from current
+(all cells).
+
+```{r map-future, fig.width = 9, fig.height = 6}
+walk(setdiff(scenarios, "current"), \(scenario) {
+  change <- pred[[scenario]]$cover - pred$current$cover
+  change_lim <- max(abs(c(raster_quantile(change, 0.01),
+                          raster_quantile(change, 0.99))))
+
+  g1 <- plot_map_conus(pred[[scenario]]$cover, colorscale = cover_scale,
+                       title = paste("Predicted tree cover,", scenario))
+
+  g2 <- plot_map_conus(change,
+                       colorscale = colorscale_diverging(
+                         name = "Change\n(% cover)",
+                         limits = c(-change_lim, change_lim)),
+                       title = paste("Change in tree cover,", scenario,
+                                     "vs current"),
+        inset_hist = TRUE)
+
+
+})
+```
+
+# Session info
+
+```{r session-info}
+sessionInfo()
+```

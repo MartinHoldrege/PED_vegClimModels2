@@ -46,7 +46,7 @@ search (not guaranteed optimal). See `?subselect::rm.coef` and
 
 ```{r setup-data}
 source("Functions/init.R")
-source_functions()  # read_cover_training(), variable_selection.R
+source_functions()  # read_cover_training(), variable_selection.R, cover_specs.R
 theme_set(theme_custom1())
 
 vc <- if (is.null(params$vc)) opt$vc else params$vc
@@ -191,23 +191,7 @@ best_subsets_by_spec(cor_clim, specs_clim, exclude = exclude_clim) |>
   kable_subsets(pca_clim, caption = "Best subsets")
 ```
 
-### Candidate set
-
-For each variable, in the order listed: `cum_coverage` is the coverage of the
-set up to that variable, `max_abs_r` its largest |r| with the rest of the set,
-`vif` its VIF within the set.
-
-```{r clim-candidate}
-# edit to taste (starting point)
-candidate_clim <- c("MAT", "MAP", "PrecipTempCorr", "isothermality",
-                                "awc", "carbon", 'WD_mean')
-
-summarise_set(conus[clim_vars], candidate_clim) |>
-  kable_set("Candidate set, CONUS sample")
-
-summarise_set(dat[clim_vars], candidate_clim) |>
-  kable_set("Candidate set, cover training data")
-```
+Candidate sets (the model predictor sets) are summarised in section 3.
 
 ## 2. Normals, soils and anomalies (cover training data)
 
@@ -264,19 +248,33 @@ best_subsets_by_spec(cor_both, specs_both, exclude = exclude_both) |>
   kable_subsets(pca_both, caption = "Best subsets")
 ```
 
-### Candidate set with paired anomalies
+## 3. Candidate sets {.tabset}
 
-An anomaly is only used alongside its normal, so this adds the anomaly of
-each normal in the section 1 candidate set. `max_abs_r` and `vif` for the
-anomalies show whether they can be added without strong collinearity.
+One tab per predictor set in `.pred_vars` (`cover_specs.R`). For each
+variable, in the order listed: `cum_coverage` is the coverage of the set up
+to that variable, `max_abs_r` its largest |r| with the rest of the set, `vif`
+its VIF within the set. The last table adds the anomaly of each normal in the
+set (an anomaly is only used alongside its normal; soils have none), to show
+whether they can be added without strong collinearity.
 
-```{r both-candidate}
-# anomalies of the chosen normals (soils have none)
-paired_anoms <- intersect(paste0(candidate_clim, "_3yrAnom"), anom_vars)
-candidate_both <- c(candidate_clim, paired_anoms)
+```{r candidate-sets, results = "asis"}
+print_kable <- function(x) cat("\n", x, "\n", sep = "\n")
 
-summarise_set(dat[all_vars], candidate_both) |>
-  kable_set("Candidate set with paired anomalies")
+for (set_name in names(.pred_vars)) {
+  vars <- .pred_vars[[set_name]]
+  set_both <- c(vars, intersect(paste0(vars, "_3yrAnom"), anom_vars))
+
+  cat("\n### ", set_name, "\n\n", paste(vars, collapse = ", "), "\n", sep = "")
+  summarise_set(conus[clim_vars], vars) |>
+    kable_set("CONUS sample") |>
+    print_kable()
+  summarise_set(dat[clim_vars], vars) |>
+    kable_set("Cover training data") |>
+    print_kable()
+  summarise_set(dat[all_vars], set_both) |>
+    kable_set("Cover training data, with paired anomalies") |>
+    print_kable()
+}
 ```
 
 ## Session info

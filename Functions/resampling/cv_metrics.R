@@ -126,6 +126,28 @@ get_metric_fun <- function(metric = c("mae_log1p", "rmse_log1p",
   )
 }
 
+# creating a dataframe for continuous metrics
+
+#' Fit metrics for predicted vs observed % cover
+#'
+#' MAE, RMSE and R^2 from yardstick (R^2 as 1 - SSE/SST, `rsq_trad()`);
+#' bias = mean(predicted - observed).
+#'
+#' @param obs,pred Observed and predicted cover (%).
+#' @return One-row tibble.
+#' @examples
+#' obs <- c(0, 10, 50, 80)
+#' pred <- c(5, 12, 40, 70)
+#' cover_metrics(obs = obs, pred = pred)
+cover_metrics <- function(obs, pred) {
+  tibble(MAE  = yardstick::mae_vec(obs, pred),
+         RMSE = yardstick::rmse_vec(obs, pred),
+         R2   = yardstick::rsq_trad_vec(obs, pred),
+         bias = mean(pred - obs),
+         mean_observed  = mean(obs),
+         mean_predicted = mean(pred),
+         n = length(obs))
+}
 
 # calculating metrics on holdout data -------------------------------------
 

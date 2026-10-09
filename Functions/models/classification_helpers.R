@@ -590,8 +590,13 @@ plot_ale <- function(ale, ylab = "ALE (change in predicted probability)") {
     geom_hline(yintercept = 0, linetype = 2, colour = "grey60") +
     geom_line() +
     geom_point(size = 1) +
-    facet_wrap(~ variable, scales = "free_x") +
-    labs(x = NULL, y = ylab)
+    facet_wrap(~ variable, scales = "free_x",
+               strip.position = 'bottom') +
+    labs(x = NULL, y = ylab)+
+    ggplot2::theme(
+      strip.placement = "outside",
+      strip.background = ggplot2::element_blank()
+    )
 }
 
 

@@ -22,11 +22,22 @@
 #'   Default 1e6. Set higher for publication quality.
 #' @param states_sf Optional sf object of state boundaries. If NULL,
 #'   loaded from `spData::us_states` and transformed to raster CRS.
+#' @param inset_hist Logical; add a small histogram of the cell values to
+#'   each panel, with bars coloured by `colorscale`. Uses all non-NA cells
+#'   (not just the `maxcell` plotted), over their full range. Needs a
+#'   numeric raster.
+#' @param inset_bins Integer; number of histogram bins.
+#' @param inset_drop_zero Logical; leave exact zeros out of the bars and
+#'   print their share above the inset, so a spike at zero doesn't flatten
+#'   the rest. FALSE gives an ordinary histogram.
+#' @param inset_position Numeric length 4; inset xmin, xmax, ymin, ymax as
+#'   fractions of the map extent. The default is the lower-left corner.
 #'
 #' @return A ggplot object.
 #' @examples
 #' # r <- terra::rast(system.file("ex/elev.tif", package = "terra"))
 #' # plot_map_conus(r, title = "Elevation")
+#' # plot_map_conus(r, title = "Elevation", inset_hist = TRUE)
 #' @export
 plot_map_conus <- function(rast,
                            colorscale = NULL,
@@ -36,12 +47,19 @@ plot_map_conus <- function(rast,
                            basemap_size = 0.2,
                            na_color = NA,
                            maxcell = 1e6,
-                           states_sf = NULL) {
+                           states_sf = NULL,
+                           inset_hist = FALSE,
+                           inset_bins = 50,
+                           inset_drop_zero = FALSE,
+                           inset_position = c(0.02, 0.28, 0.04, 0.2)) {
   
   stopifnot(
     inherits(rast, "SpatRaster"),
     requireNamespace("tidyterra", quietly = TRUE)
   )
+  if (inset_hist && any(terra::is.factor(rast))) {
+    stop("inset_hist needs a numeric raster")
+  }
   
   # get state boundaries
   if (is.null(states_sf)) {
@@ -74,6 +92,28 @@ plot_map_conus <- function(rast,
     ggplot2::labs(title = title) +
     map_theme()
   
+  if (inset_hist) {
+    # one column per layer -> long, with `lyr` matching geom_spatraster()'s
+    # facet variable
+    vals <- as.data.frame(terra::values(rast, mat = TRUE))
+    names(vals) <- names(rast)
+    vals <- tidyr::pivot_longer(vals, dplyr::everything(),
+                                names_to = "lyr", values_to = "value",
+                                values_drop_na = TRUE)
+    vals$lyr <- factor(vals$lyr, levels = names(rast))
+
+    bbox <- c(xmin = terra::xmin(rast), xmax = terra::xmax(rast),
+              ymin = terra::ymin(rast), ymax = terra::ymax(rast))
+    g <- g + inset_hist_layers(vals,
+                               var = "value",
+                               facet_var = if (terra::nlyr(rast) > 1) "lyr",
+                               bbox = bbox,
+                               bins = inset_bins,
+                               drop_zero = inset_drop_zero,
+                               position = inset_position,
+                               aesthetic = "fill")
+  }
+
   # if multi-layer, facet
   if (terra::nlyr(rast) > 1) {
     g <- g + ggplot2::facet_wrap(~ lyr, ncol = 2)
@@ -239,11 +279,15 @@ plot_points_conus <- function(sf_df,
 #'   each facet with their share.
 #' @param position Numeric length 4; xmin, xmax, ymin, ymax as fractions of
 #'   the extent.
+#' @param aesthetic "colour" or "fill"; which of the plot's scales colours
+#'   the bars ("colour" for point maps, "fill" for raster maps).
 #'
 #' @return List of ggplot2 layers.
 inset_hist_layers <- function(df, var, facet_var, bbox, bins,
-                              drop_zero = TRUE, position) {
+                              drop_zero = TRUE, position,
+                              aesthetic = c("colour", "fill")) {
   stopifnot(length(position) == 4, bins >= 1)
+  aesthetic <- match.arg(aesthetic)
   
   rng <- range(df[[var]], na.rm = TRUE)
   if (diff(rng) == 0) rng <- rng + c(-0.5, 0.5)
@@ -275,13 +319,21 @@ inset_hist_layers <- function(df, var, facet_var, bbox, bins,
   digits  <- max(0, 2 - floor(log10(diff(rng))))
   axis_df <- data.frame(x = fx, y = fy[1], label = round(rng, digits))
   
+  # bar colour from the chosen scale; the other aesthetic copies it
+  bar_aes <- if (aesthetic == "colour") {
+    ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax,
+                 ymin = .data$ymin, ymax = .data$ymax,
+                 colour = .data$mid, fill = ggplot2::after_scale(colour))
+  } else {
+    ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax,
+                 ymin = .data$ymin, ymax = .data$ymax,
+                 fill = .data$mid, colour = ggplot2::after_scale(fill))
+  }
+  
   layers <- list(
     ggplot2::geom_rect(
       data = bars,
-      ggplot2::aes(xmin = .data$xmin, xmax = .data$xmax,
-                   ymin = .data$ymin, ymax = .data$ymax,
-                   colour = .data$mid,
-                   fill = ggplot2::after_scale(colour)),
+      bar_aes,
       linewidth = 0.1,
       inherit.aes = FALSE
     ),

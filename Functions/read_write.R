@@ -644,6 +644,105 @@ read_scale_params <- function(vc = NULL, root = paths$large) {
   out
 }
 
+#' Path to a cover model's prediction raster
+#'
+#' As written by 03_predict_raster.R; the file name is defined only here and
+#' in that script.
+#'
+#' @inheritParams cover_model_path
+#' @param scenario Climate scenario: "current", "BNU-ESM" or "IPSL-CM5A-MR".
+#' @return File path (character).
+#' @examples
+#' cover_type <- "classification"
+#' cover_model <- "forest"
+#' vc <- "c02"
+#' vmc <- "m01.0"
+#' scenario <- "current"
+#' root <- paths$large
+#' cover_pred_path(cover_type = cover_type, cover_model = cover_model,
+#'                 vc = vc, vmc = vmc, scenario = scenario, root = root)
+cover_pred_path <- function(cover_type, cover_model, vc, vmc, scenario,
+                            root = paths$large) {
+  file.path(root, "Data_processed", "CoverData", "Predictions",
+            paste0(cover_type, "_", cover_model, "_", vc, "-", vmc, "_",
+                   scenario, ".tif"))
+}
+
+
+#' Paths for a combined tree cover prediction (04_combine_tree.R)
+#'
+#' No data version in the name: the component models can come from different
+#' versions (see `cover_specs$combined$tree`).
+#'
+#' @param vmc Combination version, e.g. "m01".
+#' @param what "prediction" (raster, one per scenario) or "blend" (csv of the
+#'   component models and blending parameters).
+#' @param scenario Climate scenario, for `what = "prediction"`.
+#' @param root Root path for large files.
+#' @return File path (character).
+#' @examples
+#' vmc <- "m01"
+#' what <- "prediction"
+#' scenario <- "current"
+#' root <- paths$large
+#' combined_tree_path(vmc = vmc, what = what, scenario = scenario, root = root)
+combined_tree_path <- function(vmc, what = c("prediction", "blend"),
+                               scenario = NULL, root = paths$large) {
+  what <- match.arg(what)
+  dir <- file.path(root, "Data_processed", "CoverData")
+  if (what == "blend") {
+    return(file.path(dir, "Fit", paste0("combined_tree_", vmc, "_blend.csv")))
+  }
+  stopifnot(!is.null(scenario))
+  file.path(dir, "Predictions",
+            paste0("combined_tree_", vmc, "_", scenario, ".tif"))
+}
+
+#' Path to a fitted cover model file
+#'
+#' The file name is defined only here, so the fitting, prediction and
+#' diagnostics scripts can't drift apart.
+#'
+#' @param cover_type Model family: "classification", "cover" or "proportion".
+#' @param cover_model Model within the family, e.g. "forest".
+#' @param vc Cover data version, e.g. "c01".
+#' @param vmc Cover model version, e.g. "m01".
+#' @param root Root path for large files.
+#' @return File path (character).
+#' @examples
+#' cover_type <- "classification"
+#' cover_model <- "forest"
+#' vc <- "c01"
+#' vmc <- "m01"
+#' root <- paths$large
+#' cover_model_path(cover_type = cover_type, cover_model = cover_model,
+#'                  vc = vc, vmc = vmc, root = root)
+cover_model_path <- function(cover_type, cover_model, vc, vmc,
+                             root = paths$large) {
+  file.path(root, "Data_processed", "CoverData", "Fit",
+            paste0(cover_type, "_", cover_model, "_", vc, "-", vmc, ".rds"))
+}
+
+#' Read a fitted cover model
+#'
+#' @inheritParams cover_model_path
+#' @return The list saved by the fitting script (e.g. fit, lambda, threshold,
+#'   clusters, config, data).
+#' @examples
+#' cover_type <- "classification"
+#' cover_model <- "forest"
+#' vc <- "c01"
+#' vmc <- "m01"
+#' root <- paths$large
+#' mod <- read_cover_model(cover_type = cover_type, cover_model = cover_model,
+#'                         vc = vc, vmc = vmc, root = root)
+read_cover_model <- function(cover_type, cover_model, vc, vmc,
+                             root = paths$large) {
+  p <- cover_model_path(cover_type, cover_model, vc, vmc, root = root)
+  if (!file.exists(p)) stop("fitted model not found: ", p)
+  readRDS(p)
+}
+
 # downloading files -----------------------------------------
 
 #' Download a file from Drive if it is newer than the local copy
@@ -668,6 +767,51 @@ download_if_newer <- function(drive_row, local_dir) {
   invisible(local_path)
 }
 
+
+#' Path to a fitted cover model file
+#'
+#' The file name is defined only here, so the fitting, prediction and
+#' diagnostics scripts can't drift apart.
+#'
+#' @param cover_type Model family: "classification", "cover" or "proportion".
+#' @param cover_model Model within the family, e.g. "forest".
+#' @param vc Cover data version, e.g. "c01".
+#' @param vmc Cover model version, e.g. "m01".
+#' @param root Root path for large files.
+#' @return File path (character).
+#' @examples
+#' cover_type <- "classification"
+#' cover_model <- "forest"
+#' vc <- "c01"
+#' vmc <- "m01"
+#' root <- paths$large
+#' cover_model_path(cover_type = cover_type, cover_model = cover_model,
+#'                  vc = vc, vmc = vmc, root = root)
+cover_model_path <- function(cover_type, cover_model, vc, vmc,
+                             root = paths$large) {
+  file.path(root, "Data_processed", "CoverData", "Fit",
+            paste0(cover_type, "_", cover_model, "_", vc, "-", vmc, ".rds"))
+}
+
+#' Read a fitted cover model
+#'
+#' @inheritParams cover_model_path
+#' @return The list saved by the fitting script (e.g. fit, lambda, threshold,
+#'   clusters, config, data).
+#' @examples
+#' cover_type <- "classification"
+#' cover_model <- "forest"
+#' vc <- "c01"
+#' vmc <- "m01"
+#' root <- paths$large
+#' mod <- read_cover_model(cover_type = cover_type, cover_model = cover_model,
+#'                         vc = vc, vmc = vmc, root = root)
+read_cover_model <- function(cover_type, cover_model, vc, vmc,
+                             root = paths$large) {
+  p <- cover_model_path(cover_type, cover_model, vc, vmc, root = root)
+  if (!file.exists(p)) stop("fitted model not found: ", p)
+  readRDS(p)
+}
 
 # observed biomass datasets -----------------------------------------------
 
@@ -835,47 +979,3 @@ read_shrub_biomass <- function() {
   dat
 }
 
-#' Path to a fitted cover model file
-#'
-#' The file name is defined only here, so the fitting, prediction and
-#' diagnostics scripts can't drift apart.
-#'
-#' @param cover_type Model family: "classification", "cover" or "proportion".
-#' @param cover_model Model within the family, e.g. "forest".
-#' @param vc Cover data version, e.g. "c01".
-#' @param vmc Cover model version, e.g. "m01".
-#' @param root Root path for large files.
-#' @return File path (character).
-#' @examples
-#' cover_type <- "classification"
-#' cover_model <- "forest"
-#' vc <- "c01"
-#' vmc <- "m01"
-#' root <- paths$large
-#' cover_model_path(cover_type = cover_type, cover_model = cover_model,
-#'                  vc = vc, vmc = vmc, root = root)
-cover_model_path <- function(cover_type, cover_model, vc, vmc,
-                             root = paths$large) {
-  file.path(root, "Data_processed", "CoverData", "Fit",
-            paste0(cover_type, "_", cover_model, "_", vc, "-", vmc, ".rds"))
-}
-
-#' Read a fitted cover model
-#'
-#' @inheritParams cover_model_path
-#' @return The list saved by the fitting script (e.g. fit, lambda, threshold,
-#'   clusters, config, data).
-#' @examples
-#' cover_type <- "classification"
-#' cover_model <- "forest"
-#' vc <- "c01"
-#' vmc <- "m01"
-#' root <- paths$large
-#' mod <- read_cover_model(cover_type = cover_type, cover_model = cover_model,
-#'                         vc = vc, vmc = vmc, root = root)
-read_cover_model <- function(cover_type, cover_model, vc, vmc,
-                             root = paths$large) {
-  p <- cover_model_path(cover_type, cover_model, vc, vmc, root = root)
-  if (!file.exists(p)) stop("fitted model not found: ", p)
-  readRDS(p)
-}

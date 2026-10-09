@@ -24,6 +24,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 source("Functions/init.R")
 source_functions()
 library(glmnet)
+library(patchwork)
 theme_set(theme_custom1())
 
 cover_type  <- params$cover_type
@@ -41,7 +42,7 @@ in_label <- if (engine == "ranger") "out_of_bag" else "in_sample"
 in_title <- if (engine == "ranger") {
   "Out-of-bag"
 } else {
-  "In-sample (model fit to all data)"
+  "In-sample"
 }
 
 # e.g. "Tree cover (%)" for cov_tree
@@ -64,27 +65,6 @@ pred_dir <- file.path(paths$large, "Data_processed", "CoverData", "Predictions")
 # which is a sample of that same raster (05_rap_training_sample.R)
 wall <- spec$response == "cov_tree" && vc == "c02"
 
-#' Fit metrics for predicted vs observed % cover
-#'
-#' MAE, RMSE and R^2 from yardstick (R^2 as 1 - SSE/SST, `rsq_trad()`, so it
-#' can be negative, unlike the squared correlation); bias =
-#' mean(predicted - observed).
-#'
-#' @param obs,pred Observed and predicted cover (%).
-#' @return One-row tibble.
-#' @examples
-#' obs <- c(0, 10, 50, 80)
-#' pred <- c(5, 12, 40, 70)
-#' cover_metrics(obs = obs, pred = pred)
-cover_metrics <- function(obs, pred) {
-  tibble(MAE  = yardstick::mae_vec(obs, pred),
-         RMSE = yardstick::rmse_vec(obs, pred),
-         R2   = yardstick::rsq_trad_vec(obs, pred),
-         bias = mean(pred - obs),
-         mean_observed  = mean(obs),
-         mean_predicted = mean(pred),
-         n = length(obs))
-}
 ```
 
 # Model info
@@ -225,10 +205,10 @@ quant_oof <- quant_df("pred_oof")
 ```{r quantile-plots, fig.width = 10, fig.height = 7}
 decile_dotplot("cover", quant_in, ylab = cover_label,
                add_predicted = TRUE, title = in_title,
-               add_ribbon = FALSE)
+               add_ribbon = TRUE)
 decile_dotplot("cover", quant_oof, ylab = cover_label,
                add_predicted = TRUE, title = "Out-of-fold",
-               add_ribbon = FALSE)
+               add_ribbon = TRUE)
 ```
 
 ## Filtered quantile plots
@@ -289,35 +269,53 @@ ale_classification_filtered(fit, dat) |>
 
 ## Training pixels
 
-Observed and out-of-fold predicted cover, and their difference, at the
+Observed and predicted, and their difference, at the
 training pixels (mean over years per pixel). Shared colour scale for the
 first two, capped at the 99th percentile of observed cover.
 
-```{r map-training, fig.width = 9, fig.height = 6}
+```{r map-training, fig.width = 12, fig.height = 8}
 px <- dat |>
   summarise(observed = mean(cover_obs), predicted = mean(pred_oof),
+            predicted_in = mean(pred_in),
             .by = c(cell, x, y)) |>
-  mutate(resid = predicted - observed) |>
+  mutate(resid = predicted - observed,
+         resid_in = predicted_in - observed) |>
   sf::st_as_sf(coords = c("x", "y"), crs = terra::crs(read_mask()))
 
 upper <- quantile(px$observed, 0.99, names = FALSE)
 cover_scale_pts <- colorscale_cover(name = "Cover (%)", limits = c(0, upper),
                                     aesthetics = "colour")
 
-plot_points_conus(px, color_var = "observed", point_size = 0.3,
+l <- quantile(c(px$resid, px$resid_in), c(0.05, 0.95), names = FALSE) |> 
+  abs() |> 
+  max()
+limits_resid = c(-l, l)
+
+cover_scale_resid = scale_colour_gradient2(
+                    name = "Predicted -\nobserved\n(% cover,\n5th-9th percentiles)",
+                    low = "#b2182b", high = "#2166ac",
+                    limits = limits_resid, oob = scales::squish)
+
+
+g1 <- plot_points_conus(px, color_var = "observed", point_size = 0.3,
                   colorscale = cover_scale_pts,
                   title = paste("Observed", str_to_lower(cover_label)))
-plot_points_conus(px, color_var = "predicted", point_size = 0.3,
+g2 <- plot_points_conus(px, color_var = "predicted_in", point_size = 0.3,
                   colorscale = cover_scale_pts,
-                  title = paste("Out-of-fold predicted",
+                  title = paste(in_title, "predicted",
                                 str_to_lower(cover_label)))
 
-plot_points_conus(px, color_var = "resid", point_size = 0.3,
-                  colorscale = scale_colour_gradient2(
-                    name = "Predicted -\nobserved\n(% cover)",
-                    low = "#b2182b", high = "#2166ac",
-                    limits = c(-30, 30), oob = scales::squish),
+g3 <- plot_points_conus(px, color_var = "resid_in", point_size = 0.3,
+                  colorscale = cover_scale_resid,
+                  title = paste(in_title, "residuals"))
+
+g4 <- plot_points_conus(px, color_var = "resid", point_size = 0.3,
+                  colorscale = cover_scale_resid,
                   title = "Out-of-fold residuals")
+
+
+(g1 + g2)/(g3 + g4) + patchwork::plot_layout(guides = 'collect')
+
 ```
 
 ## Current climate
@@ -353,8 +351,8 @@ fire masks, and restricted to the model's domain (`spec$rows`, e.g. tree
 cover > 10%) as in fitting. The predictions are those above (current climate,
 model fit to all training data), so the training pixels are included, and
 neighbouring cells are not independent of them: this shows the spatial
-pattern of the errors rather than an out-of-sample test. Metrics and the
-scatter plot are from a random sample of cells.
+pattern of the errors rather than an out-of-sample test. Note--can'
+show areas not in the model's domain (e.g. if model fit to tree cover < 10%)
 
 ```{r wall-data, eval = wall}
 rap_file <- file.path(paths$large, "Data_processed/CoverData/rap",
@@ -364,56 +362,23 @@ obs_r <- terra::rast(rap_file)[["tree"]] |>
 names(obs_r) <- "cov_tree"
 stopifnot(terra::compareGeom(obs_r, pred$current))
 
-# the model's domain, applied to the raster with select_rows() as in fitting;
-# spec$rows may also use climate or soil variables
-if (is.language(spec$rows)) {
-  extra_vars <- setdiff(all.vars(spec$rows), "cov_tree")
-  r_rows <- obs_r
-  if (length(extra_vars) > 0) {
-    r_rows <- c(r_rows, read_climate_raster("current")[[extra_vars]] |>
-                  align_raster(pred$current))
-  }
-  keep <- terra::as.data.frame(r_rows, cells = TRUE, na.rm = TRUE) |>
-    select_rows(spec$rows)
-  domain <- terra::rast(obs_r)
-  domain[keep$cell] <- 1
-  obs_r <- terra::mask(obs_r, domain)
-}
-
 pred_r <- terra::mask(pred$current, obs_r)
 diff_r <- pred_r - obs_r
 
-set.seed(1)
-samp <- terra::spatSample(c(obs_r, pred_r), size = 2e5, method = "random",
-                          na.rm = TRUE)
-names(samp) <- c("observed", "predicted")
 ```
 
-```{r wall-metrics, eval = wall}
-cover_metrics(samp$observed, samp$predicted) |>
-  mutate(cells = "random sample of RAP cells in the domain", .before = 1) |>
-  knitr::kable(digits = 3)
-```
-
-```{r wall-scatter, eval = wall, fig.width = 7, fig.height = 5}
-ggplot(samp, aes(x = observed, y = predicted)) +
-  geom_bin2d(bins = 60) +
-  geom_abline(colour = "grey40") +
-  scale_fill_viridis_c(trans = "log10", name = "Cells") +
-  labs(x = "RAP tree cover (%)", y = "Predicted tree cover (%)")
-```
 
 ```{r wall-maps, eval = wall, fig.width = 9, fig.height = 6}
 upper_w <- raster_quantile(obs_r, 0.99)
 wall_scale <- colorscale_cover(name = "Cover (%)", limits = c(0, upper_w))
 
 plot_map_conus(obs_r, colorscale = wall_scale,
-               title = "RAP tree cover, 2021 (model domain)")
+               title = "RAP tree cover, 2021")
 plot_map_conus(pred_r, colorscale = wall_scale,
-               title = "Predicted tree cover (same cells)")
+               title = "Predicted tree cover")
 
-diff_lim <- max(abs(c(raster_quantile(diff_r, 0.01),
-                      raster_quantile(diff_r, 0.99))))
+diff_lim <- max(abs(c(raster_quantile(diff_r, 0.05),
+                      raster_quantile(diff_r, 0.95))))
 plot_map_conus(diff_r,
                colorscale = colorscale_diverging(
                  name = "Predicted -\nRAP (% cover)",

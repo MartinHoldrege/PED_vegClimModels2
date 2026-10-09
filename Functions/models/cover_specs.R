@@ -62,14 +62,29 @@
 source('Functions/models/predictors.R')
 .default_cluster_vars <- c("MAT", "MAP", "PrecipTempCorr", "awc")
 
-# complex model (for comparisons)
-.pred_vars_complex1 <- c("MAT", "P_wettestMonth", "PrecipTempCorr", "isothermality",
-                         "WDD_mean", "soilDepth", "clay_surface", "sand", "coarse",
-                         "carbon")
 
-.pred_vars_complex2	<-  c("MAT", "MAP", "P_driestMonth", "PrecipTempCorr", 
-                          "isothermality",  "WD_mean", "VPD_max", "clay_surface", 
-                          "sand", "coarse", "awc")
+.pred_vars = list(
+  # complex model (for comparisons)
+  complex1 = c("MAT", "P_wettestMonth", "PrecipTempCorr", "isothermality",
+    "WDD_mean", "soilDepth", "clay_surface", "sand", "coarse", "carbon"),
+  complex2 = c("MAT", "MAP", "P_driestMonth", "PrecipTempCorr", 
+    "isothermality",  "WD_mean", "clay_surface", 
+    "sand", "coarse", "awc"),
+  # the first 6 variables are the 6 variables w/ highest VIP
+  # from m04.1
+  f4 = c('MAP', 'P_driestMonth', 'WD_mean',
+         'PrecipTempCorr', 'MAT', 'awc'),
+  # model variables (at least for forest models correspond to x.5 models)
+  # pv = 'pred_vars
+  f5 = c('MAP', 'P_driestMonth', 'WD_mean',
+              'PrecipTempCorr', 'MAT', 'isothermality', 'coarse', 'awc'),
+  # f6 and f7 are intermediate complexity between f4 and f5
+  f6 = c('MAP', 'P_driestMonth', 'WD_mean',
+         'PrecipTempCorr', 'MAT','coarse', 'awc'),
+  f7 = c('MAP', 'P_driestMonth', 'WD_mean',
+         'PrecipTempCorr', 'MAT', 'isothermality', 'awc')
+)
+
 
 # zero tree model defaults
 .thresh_zt <- 90 # zt stands for 'zero tree', % of pixel threshold 
@@ -98,8 +113,10 @@ source('Functions/models/predictors.R')
 #' @param interact_log1p Let `log1p_x` interact even when `x` is also a
 #'   predictor.
 #' @param alpha glmnet / grpreg penalty mixing (1 = lasso).
-#' @param ranger List of arguments for `ranger::ranger()`; required when
-#'   `engine = "ranger"`.
+#' @param ranger List of arguments for `ranger::ranger()`, overriding the
+#'   defaults (num.trees = 300, min.node.size = 100). For ranger,
+#'   `log1p_vars`, `squares`, `interactions` and `interact_log1p` are turned
+#'   off (trees find their own transforms and interactions).
 #' @param grpreg List of extra arguments for `grpreg::grpreg()`. For grpreg
 #'   specs, `max.iter` defaults to 1e5: grpreg's own default (1e4) caps the
 #'   iterations for the whole lambda path, which can end a binomial path
@@ -113,7 +130,8 @@ source('Functions/models/predictors.R')
 #'   defaults (see function body for defaults) `interactions = TRUE` adds a smooth of
 #'   the product of each pair (see gam_formula()); it is stored as
 #'   `gam$interactions`, and `interactions`, `squares` and `interact_log1p`
-#'   are set to FALSE, so the design matrix holds the main effects only.
+#'   are set to FALSE, so the design matrix holds the main effects only. No
+#'   log1p terms either (a smooth covers them).
 #' @param select_rule "min" or "1se" ("min" only for grpreg).
 #' @return A spec list.
 .defaults_class_forest <- function(response = "cov_tree",
@@ -138,13 +156,22 @@ source('Functions/models/predictors.R')
                                    n_folds = 10,
                                    env_clusters = NULL,
                                    select_rule = "min") {
+  if (engine %in% c("ranger", "gam")) {
+    log1p_vars <- character(0)
+  }
+  if (engine == "ranger") {
+    ranger <- utils::modifyList(list(num.trees = 300, min.node.size = 100),
+                                as.list(ranger))
+    squares <- FALSE
+    interactions <- FALSE
+    interact_log1p <- FALSE
+  }
   stopifnot(identical(rows, "all") || is.language(rows),
             engine %in% c("glmnet", "ranger", "grpreg", "gam"),
             family %in% c("binomial", "quasibinomial", "gaussian", "poisson"),
             response_transform %in% c("identity", "log1p"),
             select_rule %in% c("min", "1se"),
             is.null(env_clusters) || env_clusters >= n_folds,
-            engine != "ranger" || is.list(ranger),
             # ranger: a probability forest on the class, or (gaussian) a
             # regression forest on cover; poisson is grpreg only
             engine != "ranger" || family %in% c("binomial", "gaussian"),
@@ -152,8 +179,6 @@ source('Functions/models/predictors.R')
             # grpreg's binomial needs a 0/1 response, and ranger isn't set up
             # for proportions
             family != "quasibinomial" || engine %in% c("glmnet", "gam"),
-            # gam smooths the predictors, so no log1p transforms
-            engine != "gam" || length(log1p_vars) == 0,
             !family %in% c("binomial", "quasibinomial") ||
               response_transform == "identity",
             # predicted cover isn't a probability, so only prevalence matching
@@ -207,11 +232,12 @@ source('Functions/models/predictors.R')
   )
 }
 
-.defaults_zero_tree = function(response = "pct_zero_tree",
-                               cover_threshold = .thresh_zt, ...) {
-  spec <- .defaults_class_forest(response = response, 
-                                 cover_threshold = cover_threshold, ...)
-  spec
+.defaults_zero_tree <- function(response = "pct_zero_tree",
+                                cover_threshold = .thresh_zt,
+                                interact_log1p = TRUE, ...) {
+  .defaults_class_forest(response = response,
+                         cover_threshold = cover_threshold,
+                         interact_log1p = interact_log1p, ...)
 }
 
 #' Spec for a continuous cover model (03_fit_cover.R)
@@ -227,12 +253,51 @@ source('Functions/models/predictors.R')
 #' @param ... Other arguments to `.defaults_class_forest()`.
 #' @return A spec list.
 .defaults_cover <- function(response = "cov_tree", family = "quasibinomial",
-                            ...) {
+                            interact_log1p = TRUE, ...) {
   stopifnot(family != "binomial")
-  spec <- .defaults_class_forest(response = response, family = family, ...)
+  spec <- .defaults_class_forest(response = response, family = family,
+                                 interact_log1p = interact_log1p, ...)
   spec$cover_threshold <- NULL
   spec$threshold_method <- NULL
   spec
+}
+
+#' Spec for a combined tree cover prediction (04_combine_tree.R)
+#'
+#' Which version of each of the four component models to combine, and how
+#' wide the blending band is at the forest boundary.
+#'
+#' @param forest,zero_tree,tree_forest,tree_nonforest Each `c(vc = ,
+#'   vmc = )`: the data and model version of that component
+#'   (classification/forest, classification/zero_tree, cover/tree_forest,
+#'   cover/tree_nonforest).
+#' @param .all_vc,.all_vmc Data and model version used for any component not
+#'   given explicitly.
+#' @param blend_prop Share of CONUS cells on each side of the forest threshold
+#'   (in the current-climate forest predictions) over which the forest and
+#'   non-forest predictions are blended.
+#' @return A spec list: `components` (tibble, one row per model) and
+#'   `blend_prop`.
+.defaults_combined_tree <- function(.all_vc = NULL, .all_vmc = NULL,
+                                    forest = c(vc = .all_vc, vmc = .all_vmc),
+                                    zero_tree = forest,
+                                    tree_forest = forest,
+                                    tree_nonforest = forest,
+                                    blend_prop = 0.025) {
+  ids <- list(forest = forest, zero_tree = zero_tree,
+              tree_forest = tree_forest, tree_nonforest = tree_nonforest)
+  stopifnot(all(map_lgl(ids, \(x) setequal(names(x), c("vc", "vmc")))),
+            blend_prop > 0, blend_prop < 0.5)
+  list(
+    components = tibble::tibble(
+      component   = names(ids),
+      cover_type  = c("classification", "classification", "cover", "cover"),
+      cover_model = c("forest", "zero_tree", "tree_forest", "tree_nonforest"),
+      vc          = map_chr(ids, "vc"),
+      vmc         = map_chr(ids, "vmc")
+    ),
+    blend_prop = blend_prop
+  )
 }
 
 
@@ -251,14 +316,27 @@ cover_specs <- list(
       m01.1 = .defaults_class_forest(engine = "grpreg",
                                      interact_log1p = TRUE),
       # complex covarariate comparison
-      m01.2 = .defaults_class_forest(
-        pred_vars = .pred_vars_complex2,
-        log1p_vars = .possible_log_vars(.pred_vars_complex2),
-        interact_log1p = TRUE
-        ),
+      m01.2 = .defaults_class_forest(pred_vars = .pred_vars$complex2,
+                                     interact_log1p = TRUE),
       # less climate extrapolation
       m01.3 = .defaults_class_forest(n_folds = 10, env_clusters = 20),
-
+      m01.4 = .defaults_class_forest(
+        # the first 6 variables are the 6 variables w/ highest VIP
+        # from m04.1
+        pred_vars = .pred_vars$f4,
+        interact_log1p = TRUE),
+      m01.5 = .defaults_class_forest(
+        # also based on VIP from m04.1
+        pred_vars = .pred_vars$f5,
+        interact_log1p = TRUE),
+      m01.6 = .defaults_class_forest(
+        # also based on VIP from m04.1
+        pred_vars = .pred_vars$f6,
+        interact_log1p = TRUE),
+      m01.7 = .defaults_class_forest(
+        # also based on VIP from m04.1
+        pred_vars = .pred_vars$f7,
+        interact_log1p = TRUE),
       # elastic net
       m02 = .defaults_class_forest(alpha = 0.5),
       
@@ -270,20 +348,10 @@ cover_specs <- list(
       # min.node.size is the smallest node that can be split, not the smallest
       # leaf. min.bucket (smallest leaf) was tried and roughly tripled fit time
       m04 = .defaults_class_forest(engine = "ranger",
-                                   log1p_vars = character(0),
-                                   squares = FALSE,
-                                   interactions = FALSE,
-                                   ranger = list(num.trees = 300,
-                                                 min.node.size = 100,
-                                                 importance = "permutation")),
+                                   ranger = list(importance = "permutation")),
       m04.1 = .defaults_class_forest(engine = "ranger",
-                                   pred_vars = .pred_vars_complex2,
-                                   log1p_vars = character(0),
-                                   squares = FALSE,
-                                   interactions = FALSE,
-                                   ranger = list(num.trees = 300,
-                                                 min.node.size = 100,
-                                                 importance = "permutation")),
+                                     pred_vars = .pred_vars$complex2,
+                                     ranger = list(importance = "permutation")),
       
       # hierarchical group lasso on continuous tree cover. x^2 only enters
       # with x, and an interaction only with both of its terms. Squares don't
@@ -308,36 +376,12 @@ cover_specs <- list(
       # models fit to a filtered subset of the data
       m07.0 = .defaults_class_forest(rows = quote(MAP < 700)),
       m07.1 = .defaults_class_forest(rows = quote(MAP >= 700)),
-      m07.2 =  .defaults_class_forest(engine = "ranger",
-                                     rows = quote(MAP < 700),
-                                    log1p_vars = character(0),
-                                    squares = FALSE,
-                                    interactions = FALSE,
-                                    ranger = list(num.trees = 300,
-                                                  min.node.size = 100)),
-      m07.3 =  .defaults_class_forest(engine = "ranger",
-                                     rows = quote(MAP >= 700),
-                                    log1p_vars = character(0),
-                                    squares = FALSE,
-                                    interactions = FALSE,
-                                    ranger = list(num.trees = 300,
-                                                  min.node.size = 100)),
+      m07.2 = .defaults_class_forest(engine = "ranger", rows = quote(MAP < 700)),
+      m07.3 = .defaults_class_forest(engine = "ranger", rows = quote(MAP >= 700)),
       m07.4 = .defaults_class_forest(rows = quote(MAP < 800)),
       m07.5 = .defaults_class_forest(rows = quote(MAP >= 800)),
-      m07.6 =  .defaults_class_forest(engine = "ranger",
-                                      rows = quote(MAP < 800),
-                                      log1p_vars = character(0),
-                                      squares = FALSE,
-                                      interactions = FALSE,
-                                      ranger = list(num.trees = 300,
-                                                    min.node.size = 100)),
-      m07.7 =  .defaults_class_forest(engine = "ranger",
-                                      rows = quote(MAP >= 800),
-                                      log1p_vars = character(0),
-                                      squares = FALSE,
-                                      interactions = FALSE,
-                                      ranger = list(num.trees = 300,
-                                                    min.node.size = 100)),
+      m07.6 = .defaults_class_forest(engine = "ranger", rows = quote(MAP < 800)),
+      m07.7 = .defaults_class_forest(engine = "ranger", rows = quote(MAP >= 800)),
       # same idea as 7.0 and 7.1, but with continuous model
       m07.8 = .defaults_class_forest(rows = quote(MAP < 700),
                                    family = "gaussian",
@@ -351,35 +395,14 @@ cover_specs <- list(
       # product). REML sets each term's smoothing, and CV on the
       # environmental folds scales it all up or down (see gam_helpers.R).
       # Same predictors as m01, fit to the class
-      m08.0 = .defaults_class_forest(engine = "gam",
-                                   log1p_vars = character(0),
-                                   gam = list(
-                                     log10_mult = seq(-1, 4, by = 0.5)
-                                     ),
-                                   interactions = TRUE),
+      m08.0 = .defaults_class_forest(engine = "gam"),
       # as m08, but fit to cover / 100, as m06
-      m08.1 = .defaults_class_forest(engine = "gam",
-                                     family = "quasibinomial",
-                                     log1p_vars = character(0),
-                                     gam = list(
-                                       log10_mult = seq(-1, 4, by = 0.5)
-                                       ),
-                                     interactions = TRUE),
+      m08.1 = .defaults_class_forest(engine = "gam", family = "quasibinomial"),
       # 8.0 but complex set of predictors
       m08.2 = .defaults_class_forest(engine = "gam",
-                                     pred_vars = .pred_vars_complex1,
-                                     log1p_vars = character(0),
-                                     gam = list(
-                                       log10_mult = seq(-1, 4, by = 0.5)
-                                     ),
-                                     interactions = TRUE),
-      # 8.0 but w/ less climat extrapolation
+                                     pred_vars = .pred_vars$complex1),
+      # 8.0 but w/ less climate extrapolation
       m08.3 = .defaults_class_forest(engine = "gam",
-                                     log1p_vars = character(0),
-                                     gam = list(
-                                       log10_mult = seq(-1, 4, by = 0.5)
-                                     ),
-                                     interactions = TRUE,
                                      n_folds = 10,
                                      env_clusters = 20)
     ),
@@ -388,35 +411,23 @@ cover_specs <- list(
     # 90% = zero tree. Data: c02 only (05_rap_training_sample.R)
     zero_tree = list(
       # binomial GLM
-      m01.0 = .defaults_zero_tree(interact_log1p = TRUE),
-      m01.2 = .defaults_zero_tree(
-        pred_vars = .pred_vars_complex2,
-        log1p_vars = .possible_log_vars(.pred_vars_complex2),
-        interact_log1p = TRUE
-      ),
+      m01.0 = .defaults_zero_tree(),
+      m01.2 = .defaults_zero_tree(pred_vars = .pred_vars$complex2),
+      m01.4 = .defaults_zero_tree(pred_vars = .pred_vars$f4),
+      m01.5 = .defaults_zero_tree(pred_vars = .pred_vars$f5),
+      m01.6 = .defaults_zero_tree(pred_vars = .pred_vars$f6),
+      m01.7 = .defaults_zero_tree(pred_vars = .pred_vars$f7),
       # random forest
-      m04.0 = .defaults_zero_tree(
-        engine = "ranger",
-       log1p_vars = character(0),
-       squares = FALSE,
-       interactions = FALSE,
-       ranger = list(num.trees = 300,
-                     min.node.size = 100,
-                     importance = "permutation")),
-      m04.1 = .defaults_zero_tree(
-        engine = "ranger",
-         pred_vars = .pred_vars_complex2,
-         log1p_vars = character(0),
-         squares = FALSE,
-         interactions = FALSE,
-         ranger = list(num.trees = 300,
-                       min.node.size = 100,
-                       importance = "permutation"))
+      m04.0 = .defaults_zero_tree(engine = "ranger",
+                                  ranger = list(importance = "permutation")),
+      m04.1 = .defaults_zero_tree(engine = "ranger",
+                                  pred_vars = .pred_vars$complex2,
+                                  ranger = list(importance = "permutation"))
     )
 
   ),
   
-    # continuous cover. Tree cover is fit separately above and at or below 10%
+  # continuous cover. Tree cover is fit separately above and at or below 10%
   # (the forest threshold), so neither is pulled toward the other's mean; the
   # two are blended at 10%, and zero-tree areas set to 0 afterwards. Zeros are
   # kept. In c02, shrub and herbaceous cover are NA wherever tree cover is
@@ -425,27 +436,54 @@ cover_specs <- list(
   # benchmark (as forest m04)
   cover = list(
     tree_forest = list(
-      m01.0 = .defaults_cover(rows = quote(cov_tree > 10), 
-                              interact_log1p = TRUE),
+      m01.0 = .defaults_cover(rows = quote(cov_tree > 10)),
+      m01.4 = .defaults_cover(rows = quote(cov_tree > 10),
+                              pred_vars = .pred_vars$f4),
+      m01.5 = .defaults_cover(rows = quote(cov_tree > 10),
+                              pred_vars = .pred_vars$f6),
+      m01.6 = .defaults_cover(rows = quote(cov_tree > 10),
+                              pred_vars = .pred_vars$f6),
+      m01.7 = .defaults_cover(rows = quote(cov_tree > 10),
+                              pred_vars = .pred_vars$f7),
       m04.0 = .defaults_cover(rows = quote(cov_tree > 10),
-                            engine = "ranger", family = "gaussian",
-                            log1p_vars = character(0), squares = FALSE,
-                            interactions = FALSE,
-                            ranger = list(num.trees = 300,
-                                          min.node.size = 100))
+                              engine = "ranger", family = "gaussian"),
+      m04.1 = .defaults_cover(rows = quote(cov_tree > 10),
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$complex2,
+                              ranger = list(importance = "permutation"))
     ),
     tree_nonforest = list(
-      m01.0 = .defaults_cover(rows = quote(cov_tree <= 10), 
-                              interact_log1p = TRUE),
+      m01.0 = .defaults_cover(rows = quote(cov_tree <= 10)),
+      m01.4 = .defaults_cover(rows = quote(cov_tree <= 10),
+                              pred_vars = .pred_vars$f4),
+      m01.5 = .defaults_cover(rows = quote(cov_tree <= 10),
+                              pred_vars = .pred_vars$f5),
+      m01.6 = .defaults_cover(rows = quote(cov_tree <= 10),
+                              pred_vars = .pred_vars$f6),
+      m01.7 = .defaults_cover(rows = quote(cov_tree <= 10),
+                              pred_vars = .pred_vars$f7),
       m04.0 = .defaults_cover(rows = quote(cov_tree <= 10),
-                            engine = "ranger", family = "gaussian",
-                            log1p_vars = character(0), squares = FALSE,
-                            interactions = FALSE,
-                            ranger = list(num.trees = 300,
-                                          min.node.size = 100))
+                              engine = "ranger", family = "gaussian"),
+      m04.1 = .defaults_cover(rows = quote(cov_tree <= 10),
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$complex2,
+                              ranger = list(importance = "permutation"))
     )
   ),
   # shares: needleleaf (of tree), forb / C3 / C4 (of herbaceous, rescaled to
   # sum to 1 at prediction time). Not specified yet.
-  proportion = list()
+  proportion = list(),
+  # combined predictions: one version = a set of component models
+  # (04_combine_tree.R)
+  combined = list(
+    tree = list(
+      m01.0 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.0"),
+      m01.4 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.4"),
+      m01.5 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.5"),
+      m01.6 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.6"),
+      m01.7 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.7"),
+      m04.1 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m04.1")
+    )
+  )
 )
+
