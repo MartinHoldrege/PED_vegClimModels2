@@ -8,7 +8,8 @@
 #   cover           continuous cover         03_fit_cover.R
 #                   (quasibinomial, or a ranger regression forest; beta
 #                   later)
-#   proportion      shares of a total (beta) 04_fit_proportion.R
+#   proportion      shares of a total        02_fit_cover.R
+#                   (as cover; stored 0-1, modelled as % of the total)
 #
 # Every spec has:
 #   response      column in the cover training data
@@ -265,6 +266,22 @@ source('Functions/models/predictors.R')
   spec
 }
 
+#' Spec for a proportion model (share of a total, e.g. needleleaf share of
+#' tree cover)
+#'
+#' As `.defaults_cover()`. The shares are stored 0-1 in the training data;
+#' `response_units = "fraction"` makes `response_pct()` multiply them by 100,
+#' so they are fit, predicted and reported as % of the total, like cover.
+#'
+#' @param response Share column in the training data, e.g. "frac_needle".
+#' @param ... Other arguments to `.defaults_cover()`.
+#' @return A spec list.
+.defaults_proportion <- function(response, ...) {
+  spec <- .defaults_cover(response = response, ...)
+  spec$response_units <- "fraction"
+  spec
+}
+
 #' Spec for a combined tree cover prediction (04_combine_tree.R)
 #'
 #' Which version of each of the four component models to combine, and how
@@ -471,11 +488,60 @@ cover_specs <- list(
                               engine = "ranger", family = "gaussian",
                               pred_vars = .pred_vars$complex2,
                               ranger = list(importance = "permutation"))
+    ),
+    shrub = list(
+      m01.5 = .defaults_cover(response = 'cov_shrub',
+                              pred_vars = .pred_vars$f5),
+      m04.1 = .defaults_cover(response = 'cov_shrub',
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$complex2,
+                              ranger = list(importance = "permutation"))
+      ),
+    herbaceous = list(
+      m01.5 = .defaults_cover(response = 'cov_herbaceous',
+                              pred_vars = .pred_vars$f5),
+      m04.1 = .defaults_cover(response = 'cov_herbaceous',
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$complex2,
+                              ranger = list(importance = "permutation"))
     )
   ),
   # shares: needleleaf (of tree), forb / C3 / C4 (of herbaceous, rescaled to
-  # sum to 1 at prediction time). Not specified yet.
-  proportion = list(),
+  # sum to 1 at prediction time). 
+  proportion = list(
+    needle = list(
+      m01.5 = .defaults_proportion(response = 'frac_needle',
+                              pred_vars = .pred_vars$f5),
+      m04.1 = .defaults_proportion(response = 'frac_needle',
+                           engine = "ranger", family = "gaussian",
+                           pred_vars = .pred_vars$complex2,
+                           ranger = list(importance = "permutation"))
+    ),
+    c3 = list(
+      m01.5 = .defaults_proportion(response = 'frac_c3',
+                                   pred_vars = .pred_vars$f5),
+      m04.1 = .defaults_proportion(response = 'frac_c3',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$complex2,
+                                   ranger = list(importance = "permutation"))
+    ),
+    c4 = list(
+      m01.5 = .defaults_proportion(response = 'frac_c4',
+                                   pred_vars = .pred_vars$f5),
+      m04.1 = .defaults_proportion(response = 'frac_c4',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$complex2,
+                                   ranger = list(importance = "permutation"))
+    ),
+    forb = list(
+      m01.5 = .defaults_proportion(response = 'frac_forb',
+                                   pred_vars = .pred_vars$f5),
+      m04.1 = .defaults_proportion(response = 'frac_forb',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$complex2,
+                                   ranger = list(importance = "permutation"))
+    )
+  ),
   # combined predictions: one version = a set of component models
   # (04_combine_tree.R)
   combined = list(
@@ -489,4 +555,3 @@ cover_specs <- list(
     )
   )
 )
-

@@ -48,17 +48,24 @@ in_title <- if (engine == "ranger") {
   "In-sample"
 }
 
-# e.g. "Tree cover (%)" for cov_tree
-cover_label <- paste0(str_to_sentence(str_remove(spec$response, "^cov_")),
-                      " cover (%)")
+# what is predicted, for labels: % cover, or for proportion models the share
+# of the total (as %)
+is_prop <- identical(spec$response_units, "fraction")
+what <- if (is_prop) "share" else "cover"
+unit_name <- paste0(str_to_sentence(what), " (%)")  # legend titles
+
+# e.g. "Tree cover (%)" for cov_tree, "Needle share (%)" for frac_needle
+cover_label <- paste0(str_to_sentence(str_remove(spec$response, "^(cov|frac)_")),
+                      " ", what, " (%)")
 
 # predictors in original units (log1p_MAP is plotted as MAP)
 source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
 
-# training data joined to the saved predictions (both % cover)
+# training data joined to the saved predictions (both % cover, or % of the
+# total for proportions)
 dat <- read_cover_training(vc) |>
-  inner_join(fit$predictions, by = c("cell", "year")) |>
-  mutate(cover_obs = .data[[spec$response]])
+  inner_join(fit$predictions, by = c("cell", "year"))
+dat$cover_obs <- response_pct(dat, spec)
 stopifnot(nrow(dat) == nrow(fit$predictions), !anyNA(dat$cover_obs))
 
 scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
@@ -255,7 +262,7 @@ combinations of predictors that don't occur. Middle 98% of each predictor.
 
 ```{r ale, fig.width = 10, fig.height = 6}
 ale_classification(fit, dat) |>
-  plot_ale(ylab = "ALE (change in predicted cover, %)")
+  plot_ale(ylab = paste0("ALE (change in predicted ", what, ", %)"))
 ```
 
 ## Filtered accumulated local effects
@@ -265,7 +272,8 @@ the subset's mean predicted cover plus its ALE.
 
 ```{r ale-filtered, fig.width = 10, fig.height = 9}
 ale_classification_filtered(fit, dat) |>
-  plot_ale_filtered(ylab = "Cover, % (subset mean + ALE)")
+  plot_ale_filtered(ylab = paste0(str_to_sentence(what),
+                                  ", % (subset mean + ALE)"))
 ```
 
 # Maps
@@ -286,7 +294,7 @@ px <- dat |>
   sf::st_as_sf(coords = c("x", "y"), crs = terra::crs(read_mask()))
 
 upper <- quantile(px$observed, 0.99, names = FALSE)
-cover_scale_pts <- colorscale_cover(name = "Cover (%)", limits = c(0, upper),
+cover_scale_pts <- colorscale_cover(name = unit_name, limits = c(0, upper),
                                     aesthetics = "colour")
 
 l <- quantile(c(px$resid, px$resid_in), c(0.05, 0.95), names = FALSE) |> 
@@ -295,7 +303,8 @@ l <- quantile(c(px$resid, px$resid_in), c(0.05, 0.95), names = FALSE) |>
 limits_resid = c(-l, l)
 
 cover_scale_resid = colorscale_diverging(
-                    name = "Predicted -\nobserved\n(% cover,\n5th-95th percentiles)",
+                    name = paste0("Predicted -\nobserved\n(% ", what,
+                                  ",\n5th-95th percentiles)"),
                     limits = limits_resid, aesthetics = "colour")
 
 
@@ -323,7 +332,9 @@ g4 <- plot_points_conus(px, color_var = "resid", point_size = 0.3,
 ## Current climate
 
 Predictions on all of CONUS (snap mask), not only the model's domain
-(`spec$rows`) or the available area.
+(`spec$rows`) or the available area. For proportion models the share is
+predicted everywhere, including where there is little or none of the total
+(e.g. no trees).
 
 ```{r map-read}
 read_pred <- function(scenario) {
@@ -338,7 +349,7 @@ terra::global(pred$current, c("min", "mean", "max"), na.rm = TRUE)
 
 ```{r map-current, fig.width = 9, fig.height = 6}
 upper_r <- raster_quantile(pred$current, 0.99)
-cover_scale <- colorscale_cover(name = "Cover (%)", limits = c(0, upper_r))
+cover_scale <- colorscale_cover(name = unit_name, limits = c(0, upper_r))
 
 plot_map_conus(pred$current, colorscale = cover_scale,
                title = paste("Predicted", str_to_lower(cover_label),
@@ -405,7 +416,7 @@ change_lim <- map_dbl(change, \(r) {
   max(abs(c(raster_quantile(r, 0.01), raster_quantile(r, 0.99))))
 }) |>
   max()
-change_scale <- colorscale_diverging(name = "Change\n(% cover)",
+change_scale <- colorscale_diverging(name = paste0("Change\n(% ", what, ")"),
                                      limits = c(-change_lim, change_lim))
 
 g_cover <- map(future, \(s) {

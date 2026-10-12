@@ -126,3 +126,24 @@ build_config <- function(vm, sub_spec, formula,
     data = list(version = vd, type = model_type)
   )
 }
+
+
+#' Model response in % (0-100)
+#'
+#' Cover is stored in %. Proportion models (`spec$response_units ==
+#' "fraction"`, see `.defaults_proportion()`) have shares stored 0-1, which
+#' are multiplied by 100 so they are fit, predicted and reported as % of the
+#' total, like cover.
+#'
+#' @param dat Training data with the column `spec$response`.
+#' @param spec Model spec (from `cover_specs`, or `fit$config$spec`).
+#' @return Numeric vector, % cover or % of the total.
+#' @examples
+#' dat <- data.frame(frac_needle = c(0, 0.25, 1))
+#' spec <- list(response = "frac_needle", response_units = "fraction")
+#' response_pct(dat = dat, spec = spec)
+response_pct <- function(dat, spec) {
+  y <- dat[[spec$response]]
+  stopifnot(!is.null(y))
+  if (identical(spec$response_units, "fraction")) 100 * y else y
+}

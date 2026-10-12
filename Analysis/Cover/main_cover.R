@@ -19,26 +19,42 @@ library(purrr)
 
 # what to run -------------------------------------------------------------
 
-run_fit      <- FALSE
-run_predict  <- FALSE
+run_fit      <- TRUE
+run_predict  <- TRUE
 run_evaluate <- TRUE
 
-vc <- "c02"  # cover data version (not used by combined runs)
+# cover data version: vc_default, unless the model is listed in vc_model (not
+# used by combined runs)
+vc_default <- "c02"
+vc_model <- c(shrub = "c01", herbaceous = "c01",
+              needle = "c01", c3 = "c01", c4 = "c01", forb = "c01")
+
+fit_scripts <- c(
+  classification = "Analysis/Cover/Fit/02_fit_classification.R",
+  cover          = "Analysis/Cover/Fit/02_fit_cover.R",
+  proportion     = "Analysis/Cover/Fit/02_fit_cover.R"
+)
 
 # model versions to run, by family and model
 cover_runs <- list(
   classification = list(
-    forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    zero_tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1')
+    # forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
+    # zero_tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1')
     ),
   cover          = list(
-    tree_forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    tree_nonforest = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1')
+    # tree_forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
+    # tree_nonforest = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
+    shrub = c('m01.5', 'm04.1'),
+    herbaceous = c('m01.5', 'm04.1')
   ),
-  proportion     = list(),
+  proportion = list(
+    c3 = c('m01.5', 'm04.1'),
+    c4 = c('m01.5', 'm04.1'),
+    forb = c('m01.5', 'm04.1')
+    ),
   # versions of cover_specs$combined
   combined       = list(
-    tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1')
+    # tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1')
   )
 )
 
@@ -47,7 +63,8 @@ cover_runs <- list(
 # fitting script per family
 fit_scripts <- c(
   classification = "Analysis/Cover/Fit/02_fit_classification.R",
-  cover          = "Analysis/Cover/Fit/02_fit_cover.R"
+  cover          = "Analysis/Cover/Fit/02_fit_cover.R",
+  proportion     = "Analysis/Cover/Fit/02_fit_cover.R"
 )
 
 predict_script <- "Analysis/Cover/Fit/03_predict_raster.R"
@@ -59,6 +76,7 @@ combine_script <- "Analysis/Cover/Fit/04_combine_tree.R"
 eval_rmds <- c(
   classification = "Analysis/Cover/Evaluate/01_classification_diagnostics.Rmd",
   cover          = "Analysis/Cover/Evaluate/01_cover_diagnostics.Rmd",
+  proportion     = "Analysis/Cover/Evaluate/01_cover_diagnostics.Rmd",
   combined       = "Analysis/Cover/Evaluate/01_tree_combined_diagnostics.Rmd"
 )
 
@@ -76,6 +94,7 @@ runs <- imap(cover_runs, \(models, cover_type) {
     bind_rows()
 }) |>
   bind_rows() |>
+  mutate(vc = coalesce(unname(vc_model[cover_model]), vc_default)) |>
   # combined runs use the outputs of the others, so they go last
   arrange(cover_type == "combined")
 
@@ -89,7 +108,7 @@ print(runs)
 
 # run ------------------------------------------------------------------------
 
-pwalk(runs, \(cover_type, cover_model, vmc) {
+pwalk(runs, \(cover_type, cover_model, vmc, vc) {
 
   is_combined <- cover_type == "combined"
   

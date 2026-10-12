@@ -1,12 +1,16 @@
-# 03_fit_cover.R
+# 02_fit_cover.R
 #
-# Fits one continuous cover model (tree, shrub or herbaceous cover) and saves
-# it. The counterpart of 02_fit_classification.R, sharing its folds and
-# fitting engines (fit_engine.R), but the response is % cover and there is no
-# class or threshold.
+# Fits one continuous cover model (tree, shrub or herbaceous cover), or one
+# proportion model (share of a total, e.g. needleleaf share of tree cover),
+# and saves it. Proportions are stored 0-1 but handled as % of the total
+# (response_pct()), so everything below applies to them too.
 #
-# The model is chosen by --cover_type (here "cover"), --cover_model (e.g.
-# tree_forest) and --vmc, which index cover_specs; --vc is the cover data
+# The counterpart of 02_fit_classification.R, sharing its folds and fitting
+# engines (fit_engine.R), but the response is % cover and there is no class or
+# threshold.
+#
+# The model is chosen by --cover_type ("cover" or "proportion"), --cover_model
+# (e.g. tree_forest) and --vmc, which index cover_specs; --vc is the cover data
 # version. Defaults are in params.R; main_cover.R can run other combinations.
 #
 # spec$rows picks the pixel-years to fit to: tree cover is fit separately
@@ -48,7 +52,7 @@ if (is.null(spec)) {
   stop("no spec for cover_specs$", opt$cover_type, "$", opt$cover_model, "$",
        opt$vmc)
 }
-stopifnot(opt$cover_type == "cover")
+stopifnot(opt$cover_type %in% c("cover", "proportion"))
 
 out_file <- cover_model_path(opt$cover_type, opt$cover_model, opt$vc,
                              opt$vmc)
@@ -70,7 +74,8 @@ if (test_run) {
   dat <- sample_n(dat, 1000)
 }
 
-cover <- dat[[spec$response]]
+# % cover, or % of the total for proportions
+cover <- response_pct(dat, spec)
 stopifnot(all(cover >= 0 & cover <= 100))
 
 # what the model is fit to
