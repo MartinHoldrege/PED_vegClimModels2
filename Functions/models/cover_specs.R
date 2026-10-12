@@ -64,6 +64,9 @@ source('Functions/models/predictors.R')
 
 
 .pred_vars = list(
+  # original set used in testing
+  default_original = c("MAT", "MAP", "PrecipTempCorr",
+    "isothermality", "WD_p95", "clay_surface", "awc"),
   # complex model (for comparisons)
   complex1 = c("MAT", "P_wettestMonth", "PrecipTempCorr", "isothermality",
     "WDD_mean", "soilDepth", "clay_surface", "sand", "coarse", "carbon"),
