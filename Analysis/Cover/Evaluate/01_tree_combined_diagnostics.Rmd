@@ -9,10 +9,13 @@ output:
     toc: true
     toc_float: true
     code_folding: hide
+    includes:
+      in_header: report_style.html  # full width; button to hide contents
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      out.width = "100%", dpi = 200, fig.retina = 1)
 ```
 
 # Setup
@@ -21,6 +24,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 source("Functions/init.R")
 source_functions()
 theme_set(theme_custom1())
+library(patchwork)
 
 vmc <- if (is.null(params$vmc)) opt$vmc else params$vmc
 
@@ -129,28 +133,43 @@ plot_map_conus(diff_r,
 
 # Future climate
 
-Predicted tree cover under each future scenario, and the change from current
-(all cells).
+Predicted tree cover under each future scenario (left), and the change from
+current (right; all cells). The change maps share one colour scale.
 
-```{r map-future, fig.width = 9, fig.height = 6}
-walk(setdiff(scenarios, "current"), \(scenario) {
-  change <- pred[[scenario]]$cover - pred$current$cover
-  change_lim <- max(abs(c(raster_quantile(change, 0.01),
-                          raster_quantile(change, 0.99))))
+```{r map-future, fig.width = 9, fig.height = 1 + 3 * length(setdiff(scenarios, "current"))}
+future <- setdiff(scenarios, "current")
 
-  g1 <- plot_map_conus(pred[[scenario]]$cover, colorscale = cover_scale,
-                       title = paste("Predicted tree cover,", scenario))
+change <- map(future, \(s) pred[[s]]$cover - pred$current$cover) |>
+  set_names(future)
+# one change scale for all scenarios, so they can be compared (and share a
+# legend)
+change_lim <- map_dbl(change, \(r) {
+  max(abs(c(raster_quantile(r, 0.01), raster_quantile(r, 0.99))))
+}) |>
+  max()
+change_scale <- colorscale_diverging(name = "Change\n(% cover)",
+                                     limits = c(-change_lim, change_lim))
 
-  g2 <- plot_map_conus(change,
-                       colorscale = colorscale_diverging(
-                         name = "Change\n(% cover)",
-                         limits = c(-change_lim, change_lim)),
-                       title = paste("Change in tree cover,", scenario,
-                                     "vs current"),
-        inset_hist = TRUE)
-
-
+# left column: predicted cover; right column: change from current
+g_cover <- map(future, \(s) {
+  plot_map_conus(pred[[s]]$cover, colorscale = cover_scale,
+                 title = paste0(s, ": predicted tree cover"))
 })
+g_change <- map(future, \(s) {
+  plot_map_conus(change[[s]], colorscale = change_scale,
+                 title = paste0(s, ": change from current"),
+        inset_hist = TRUE)
+})
+
+# each column collects its own legend, placed underneath it
+legend_bottom <- theme(legend.position = "bottom",
+                       legend.key.width = unit(1.5, "cm"),
+                       legend.title.position = "top")
+col_cover  <- wrap_plots(g_cover, ncol = 1) +
+  plot_layout(guides = "collect") & legend_bottom
+col_change <- wrap_plots(g_change, ncol = 1) +
+  plot_layout(guides = "collect") & legend_bottom
+col_cover | col_change
 ```
 
 # Session info

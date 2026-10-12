@@ -1,0 +1,17 @@
+<!-- Shared look for the evaluation reports (in_header of each Rmd):
+     full-width page, and a button that hides/shows the floating contents. -->
+<style>
+  .main-container { max-width: 100% !important; }
+  body.toc-hidden div:has(> #TOC) { display: none; }
+  body.toc-hidden .toc-content { width: 100%; }
+  .toc-toggle { position: fixed; bottom: 8px; left: 8px; z-index: 1000; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.createElement("button");
+    btn.className = "toc-toggle btn btn-default btn-sm";
+    btn.textContent = "Hide/show contents";
+    btn.onclick = function () { document.body.classList.toggle("toc-hidden"); };
+    document.body.appendChild(btn);
+  });
+</script>

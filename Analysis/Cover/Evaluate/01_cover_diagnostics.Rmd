@@ -12,10 +12,13 @@ output:
     toc: true
     toc_float: true
     code_folding: hide
+    includes:
+      in_header: report_style.html  # full width; button to hide contents
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      out.width = "100%", dpi = 200, fig.retina = 1)
 ```
 
 # Setup
@@ -291,10 +294,9 @@ l <- quantile(c(px$resid, px$resid_in), c(0.05, 0.95), names = FALSE) |>
   max()
 limits_resid = c(-l, l)
 
-cover_scale_resid = scale_colour_gradient2(
-                    name = "Predicted -\nobserved\n(% cover,\n5th-9th percentiles)",
-                    low = "#b2182b", high = "#2166ac",
-                    limits = limits_resid, oob = scales::squish)
+cover_scale_resid = colorscale_diverging(
+                    name = "Predicted -\nobserved\n(% cover,\n5th-95th percentiles)",
+                    limits = limits_resid, aesthetics = "colour")
 
 
 g1 <- plot_points_conus(px, color_var = "observed", point_size = 0.3,
@@ -368,45 +370,62 @@ diff_r <- pred_r - obs_r
 ```
 
 
-```{r wall-maps, eval = wall, fig.width = 9, fig.height = 6}
+```{r wall-maps, eval = wall, fig.width = 10, fig.height = 8}
 upper_w <- raster_quantile(obs_r, 0.99)
 wall_scale <- colorscale_cover(name = "Cover (%)", limits = c(0, upper_w))
 
-plot_map_conus(obs_r, colorscale = wall_scale,
+g1 <- plot_map_conus(obs_r, colorscale = wall_scale,
                title = "RAP tree cover, 2021")
-plot_map_conus(pred_r, colorscale = wall_scale,
+g2 <- plot_map_conus(pred_r, colorscale = wall_scale,
                title = "Predicted tree cover")
 
 diff_lim <- max(abs(c(raster_quantile(diff_r, 0.05),
                       raster_quantile(diff_r, 0.95))))
-plot_map_conus(diff_r,
+g3 <- plot_map_conus(diff_r,
                colorscale = colorscale_diverging(
                  name = "Predicted -\nRAP (% cover)",
                  limits = c(-diff_lim, diff_lim)),
                title = "Predicted - RAP tree cover")
+
+(g1 + g2)/(g3 + guide_area()) + patchwork::plot_layout(guides = 'collect')
 ```
 
 ## Future climate
 
-Predicted cover under each future scenario, and the change from current.
+Predicted cover under each future scenario (left), and the change from
+current (right). The change maps share one colour scale.
 
-```{r map-future, fig.width = 9, fig.height = 6}
-walk(setdiff(scenarios, "current"), \(scenario) {
-  change <- pred[[scenario]] - pred$current
-  change_lim <- max(abs(c(raster_quantile(change, 0.01),
-                          raster_quantile(change, 0.99))))
+```{r map-future, fig.width = 9, fig.height = 1 + 3 * length(setdiff(scenarios, "current"))}
+future <- setdiff(scenarios, "current")
 
-  print(plot_map_conus(pred[[scenario]], colorscale = cover_scale,
-                       title = paste("Predicted", str_to_lower(cover_label),
-                                     scenario)))
+change <- map(future, \(s) pred[[s]] - pred$current) |>
+  set_names(future)
+# one change scale for all scenarios, so they can be compared
+change_lim <- map_dbl(change, \(r) {
+  max(abs(c(raster_quantile(r, 0.01), raster_quantile(r, 0.99))))
+}) |>
+  max()
+change_scale <- colorscale_diverging(name = "Change\n(% cover)",
+                                     limits = c(-change_lim, change_lim))
 
-  print(plot_map_conus(change,
-                       colorscale = colorscale_diverging(
-                         name = "Change\n(% cover)",
-                         limits = c(-change_lim, change_lim)),
-                       title = paste("Change in cover,", scenario,
-                                     "vs current")))
+g_cover <- map(future, \(s) {
+  plot_map_conus(pred[[s]], colorscale = cover_scale,
+                 title = paste0(s, ": predicted ", str_to_lower(cover_label)))
 })
+g_change <- map(future, \(s) {
+  plot_map_conus(change[[s]], colorscale = change_scale,
+                 title = paste0(s, ": change from current"))
+})
+
+# each column collects its own legend, placed underneath it
+legend_bottom <- theme(legend.position = "bottom",
+                       legend.key.width = unit(1.5, "cm"),
+                       legend.title.position = "top")
+col_cover  <- wrap_plots(g_cover, ncol = 1) +
+  plot_layout(guides = "collect") & legend_bottom
+col_change <- wrap_plots(g_change, ncol = 1) +
+  plot_layout(guides = "collect") & legend_bottom
+col_cover | col_change
 ```
 
 # Session info

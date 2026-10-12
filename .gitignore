@@ -94,6 +94,7 @@ src/*.exp
 !DESCRIPTION
 !NAMESPACE
 !LICENSE*
+!Analysis/Cover/Evaluate/report_style.html
 # boilerplate r gitignore:
 # History files
 .Rhistory

@@ -19,8 +19,8 @@ library(purrr)
 
 # what to run -------------------------------------------------------------
 
-run_fit      <- TRUE
-run_predict  <- TRUE
+run_fit      <- FALSE
+run_predict  <- FALSE
 run_evaluate <- TRUE
 
 vc <- "c02"  # cover data version (not used by combined runs)
