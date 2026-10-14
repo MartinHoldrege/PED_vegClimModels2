@@ -7,10 +7,11 @@
 # Each model is cover_specs[[cover_type]][[cover_model]][[vmc]]; the options
 # are passed to the scripts on the command line (see params.R).
 #
-# Combined predictions (cover_type 'combined', e.g. combined tree cover) are
-# not fit or predicted: they combine the prediction rasters of their component
-# models (04_combine_tree.R), so those must already exist. Combined runs are
-# done after all other runs.
+# Combined predictions (cover_type 'combined': combined tree cover, herbaceous
+# cover by functional type) are not fit or predicted: they combine the
+# prediction rasters of their component models (04_combine_tree.R,
+# 04_combine_herb.R), so those must already exist. Combined runs are done
+# after all other runs.
 #
 # September, 2026
 
@@ -19,15 +20,17 @@ library(purrr)
 
 # what to run -------------------------------------------------------------
 
-run_fit      <- TRUE
+run_fit      <- FALSE
 run_predict  <- TRUE
 run_evaluate <- TRUE
 
 # cover data version: vc_default, unless the model is listed in vc_model (not
 # used by combined runs)
 vc_default <- "c02"
-vc_model <- c(shrub = "c01", herbaceous = "c01",
-              needle = "c01", c3 = "c01", c4 = "c01", forb = "c01")
+vc_model <- c(
+  #shrub = "c01", 
+  herbaceous = "c01",
+  needle = "c01", c3 = "c01", c4 = "c01", forb = "c01")
 
 fit_scripts <- c(
   classification = "Analysis/Cover/Fit/02_fit_classification.R",
@@ -44,17 +47,20 @@ cover_runs <- list(
   cover          = list(
     # tree_forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
     # tree_nonforest = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    shrub = c('m01.5', 'm04.1'),
-    herbaceous = c('m01.5', 'm04.1')
+    # shrub = c('m01.5'),
+    # herbaceous = c('m01.5', 'm04.1')
   ),
   proportion = list(
-    c3 = c('m01.5', 'm04.1'),
-    c4 = c('m01.5', 'm04.1'),
-    forb = c('m01.5', 'm04.1')
+    # c3 = c('m01.5', 'm04.1'),
+    # c4 = c('m01.5', 'm04.1'),
+    # forb = c('m01.5', 'm04.1'),
+    # needle = c('m01.5', 'm04.1')
     ),
   # versions of cover_specs$combined
   combined       = list(
-    # tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1')
+    # tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
+    # herbaceous = c('m01.5', 'm04.1'),
+    all = c('m01.5', 'm04.1')
   )
 )
 
@@ -69,15 +75,24 @@ fit_scripts <- c(
 
 predict_script <- "Analysis/Cover/Fit/03_predict_raster.R"
 
-# combined predictions (only tree so far)
-combine_script <- "Analysis/Cover/Fit/04_combine_tree.R"
+# combining script per combined model (cover_specs$combined; tree_all isn't
+# written to disk, so has no script)
+combine_scripts <- c(
+  tree       = "Analysis/Cover/Fit/04_combine_tree.R",
+  herbaceous = "Analysis/Cover/Fit/04_combine_herb.R"
+)
 
 # evaluation report per family 
 eval_rmds <- c(
   classification = "Analysis/Cover/Evaluate/01_classification_diagnostics.Rmd",
   cover          = "Analysis/Cover/Evaluate/01_cover_diagnostics.Rmd",
-  proportion     = "Analysis/Cover/Evaluate/01_cover_diagnostics.Rmd",
-  combined       = "Analysis/Cover/Evaluate/01_tree_combined_diagnostics.Rmd"
+  proportion     = "Analysis/Cover/Evaluate/01_cover_diagnostics.Rmd"
+)
+
+# evaluation report per combined model (none for herbaceous yet)
+combined_rmds <- c(
+  tree = "Analysis/Cover/Evaluate/01_tree_combined_diagnostics.Rmd",
+  all  = "Analysis/Cover/Evaluate/01_combined_all_diagnostics.Rmd"
 )
 
 report_dirs <- c(classification = "Reports/Cover/classification",
@@ -98,7 +113,9 @@ runs <- imap(cover_runs, \(models, cover_type) {
   # combined runs use the outputs of the others, so they go last
   arrange(cover_type == "combined")
 
-stopifnot(all(runs$cover_type %in% c(names(fit_scripts), "combined")))
+stopifnot(all(runs$cover_type %in% c(names(fit_scripts), "combined")),
+          with(runs, all(cover_model[cover_type == "combined"] %in%
+                           c(names(combine_scripts), names(combined_rmds)))))
 print(runs)
 
 
@@ -121,13 +138,17 @@ pwalk(runs, \(cover_type, cover_model, vmc, vc) {
     callr::rscript(fit_scripts[[cover_type]], cmdargs = cmdargs)
   }
   
-  # for combined runs, "predict" is combining the component predictions
-  if (run_predict) {
-    script <- if (is_combined) combine_script else predict_script
-    callr::rscript(script, cmdargs = cmdargs)
+  # for combined runs, "predict" is combining the component predictions; NA
+  # if there is nothing to write (e.g. combined all, computed in its report)
+  script <- if (is_combined) combine_scripts[cover_model] else predict_script
+  if (run_predict && !is.na(script)) {
+    callr::rscript(unname(script), cmdargs = cmdargs)
   }
   
-  if (run_evaluate && cover_type %in% names(eval_rmds)) {
+  # NA if there is no report (e.g. combined herbaceous)
+  rmd <- if (is_combined) combined_rmds[cover_model] else eval_rmds[cover_type]
+  
+  if (run_evaluate && !is.na(rmd)) {
     out_dir <- report_dirs[[cover_type]]
     dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -143,7 +164,7 @@ pwalk(runs, \(cover_type, cover_model, vmc, vc) {
     }
     
     rmarkdown::render(
-      eval_rmds[[cover_type]],
+      unname(rmd),
       params = params,
       output_file = output_file,
       output_dir = out_dir,

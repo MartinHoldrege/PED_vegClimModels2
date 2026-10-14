@@ -644,29 +644,137 @@ read_scale_params <- function(vc = NULL, root = paths$large) {
   out
 }
 
-#' Path to a cover model's prediction raster
-#'
-#' As written by 03_predict_raster.R; the file name is defined only here and
-#' in that script.
+
+#' Read a fitted cover model
 #'
 #' @inheritParams cover_model_path
-#' @param scenario Climate scenario: "current", "BNU-ESM" or "IPSL-CM5A-MR".
-#' @return File path (character).
+#' @return The list saved by the fitting script (e.g. fit, lambda, threshold,
+#'   clusters, config, data).
 #' @examples
 #' cover_type <- "classification"
 #' cover_model <- "forest"
-#' vc <- "c02"
-#' vmc <- "m01.0"
-#' scenario <- "current"
+#' vc <- "c01"
+#' vmc <- "m01"
 #' root <- paths$large
-#' cover_pred_path(cover_type = cover_type, cover_model = cover_model,
-#'                 vc = vc, vmc = vmc, scenario = scenario, root = root)
-cover_pred_path <- function(cover_type, cover_model, vc, vmc, scenario,
-                            root = paths$large) {
-  file.path(root, "Data_processed", "CoverData", "Predictions",
-            paste0(cover_type, "_", cover_model, "_", vc, "-", vmc, "_",
-                   scenario, ".tif"))
+#' mod <- read_cover_model(cover_type = cover_type, cover_model = cover_model,
+#'                         vc = vc, vmc = vmc, root = root)
+read_cover_model <- function(cover_type, cover_model, vc, vmc,
+                             root = paths$large) {
+  p <- cover_model_path(cover_type, cover_model, vc, vmc, root = root)
+  if (!file.exists(p)) stop("fitted model not found: ", p)
+  readRDS(p)
 }
+
+#' Prediction raster of one component of a combined model
+#'
+#' @param component One row of a combined spec's `components` tibble
+#'   (`cover_specs$combined`): `cover_type`, `cover_model`, `vc`, `vmc`.
+#' @param scenario Climate scenario: "current", "BNU-ESM" or "IPSL-CM5A-MR".
+#' @return SpatRaster, one layer: % cover, or % of the total for proportion
+#'   models (the `cover` layer of the prediction raster).
+#' @examples
+#' component <- cover_specs$combined$herbaceous$m01.5$components[1, ]
+#' scenario <- "current"
+#' read_component_pred(component = component, scenario = scenario)
+read_component_pred <- function(component, scenario) {
+  stopifnot(nrow(component) == 1)
+  path <- if (component$cover_type == "combined") {
+    combined_path(component$cover_model, component$vmc, "prediction",
+                  scenario)
+  } else {
+    cover_pred_path(component$cover_type, component$cover_model,
+                    component$vc, component$vmc, scenario)
+  }
+  terra::rast(path)[["cover"]]
+}
+
+#' Needleleaf and broadleaf tree cover
+#'
+#' For one version of `cover_specs$combined$tree_all`: reads the combined tree
+#' cover (04_combine_tree.R) and the needleleaf share (proportion/needle,
+#' 03_predict_raster.R) for one scenario, and splits tree cover between
+#' needleleaf (share) and broadleaf (100 - share). Computed on the fly, not
+#' written to disk.
+#'
+#' @param vmc Version in `cover_specs$combined$tree_all`, e.g. "m01.5".
+#' @param scenario Climate scenario: "current", "BNU-ESM" or "IPSL-CM5A-MR".
+#' @param specs The `cover_specs` list (Functions/models/cover_specs.R).
+#' @return SpatRaster with layers `share_needle`, `share_broad` (% of tree
+#'   cover) and `cover_needle`, `cover_broad` (% cover).
+#' @examples
+#' vmc <- "m01.5"
+#' scenario <- "current"
+#' specs <- cover_specs
+#' tree_leaf_cover(vmc = vmc, scenario = scenario, specs = specs)
+tree_leaf_cover <- function(vmc, scenario, specs = cover_specs) {
+  spec <- specs$combined$tree_all[[vmc]]
+  if (is.null(spec)) stop("no spec for cover_specs$combined$tree_all$", vmc)
+  comp <- spec$components
+  
+  tree <- read_component_pred(comp[comp$component == "tree", ], scenario)
+  needle <- read_component_pred(comp[comp$component == "needle", ], scenario)
+  shares <- c(needle, 100 - needle)
+  names(shares) <- c("needle", "broad")
+  
+  # the two shares sum to 100 already, so share_sum is dropped
+  out <- split_cover(shares, tree)
+  out[[setdiff(names(out), "share_sum")]]
+}
+
+#' All final cover layers for one version of the combined "all" model
+#'
+#' For one version of `cover_specs$combined$all`: tree cover and its
+#' needleleaf part (`tree_all`), shrub cover, and herbaceous cover and its
+#' C3, C4 and forb parts (`herbaceous`), for one scenario. Read from the saved
+#' predictions, or computed on the fly (needleleaf), so the layers can be used
+#' in reports or figures without repeating the calculations.
+#'
+#' @param vmc Version in `cover_specs$combined$all`, e.g. "m01.5".
+#' @param scenario Climate scenario: "current", "BNU-ESM" or "IPSL-CM5A-MR".
+#' @param specs The `cover_specs` list (Functions/models/cover_specs.R).
+#' @return SpatRaster, all in %: `cover_tree`, `cover_needle`,
+#'   `share_needle` (% of tree cover), `cover_shrub`, `cover_herbaceous`,
+#'   `share_c3`, `share_c4`, `share_forb` (% of herbaceous cover, summing to
+#'   100), `cover_c3`, `cover_c4`, `cover_forb`.
+#' @examples
+#' vmc <- "m01.5"
+#' scenario <- "current"
+#' specs <- cover_specs
+#' read_combined_all(vmc = vmc, scenario = scenario, specs = specs)
+read_combined_all <- function(vmc, scenario, specs = cover_specs) {
+  spec <- specs$combined$all[[vmc]]
+  if (is.null(spec)) stop("no spec for cover_specs$combined$all$", vmc)
+  comp <- spec$components
+  tree_vmc <- comp$vmc[comp$component == "tree_all"]
+  herb_vmc <- comp$vmc[comp$component == "herbaceous"]
+  
+  # total tree and herbaceous cover: the components the splits were made from
+  tree_comp <- specs$combined$tree_all[[tree_vmc]]$components
+  herb_comp <- specs$combined$herbaceous[[herb_vmc]]$components
+  tree <- read_component_pred(tree_comp[tree_comp$component == "tree", ],
+                              scenario)
+  herb <- read_component_pred(herb_comp[herb_comp$component == "herbaceous", ],
+                              scenario)
+  shrub <- read_component_pred(comp[comp$component == "shrub", ], scenario)
+  
+  leaf <- tree_leaf_cover(tree_vmc, scenario, specs = specs)
+  herb_types <- terra::rast(combined_path("herbaceous", herb_vmc, "prediction",
+                                          scenario))
+  
+  names_leaf <- c("cover_needle", "share_needle", "cover_broad", "share_broad")
+  names_herb_type <- c("share_c3", "share_c4", "share_forb",
+                       "cover_c3", "cover_c4", "cover_forb")
+  out <- c(tree, leaf[[names_leaf]], shrub, herb,
+           herb_types[[names_herb_type]])
+  names(out) <- c("cover_tree", names_leaf,
+                  "cover_shrub", "cover_herbaceous",
+                  names_herb_type)
+  out
+}
+
+
+# paths -------------------------------------------------------------------
+
 
 
 #' Paths for a combined tree cover prediction (04_combine_tree.R)
@@ -723,24 +831,71 @@ cover_model_path <- function(cover_type, cover_model, vc, vmc,
             paste0(cover_type, "_", cover_model, "_", vc, "-", vmc, ".rds"))
 }
 
-#' Read a fitted cover model
+#' Path to a cover model's prediction raster
+#'
+#' As written by 03_predict_raster.R; the file name is defined only here and
+#' in that script.
 #'
 #' @inheritParams cover_model_path
-#' @return The list saved by the fitting script (e.g. fit, lambda, threshold,
-#'   clusters, config, data).
+#' @param scenario Climate scenario: "current", "BNU-ESM" or "IPSL-CM5A-MR".
+#' @return File path (character).
 #' @examples
 #' cover_type <- "classification"
 #' cover_model <- "forest"
-#' vc <- "c01"
-#' vmc <- "m01"
+#' vc <- "c02"
+#' vmc <- "m01.0"
+#' scenario <- "current"
 #' root <- paths$large
-#' mod <- read_cover_model(cover_type = cover_type, cover_model = cover_model,
-#'                         vc = vc, vmc = vmc, root = root)
-read_cover_model <- function(cover_type, cover_model, vc, vmc,
-                             root = paths$large) {
-  p <- cover_model_path(cover_type, cover_model, vc, vmc, root = root)
-  if (!file.exists(p)) stop("fitted model not found: ", p)
-  readRDS(p)
+#' cover_pred_path(cover_type = cover_type, cover_model = cover_model,
+#'                 vc = vc, vmc = vmc, scenario = scenario, root = root)
+cover_pred_path <- function(cover_type, cover_model, vc, vmc, scenario,
+                            root = paths$large) {
+  file.path(root, "Data_processed", "CoverData", "Predictions",
+            paste0(cover_type, "_", cover_model, "_", vc, "-", vmc, "_",
+                   scenario, ".tif"))
+}
+
+# Replaces combined_tree_path() in read_write.R. File names for tree are
+# unchanged, so existing callers and outputs still work.
+
+#' Paths for combined predictions (04_combine_*.R)
+#'
+#' No data version in the name: the component models can come from different
+#' versions (see `cover_specs$combined`).
+#'
+#' @param cover_model Combined model, e.g. "tree" or "herbaceous".
+#' @param vmc Combination version, e.g. "m01.5".
+#' @param what "prediction" (raster, one per scenario), "blend" (tree: csv of
+#'   the component models and blending parameters) or "components" (csv of
+#'   the component models).
+#' @param scenario Climate scenario, for `what = "prediction"`.
+#' @param root Root path for large files.
+#' @return File path (character).
+#' @examples
+#' cover_model <- "herbaceous"
+#' vmc <- "m01.5"
+#' what <- "prediction"
+#' scenario <- "current"
+#' root <- paths$large
+#' combined_path(cover_model = cover_model, vmc = vmc, what = what,
+#'               scenario = scenario, root = root)
+combined_path <- function(cover_model, vmc,
+                          what = c("prediction", "blend", "components"),
+                          scenario = NULL, root = paths$large) {
+  what <- match.arg(what)
+  dir <- file.path(root, "Data_processed", "CoverData")
+  stem <- paste0("combined_", cover_model, "_", vmc)
+  if (what != "prediction") {
+    return(file.path(dir, "Fit", paste0(stem, "_", what, ".csv")))
+  }
+  stopifnot(!is.null(scenario))
+  file.path(dir, "Predictions", paste0(stem, "_", scenario, ".tif"))
+}
+
+# combined tree cover (04_combine_tree.R); see combined_path()
+combined_tree_path <- function(vmc, what = c("prediction", "blend"),
+                               scenario = NULL, root = paths$large) {
+  combined_path("tree", vmc, match.arg(what), scenario, root)
 }
 
 # downloading files -----------------------------------------

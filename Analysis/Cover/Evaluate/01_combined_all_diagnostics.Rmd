@@ -1,0 +1,412 @@
+---
+title: "Combined cover: all functional types"
+author: "Martin Holdrege"
+date: "`r Sys.Date()`"
+params:
+  vmc: null   # version of cover_specs$combined$all; null uses opt$vmc
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    includes:
+      in_header: report_style.html  # full width; button to hide contents
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      out.width = "100%", dpi = 200, fig.retina = 1)
+```
+
+# Setup
+
+```{r setup-data}
+source("Functions/init.R")
+source_functions()
+source("Functions/models/cover_specs.R")
+library(patchwork)
+theme_set(theme_custom1())
+
+vmc <- if (is.null(params$vmc)) opt$vmc else params$vmc
+
+scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
+future <- setdiff(scenarios, "current")
+
+# all final layers (% cover, or % of the total for shares), per scenario
+pred <- map(scenarios, \(s) read_combined_all(vmc, s)) |>
+  set_names(scenarios)
+
+# what to map, in order; `group` is the tab. Shares come before covers
+vars <- tribble(
+  ~layer,             ~group,        ~label,
+  "cover_tree",       "Tree",        "Tree cover",
+  "share_needle",     "Needleleaf",  "Needleleaf share of tree cover",
+  "cover_needle",     "Needleleaf",  "Needleleaf tree cover",
+  "share_broad",      "Broadleaf",   "Broadleaf share of tree cover",
+  "cover_broad",      "Broadleaf",   "Broadleaf tree cover",
+  "cover_shrub",      "Shrub",       "Shrub cover",
+  "cover_herbaceous", "Herbaceous",  "Herbaceous cover",
+  "share_c3",         "C3 grass",    "C3 grass share of herbaceous cover",
+  "cover_c3",         "C3 grass",    "C3 grass cover",
+  "share_c4",         "C4 grass",    "C4 grass share of herbaceous cover",
+  "cover_c4",         "C4 grass",    "C4 grass cover",
+  "share_forb",       "Forb",        "Forb share of herbaceous cover",
+  "cover_forb",       "Forb",        "Forb cover"
+) |>
+  mutate(is_share = str_detect(layer, "^share_"))
+stopifnot(all(vars$layer %in% names(pred$current)))
+
+# legends underneath each map (overview)
+legend_bottom <- theme(legend.position = "bottom",
+                       legend.key.width = unit(1.5, "cm"),
+                       legend.title.position = "top")
+
+#' Colour scale for a cover or share layer
+#'
+#' Shares: 0-100%. Cover: 0 to the largest 99th percentile among `rasts`, so
+#' the scenarios share one scale.
+#'
+#' @param rasts List of single-layer SpatRasters (e.g. one per scenario).
+#' @param is_share Logical; a share (% of the total) rather than cover.
+#' @return A ggplot2 fill scale.
+value_scale <- function(rasts, is_share) {
+  upper <- if (is_share) {
+    100
+  } else {
+    max(map_dbl(rasts, \(r) raster_quantile(r, 0.99)))
+  }
+  colorscale_cover(name = if (is_share) "Share (%)" else "Cover (%)",
+                   limits = c(0, upper))
+}
+
+#' Current and future maps of one layer, and the change from current
+#'
+#' Left column: current, then each future scenario (one colour scale).
+#' Right column: future - current (one diverging scale, symmetric, set by the
+#' largest 1st / 99th percentile of change); the legends sit beside current.
+#' Inset histograms of all cells.
+#'
+#' @param layer Layer name in `pred`.
+#' @param label Title.
+#' @param is_share Logical; a share rather than cover.
+#' @return A patchwork object.
+plot_scenarios <- function(layer, label, is_share) {
+  r <- map(pred, \(p) p[[layer]])
+  change <- map(future, \(s) r[[s]] - r$current) |>
+    set_names(future)
+  change_lim <- map_dbl(change, \(d) {
+    max(abs(c(raster_quantile(d, 0.01), raster_quantile(d, 0.99))))
+  }) |>
+    max()
+
+  v_scale <- value_scale(r, is_share)
+  c_scale <- colorscale_diverging(name = "Change (% points)",
+                                  limits = c(-change_lim, change_lim))
+
+  g_value <- imap(r, \(x, s) {
+    plot_map_conus(x, colorscale = v_scale, title = s, inset_hist = TRUE)
+  })
+  g_change <- imap(change, \(x, s) {
+    plot_map_conus(x, colorscale = c_scale, title = paste(s, "- current"),
+                   inset_hist = TRUE)
+  })
+
+  # rows: current, then each future scenario; the legends go in the empty
+  # cell beside current
+  plots <- c(list(g_value$current, guide_area()),
+             map(future, \(s) list(g_value[[s]], g_change[[s]])) |>
+               list_flatten())
+  wrap_plots(plots, ncol = 2) +
+    plot_layout(guides = "collect") +
+    plot_annotation(title = label) &
+    theme(legend.direction = "horizontal",
+          legend.key.width = unit(1.5, "cm"),
+          legend.title.position = "top")
+}
+```
+
+# Components
+
+Version `r vmc` of `cover_specs$combined$all`. All maps are predictions on
+all of CONUS (snap mask), not only the available area. Shares are % of the
+total (needleleaf and broadleaf: of tree cover, with broadleaf = 100% -
+needleleaf as only needleleaf is modelled; C3, C4 and forb: of herbaceous
+cover, rescaled to sum to 100%), and are predicted everywhere, including where
+there is little or none of the total. Cover of a type is its share times the
+total cover. Changes are in percentage points.
+
+```{r components}
+spec <- cover_specs$combined$all[[vmc]]
+comp <- spec$components
+tree_vmc <- comp$vmc[comp$component == "tree_all"]
+herb_vmc <- comp$vmc[comp$component == "herbaceous"]
+
+# the models behind each component
+bind_rows(
+  comp |> filter(component == "shrub"),
+  cover_specs$combined$tree_all[[tree_vmc]]$components |>
+    mutate(component = paste0("tree_all: ", component)),
+  cover_specs$combined$herbaceous[[herb_vmc]]$components |>
+    mutate(component = paste0("herbaceous: ", component))
+) |>
+  knitr::kable()
+```
+
+# Current climate, all types
+
+Each map has its own colour scale (covers: 0 to the 99th percentile; shares:
+0-100%).
+
+```{r map-all-current, fig.width = 12, fig.height = 14}
+g_all <- pmap(vars, \(layer, label, is_share, ...) {
+  r <- pred$current[[layer]]
+  plot_map_conus(r, colorscale = value_scale(list(r), is_share),
+                 title = label)
+})
+names(g_all) <- vars$layer
+
+# rows: tree, needleleaf; shrub, herbaceous; herbaceous covers; shares
+layout <- list(g_all$cover_tree, g_all$cover_needle, g_all$share_needle,
+               g_all$cover_broad, g_all$share_broad, g_all$cover_shrub,
+                g_all$cover_herbaceous, plot_spacer(), plot_spacer(),
+               g_all$cover_c3, g_all$cover_c4, g_all$cover_forb,
+               g_all$share_c3, g_all$share_c4, g_all$share_forb)
+wrap_plots(layout, ncol = 3) & legend_bottom
+```
+
+# Current and future, by type {.tabset}
+
+For each layer: current and future predictions (left), and the change from
+current (right).
+
+```{r maps-by-group, results = "asis", fig.width = 10, fig.height = 11}
+walk(unique(vars$group), \(g) {
+  cat("\n\n## ", g, "\n\n", sep = "")
+  filter(vars, group == g) |>
+    pwalk(\(layer, label, is_share, ...) {
+      print(plot_scenarios(layer, label, is_share))
+      cat("\n\n")
+    })
+})
+```
+
+# Residuals
+
+## Data
+
+Predicted (current climate) minus observed, in sample: the models were fit
+to these data, so this shows the spatial pattern of the errors, not an
+independent test (and for random forests the training points are in-bag).
+See each model's own diagnostics report for out-of-fold predictions.
+
+- **Tree cover** fit to RAP data (c02): compared wall to wall with the 2021
+  RAP tree cover raster the training data were sampled from, with zero-tree
+  cells (RAP zero-tree layer, at the zero-tree model's threshold) set to 0,
+  as in `01_tree_combined_diagnostics.Rmd`.
+- **Everything else**: the predictions extracted at the training pixels of
+  the data version of the model(s) the layer comes from (e.g. c01 for
+  shrub, herbaceous and the shares), mapped as the mean over years at each
+  pixel. Observed shares are the field fractions (`frac_<type>`, as %);
+  observed cover of a type is its parent cover times its fraction, as the
+  predictions are built, e.g. modelled `share_c3` is compared with
+  `100 * frac_c3`, and `cover_c3` with `cov_herbaceous * frac_c3` (needleleaf:
+  `cov_tree * frac_needle`). Broadleaf isn't modelled directly (its share is
+  100% minus the needleleaf share), so its observations are those of the
+  needleleaf model, with `frac_broad` (= 1 - `frac_needle`). The
+  component covers (`c_<type>`) are not used: LFRDB's are summed species
+  cover, which can exceed 100%, and LDC's are any-hit rather than first-hit.
+
+Quantile plots use the training pixel-years and the f5 predictors
+(`.pred_vars$f5`), whatever the models were fit with.
+
+```{r resid-data}
+# data version of the observations for each layer: that of the model(s) the
+# layer comes from
+tree_all_comp <- cover_specs$combined$tree_all[[tree_vmc]]$components
+tree_parts <- cover_specs$combined$tree[[
+  tree_all_comp$vmc[tree_all_comp$component == "tree"]]]$components
+herb_comp <- cover_specs$combined$herbaceous[[herb_vmc]]$components
+
+vc_of <- function(x, comp) unname(comp$vc[comp$component == x])
+vc_tree <- unique(tree_parts$vc[tree_parts$cover_type == "cover"])
+stopifnot(length(vc_tree) == 1)
+
+# by type (the layer name without cover_ / share_)
+vc_lookup <- c(tree       = vc_tree,
+               needle     = vc_of("needle", tree_all_comp),
+               # broad isn't modelled directly (share = 1 - needle share)
+               broad      = vc_of("needle", tree_all_comp),
+               shrub      = vc_of("shrub", comp),
+               herbaceous = vc_of("herbaceous", herb_comp),
+               c3         = vc_of("c3", herb_comp),
+               c4         = vc_of("c4", herb_comp),
+               forb       = vc_of("forb", herb_comp))
+vars <- vars |>
+  mutate(type = str_remove(layer, "^(cover|share)_"),
+         vc = unname(vc_lookup[type]))
+stopifnot(!anyNA(vars$vc))
+
+# zero-tree threshold of the combined tree cover's zero-tree model
+zt <- filter(tree_parts, component == "zero_tree")
+zt_threshold <- read_cover_model(zt$cover_type, zt$cover_model, zt$vc,
+                                 zt$vmc)$config$spec$cover_threshold
+
+#' Observed value of a layer in the training data (%)
+#'
+#' Tree cover is set to 0 where the zero-tree % is above the zero-tree
+#' threshold (where that column exists), as the predictions are. Shares are
+#' the fractions (`frac_<type>`) as %; cover of a type is its parent cover
+#' times its fraction (needle, broad: `cov_tree`; c3, c4, forb:
+#' `cov_herbaceous`), and 0 where the parent cover is 0.
+#'
+#' @param d Training data (`read_cover_training()`).
+#' @param layer Layer name, e.g. "cover_forb".
+#' @return Numeric vector, NA where not observed.
+observed_layer <- function(d, layer) {
+  type <- str_remove(layer, "^(cover|share)_")
+  if (layer == "cover_tree") {
+    zero <- if ("pct_zero_tree" %in% names(d)) {
+      !is.na(d$pct_zero_tree) & d$pct_zero_tree > zt_threshold
+    } else {
+      rep(FALSE, nrow(d))
+    }
+    return(if_else(zero, 0, d$cov_tree))
+  }
+  if (type %in% c("shrub", "herbaceous")) return(d[[paste0("cov_", type)]])
+  frac <- d[[paste0("frac_", type)]]
+  if (str_starts(layer, "share_")) return(100 * frac)
+  parent <- if (type %in% c("needle", 'broad')) d$cov_tree else d$cov_herbaceous
+  # fractions are undefined where the parent class is absent
+  if_else(!is.na(parent) & parent == 0, 0, parent * frac)
+}
+
+# training data with the current predictions at each pixel (pred_<layer>)
+train <- map(unique(vars$vc), \(v) {
+  d <- read_cover_training(v)
+  p <- terra::extract(pred$current, as.matrix(d[c("x", "y")]))
+  bind_cols(d, rename_with(as_tibble(p), \(n) paste0("pred_", n)))
+}) |>
+  set_names(unique(vars$vc))
+
+f5 <- .pred_vars$f5
+
+# wall-to-wall observed tree cover (c02 only)
+wall <- vc_tree == "c02"
+if (wall) {
+  rap_tree <- terra::rast(file.path(paths$large, "Data_processed/CoverData/rap",
+                                    "RAP_v3_cover_2021_1000m.tif"))[["tree"]]
+  rap_zero <- 100 * read_zero_tree_raster("fracZeroTree") > zt_threshold
+  # GEE exports are one cell larger than the snap grid
+  rap_tree <- align_raster(rap_tree, pred$current)
+  rap_zero <- align_raster(rap_zero, pred$current)
+  obs_tree <- terra::ifel(rap_zero == 1, 0, rap_tree) |>
+    terra::mask(rap_tree) |>  # NA where either layer is missing
+    terra::mask(rap_zero)
+  diff_tree <- terra::mask(pred$current$cover_tree, obs_tree) - obs_tree
+}
+```
+
+```{r resid-fun}
+#' Pixel-year table of observed and predicted values of one layer
+resid_df <- function(layer, vc) {
+  train[[vc]] |>
+    mutate(cover = observed_layer(train[[vc]], layer),
+           cover_pred = .data[[paste0("pred_", layer)]]) |>
+    filter(!is.na(cover), !is.na(cover_pred))
+}
+
+#' Map of predicted - observed at the training pixels (mean over years)
+plot_resid_points <- function(df, label, unit) {
+  px <- df |>
+    summarise(resid = mean(cover_pred - cover), .by = c(cell, x, y)) |>
+    sf::st_as_sf(coords = c("x", "y"), crs = terra::crs(pred$current))
+  lim <- max(abs(quantile(px$resid, c(0.05, 0.95), names = FALSE)))
+  plot_points_conus(px, color_var = "resid", point_size = 0.3,
+                    colorscale = colorscale_diverging(
+                      name = paste0("Predicted -\nobserved\n(", unit, ")"),
+                      limits = c(-lim, lim), aesthetics = "colour"),
+                    title = paste(label, "- residuals at training pixels"),
+                    inset_hist = TRUE)
+}
+
+#' Quantile plot of observed and predicted against the f5 predictors
+plot_resid_quantiles <- function(df, label, ylab) {
+  predvars2deciles(df, response_vars = c("cover", "cover_pred"),
+                   pred_vars = f5) |>
+    decile_dotplot("cover", df = _, ylab = ylab, add_predicted = TRUE,
+                   title = label, add_ribbon = TRUE)
+}
+```
+
+## Fit metrics
+
+In sample, for every layer: at the training pixel-years (data version
+`vc`), and for tree cover also wall to wall against the RAP raster (all
+cells with RAP data). Units are % cover, or % share for shares. MSE is
+RMSE^2; R^2 is 1 - SSE/SST (negative when the predictions do worse than the
+observed mean); bias is mean(predicted - observed).
+
+```{r resid-metrics}
+metrics <- pmap(vars, \(layer, label, vc, ...) {
+  df <- resid_df(layer, vc)
+  cover_metrics(df$cover, df$cover_pred) |>
+    mutate(layer = layer, label = label, compared_to = paste("training", vc),
+           .before = 1)
+}) |>
+  bind_rows()
+
+if (wall) {
+  v <- terra::values(c(obs_tree, pred$current$cover_tree), mat = TRUE,
+                     na.rm = TRUE)
+  metrics <- cover_metrics(v[, 1], v[, 2]) |>
+    mutate(layer = "cover_tree", label = "Tree cover",
+           compared_to = "RAP 2021 raster", .before = 1) |>
+    bind_rows(metrics)
+  rm(v)
+}
+
+metrics |>
+  mutate(MSE = RMSE^2, .before = RMSE) |>
+  select(-layer) |>
+  knitr::kable(digits = 2)
+```
+
+## By type {.tabset}
+
+```{r resid-by-group, results = "asis", fig.width = 10, fig.height = 7}
+walk(unique(vars$group), \(g) {
+  cat("\n\n### ", g, "\n\n", sep = "")
+  filter(vars, group == g) |>
+    pwalk(\(layer, label, is_share, vc, ...) {
+      unit <- if (is_share) "% share" else "% cover"
+      ylab <- paste0(if (is_share) "Share" else "Cover", " (%)")
+      df <- resid_df(layer, vc)
+      cat("\n\n", label, ": ", nrow(df), " pixel-years (", vc, ")\n\n",
+          sep = "")
+
+      if (layer == "cover_tree" && wall) {
+        lim <- max(abs(c(raster_quantile(diff_tree, 0.05),
+                         raster_quantile(diff_tree, 0.95))))
+        print(plot_map_conus(diff_tree,
+                             colorscale = colorscale_diverging(
+                               name = "Predicted -\nRAP (% cover)",
+                               limits = c(-lim, lim)),
+                             title = "Tree cover - predicted minus RAP 2021",
+                             inset_hist = TRUE))
+      } else {
+        print(plot_resid_points(df, label, unit))
+      }
+      cat("\n\n")
+      print(plot_resid_quantiles(df, label, ylab))
+      cat("\n\n")
+    })
+})
+```
+
+# Session info
+
+```{r session-info}
+sessionInfo()
+```

@@ -55,7 +55,7 @@ option_list <- list(
   # cover model version ('vmc' = version model, cover); separate from --vm,
   # which is the biomass model version
   optparse::make_option("--vmc", type = "character",
-                        default = "m01")
+                        default = "m01.5")
   
 )
 

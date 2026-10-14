@@ -320,6 +320,102 @@ source('Functions/models/predictors.R')
   )
 }
 
+#' Spec for tree cover by leaf type (tree_leaf_cover())
+#'
+#' Which combined tree cover (04_combine_tree.R) and which needleleaf share
+#' model to combine. Nothing is written to disk; `tree_leaf_cover()` computes
+#' the layers when called. No data version for the result: the two models can
+#' be fit to different data.
+#'
+#' @param .all_vmc Version used for both models unless given explicitly.
+#' @param .needle_vc Data version of the needleleaf share model.
+#' @param tree_vmc Version of the combined tree cover
+#'   (`cover_specs$combined$tree`); it has no data version of its own.
+#' @param needle `c(vc = , vmc = )`: data and model version of the
+#'   needleleaf share model (proportion/needle).
+#' @return A spec list: `components` (tibble, one row per model; `vc` is NA
+#'   for the combined tree cover).
+.defaults_combined_tree_prop <- function(.all_vmc = NULL, .needle_vc = NULL,
+                                         tree_vmc = .all_vmc,
+                                         needle = c(vc = .needle_vc,
+                                                    vmc = .all_vmc)) {
+  stopifnot(length(tree_vmc) == 1,
+            setequal(names(needle), c("vc", "vmc")))
+  list(
+    components = tibble::tibble(
+      component   = c("tree", "needle"),
+      cover_type  = c("combined", "proportion"),
+      cover_model = c("tree", "needle"),
+      vc          = c(NA_character_, needle[["vc"]]),
+      vmc         = c(tree_vmc, needle[["vmc"]])
+    )
+  )
+}
+
+#' Spec for herbaceous cover by functional type (04_combine_herb.R)
+#'
+#' Which version of each of the four component models to combine: the C3,
+#' C4 and forb shares and herbaceous cover. No data version for the result:
+#' the models can be fit to different data.
+#'
+#' @param .all_vc,.all_vmc Data and model version used for all four unless
+#'   given explicitly.
+#' @param c3,c4,forb,herbaceous Each `c(vc = , vmc = )`: the data and model
+#'   version of that component (proportion/c3, proportion/c4,
+#'   proportion/forb, cover/herbaceous).
+#' @return A spec list: `components` (tibble, one row per model).
+.defaults_combined_herb <- function(.all_vc = NULL, .all_vmc = NULL,
+                                    c3 = c(vc = .all_vc, vmc = .all_vmc),
+                                    c4 = c3,
+                                    forb = c3,
+                                    herbaceous = c3) {
+  ids <- list(c3 = c3, c4 = c4, forb = forb, herbaceous = herbaceous)
+  stopifnot(all(map_lgl(ids, \(x) setequal(names(x), c("vc", "vmc")))))
+  list(
+    components = tibble::tibble(
+      component   = names(ids),
+      cover_type  = c("proportion", "proportion", "proportion", "cover"),
+      cover_model = names(ids),
+      vc          = map_chr(ids, "vc"),
+      vmc         = map_chr(ids, "vmc")
+    )
+  )
+}
+
+#' Spec for all final cover layers (01_combined_all_diagnostics.Rmd,
+#' read_combined_all())
+#'
+#' Tree cover by leaf type, shrub cover, and herbaceous cover by functional
+#' type. Nothing is written to disk; `read_combined_all()` reads or computes
+#' the layers. No data version for the result: the models can be fit to
+#' different data.
+#'
+#' @param .all_vmc Version used for all three components unless given
+#'   explicitly.
+#' @param .shrub_vc Data version of the shrub cover model.
+#' @param tree_all_vmc Version of `cover_specs$combined$tree_all`.
+#' @param herbaceous_vmc Version of `cover_specs$combined$herbaceous`.
+#' @param shrub `c(vc = , vmc = )`: data and model version of the shrub cover
+#'   model (cover/shrub).
+#' @return A spec list: `components` (tibble, one row per component; `vc` is
+#'   NA for the combined ones).
+.defaults_combined_all <- function(.all_vmc = NULL, .shrub_vc = NULL,
+                                   tree_all_vmc = .all_vmc,
+                                   herbaceous_vmc = .all_vmc,
+                                   shrub = c(vc = .shrub_vc, vmc = .all_vmc)) {
+  stopifnot(length(tree_all_vmc) == 1, length(herbaceous_vmc) == 1,
+            setequal(names(shrub), c("vc", "vmc")))
+  list(
+    components = tibble::tibble(
+      component   = c("tree_all", "herbaceous", "shrub"),
+      cover_type  = c("combined", "combined", "cover"),
+      cover_model = c("tree_all", "herbaceous", "shrub"),
+      vc          = c(NA_character_, NA_character_, shrub[["vc"]]),
+      vmc         = c(tree_all_vmc, herbaceous_vmc, shrub[["vmc"]])
+    )
+  )
+}
+
 
 cover_specs <- list(
   
@@ -543,7 +639,8 @@ cover_specs <- list(
     )
   ),
   # combined predictions: one version = a set of component models
-  # (04_combine_tree.R)
+  # (04_combine_tree.R, 04_combine_herb.R, tree_leaf_cover(),
+  # read_combined_all())
   combined = list(
     tree = list(
       m01.0 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.0"),
@@ -552,6 +649,25 @@ cover_specs <- list(
       m01.6 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.6"),
       m01.7 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.7"),
       m04.1 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m04.1")
+    ),
+    # tree cover by leaf type: combined tree cover x needleleaf share
+    # (tree_leaf_cover(); not written to disk)
+    tree_all = list(
+      m01.5 = .defaults_combined_tree_prop(.all_vmc = "m01.5",
+                                           .needle_vc = "c01"),
+      m04.1 = .defaults_combined_tree_prop(.all_vmc = "m04.1",
+                                           .needle_vc = "c01")
+    ),
+    # herbaceous cover by functional type (04_combine_herb.R)
+    herbaceous = list(
+      m01.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m01.5"),
+      m04.1 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m04.1")
+    ),
+    # all final layers: tree_all, shrub and herbaceous (read_combined_all(),
+    # 01_combined_all_diagnostics.Rmd; not written to disk)
+    all = list(
+      m01.5 = .defaults_combined_all(.all_vmc = "m01.5", .shrub_vc = "c01"),
+      m04.1 = .defaults_combined_all(.all_vmc = "m04.1", .shrub_vc = "c01")
     )
   )
 )

@@ -5,10 +5,10 @@
 # folder structure, except just store big files there so don't 
 # take up local storage
 paths <- list()
-if(dir.exists("E:/USGS")) {
-  .base <- "E:/USGS"
-} else if(dir.exists("D:/USGS")) {
+if(dir.exists("D:/USGS")) {
   .base <- "D:/USGS"
+} else if(dir.exists("E:/USGS")) {
+  .base <- "E:/USGS"
 } else {
   warning('directory not found')
 }
