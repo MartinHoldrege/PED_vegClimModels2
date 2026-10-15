@@ -5,12 +5,25 @@
 # Joins are on cell (and year), with checks that x, y agree with the cell.
 # Rows missing soils are kept.
 #
+# c_needle and c_broad (needleleaf and broadleaf tree cover) are replaced by
+# the field fractions (frac_needle, frac_broad) times 2021 RAP tree cover at
+# the cell, set to 0 where the RAP zero-tree layer is 1. RAP is treated as the
+# better estimate of tree cover over the 1 km cell, and it is what the tree
+# cover models are fit to, so these are comparable with the model's
+# needleleaf share x predicted tree cover. NA where the cell has no 2021 RAP
+# tree cover (e.g. masked by LCMAP or fire in that export). Note: c_needle and
+# c_broad are not used for model fitting just in validation
+#
 # Inputs:
 #   cover_by_pixel_year_all-sources_<vc>.csv - 06_cover_add-rap.R
 #   daymet_climate-at-points_<vc>.csv        - 07_summarise_daymet_climate_points.R
 #   soil_covariates_solus100_1000m.tif       - 02_soils_calculate_variables.R
 #   daymet_conus_snap_1000m.tif              - 00_create_snap_raster.R
 #                                              (read_mask())
+#   RAP_v3_cover_2021_1000m.tif              - 03_rap_sample.js
+#   RAP_v3_fracZeroTree_lt3_2021-2021_1000m.tif
+#                                            - 03_rap_frac-zero-tree.js
+#                                              (read_zero_tree_raster())
 #
 # Output:
 #   cover_clim_soils_<vc>.csv (read with read_cover_training())
@@ -23,12 +36,14 @@
 source("Functions/init.R")
 source_functions()
 
-vc <- opt$vc  # cover data version
+vc <- opt$vc
 
 if(vc == 'c02') {
   stop("cover data version 'c02' is created in 
        Analysis/Cover/DataPrep/05_rap_training_sample.R
        that version can't be created in this script")
+} else if (vc != 'c01') {
+  stop('code not setup for other vc yet')
 }
 
 # params ------------------------------------------------------------------
@@ -75,5 +90,30 @@ stopifnot(all(out$x == out$x_clim), all(out$y == out$y_clim))
 out <- out |>
   select(-x_clim, -y_clim) |>
   bind_cols(as_tibble(soil_r[out$cell]))
+
+# needleleaf and broadleaf cover from RAP tree cover ----------------------
+
+rap_tree <- terra::rast(file.path(paths$large, "Data_processed/CoverData/rap",
+                                  "RAP_v3_cover_2021_1000m.tif"))[["tree"]] |>
+  # GEE exports come back one cell larger in each direction than the snap grid
+  align_raster(mask_r)
+zero_tree <- read_zero_tree_raster("zeroTree") |>
+  align_raster(mask_r)
+
+# RAP tree cover, 0 where the zero-tree layer is 1 (left as is where that
+# layer is NA)
+rap_tree_cell <- rap_tree[out$cell][[1]]
+zero_cell <- zero_tree[out$cell][[1]]
+rap_tree_cell[!is.na(zero_cell) & zero_cell == 1] <- 0
+
+out <- out |>
+  mutate(c_needle_field = c_needle,
+         c_broad_field = c_broad,
+         c_needle = frac_needle * rap_tree_cell,
+         c_broad  = frac_broad * rap_tree_cell)
+
+message("rows with frac_needle: ", sum(!is.na(out$frac_needle)),
+        " | with c_needle (RAP tree cover available): ",
+        sum(!is.na(out$c_needle)))
 
 write_csv(out, out_file)
