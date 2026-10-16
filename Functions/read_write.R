@@ -397,6 +397,28 @@ read_zero_tree_raster <- function(layer = c('zeroTree', 'fracZeroTree'),
   r
 }
 
+#' Read the 1 km RAP v3 cover for one year
+#'
+#' Wall-to-wall export from 03_rap_sample.js (LCMAP and that year's fire mask
+#' applied), aligned to the snap grid. Values are % cover.
+#'
+#' @param year Year of the export.
+#' @param layers Layers to keep (tree, shrub, herbaceous, bare_ground); NULL
+#'   keeps all.
+#' @param root Root path for large files.
+#' @return SpatRaster on the snap grid.
+read_rap_cover_raster <- function(year = 2021, layers = NULL, root = paths$large) {
+  path <- file.path(root, "Data_processed/CoverData/rap",
+                    paste0("RAP_v3_cover_", year, "_1000m.tif"))
+  stopifnot(file.exists(path))
+  r <- terra::rast(path)
+  if (!is.null(layers)) {
+    stopifnot(all(layers %in% names(r)))
+    r <- r[[layers]]
+  }
+  # GEE exports come back one cell larger in each direction than the snap grid
+  align_raster(r, read_mask())
+}
 
 #' Load EPA L3 ecoregion raster on the daymet grid
 #'

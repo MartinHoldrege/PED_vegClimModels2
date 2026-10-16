@@ -41,6 +41,10 @@
 #   cover_by_pixel_year_all-sources_<vc>.csv
 #   diagnostics_pixel-n_achieved-vs-target_<vc>.csv
 #
+# c03: as c01, but at field pixels with RAP 2021 tree cover < tree_cutoff,
+# field shrub and herbaceous cover are replaced by RAP 2021 (see "c03" section
+# below). Other versions get the c01 data.
+#
 # September, 2026
 
 
@@ -49,8 +53,7 @@
 source("Functions/init.R")
 source_functions()
 
-vc <- opt$vc # 'c01' # cover output version (code not yet setup to do anything, 
-# different depending on different versions)
+vc <- opt$vc # 'c01' # cover output version (only setup for c01 (default) or c03)
 
 # Part 1 ------------------------------------------------------------------
 
@@ -508,6 +511,100 @@ cover_final <- field_final |>
   left_join(eco_lookup, by = c('region' = 'eco_id')) |> 
   select(-region) |> 
   arrange(eco_code, cell, year) 
+
+# * c03: RAP 2021 shrub and herbaceous at field pixels ---------------------
+# For each group (shrub, herbaceous), a field pixel is replaced if it had
+# field cover for that group in any year, its RAP 2021 tree cover is
+# < tree_cutoff, and RAP 2021 has a value for the group. Only pixels that
+# already had the group are replaced, so sampling density doesn't change.
+# Replacing means: the group's field values are set to NA in all the pixel's
+# years, and the RAP 2021 value is added once, in a 2021 row. If the pixel
+# still has a field 2021 row (with other data), the RAP value goes in that
+# row and "rap" is added to its sources (e.g. "ldc,rap"), so there is still
+# one row per pixel-year; otherwise a new "rap" row is added. Rows left with
+# no data are dropped. Tree, fractions and the augmentation RAP rows are
+# unchanged. Bare ground is left as in c01.
+
+if (vc == "c03") {
+  rap_year <- 2021
+  rep_groups <- c("shrub", "herbaceous")
+  rep_cols <- paste0("cov_", rep_groups)
+  rap21 <- read_rap_cover_raster(rap_year, layers = c("tree", rep_groups))
+  
+  is_field <- cover_final$sources != "rap" # augmentation rows are "rap"
+  field_cells <- unique(cover_final$cell[is_field])
+  rap_cell <- as_tibble(rap21[field_cells]) |> 
+    mutate(cell = field_cells)
+  
+  # whether each field pixel had each group in any year, and RAP 2021
+  had <- cover_final[is_field, ] |> 
+    summarise(across(all_of(rep_cols), \(z) any(!is.na(z))), .by = cell) |> 
+    left_join(rap_cell, by = "cell")
+  nonforest <- !is.na(had$tree) & had$tree < tree_cutoff
+  
+  # RAP value per pixel and group; NA where the pixel isn't replaced
+  rap_rep <- select(had, cell)
+  for (g in rep_groups) {
+    cc <- paste0("cov_", g)
+    rap_rep[[cc]] <- if_else(had[[cc]] & nonforest, had[[g]], NA_real_)
+  }
+  
+  # field pixels per group: replaced, kept because RAP tree >= tree_cutoff,
+  # kept because RAP is NA there (masked)
+  message("\nc03 field pixels:")
+  tibble(group = rep_groups,
+         field_pixels = map_int(rep_cols, \(cc) sum(had[[cc]])),
+         replaced = map_int(rep_cols, \(cc) sum(!is.na(rap_rep[[cc]]))),
+         kept_rap_tree = map_int(rep_cols, \(cc) {
+           sum(had[[cc]] & had$tree >= tree_cutoff, na.rm = TRUE)
+         })) |> 
+    mutate(kept_rap_na = field_pixels - replaced - kept_rap_tree) |> 
+    as.data.frame() |> print()
+  
+  rap_rep <- filter(rap_rep, if_any(all_of(rep_cols), \(z) !is.na(z)))
+  rap_rep_sfx <- rename_with(rap_rep, \(x) paste0(x, "_rap"), -cell)
+  
+  # pixel info for new rows, taken before any rows are dropped
+  px_info <- distinct(cover_final, cell, x, y, eco_code, eco_name)
+  stopifnot(!anyDuplicated(px_info$cell))
+  
+  # NA the replaced groups' field values, then drop rows with no data left
+  cover_c03 <- left_join(cover_final, rap_rep_sfx, by = "cell")
+  for (cc in rep_cols) {
+    replaced <- !is.na(cover_c03[[paste0(cc, "_rap")]])
+    cover_c03[[cc]][replaced] <- NA_real_
+  }
+  n_before <- nrow(cover_c03)
+  cover_c03 <- cover_c03 |> 
+    select(-ends_with("_rap")) |> 
+    filter(if_any(starts_with(c("cov_", "frac_", "c_")), \(z) !is.na(z)))
+  
+  # RAP values into existing 2021 rows, or new rows
+  rows_2021 <- filter(cover_c03, year == rap_year)
+  rap_in  <- filter(rap_rep_sfx, cell %in% rows_2021$cell)
+  rap_new <- filter(rap_rep, !cell %in% rows_2021$cell)
+  
+  cover_c03 <- left_join(cover_c03, mutate(rap_in, year = rap_year),
+                         by = c("cell", "year"))
+  in_row <- cover_c03$cell %in% rap_in$cell & cover_c03$year == rap_year
+  cover_c03$sources[in_row] <- paste0(cover_c03$sources[in_row], ",rap")
+  for (cc in rep_cols) {
+    cover_c03[[cc]] <- coalesce(cover_c03[[paste0(cc, "_rap")]], cover_c03[[cc]])
+  }
+  cover_c03 <- select(cover_c03, -ends_with("_rap"))
+  
+  rap_new <- rap_new |> 
+    left_join(px_info, by = "cell") |> 
+    mutate(year = rap_year, sources = "rap", n_plots = NA_integer_)
+  
+  message("  field rows with no data left, dropped: ",
+          n_before - nrow(cover_c03),
+          "\n  RAP added to an existing ", rap_year, " row: ", nrow(rap_in),
+          " | new rows: ", nrow(rap_new))
+  
+  cover_final <- bind_rows(cover_c03, rap_new) |> 
+    arrange(eco_code, cell, year)
+}
 
 test <- cover_final |> 
   select(cell, year, x, y, eco_code, eco_name, sources) |> 

@@ -122,14 +122,17 @@ if (!file.exists(p_global) || rerun) {
 
 # anomalies (training pixel-years) ----------------------------------------
 
-anom <- read_cover_training(vc) |>
+# c03 uses c01's anomaly sds, so models fit to either are on the same scale
+vc_anom <- if (vc == "c03") "c01" else vc
+
+anom <- read_cover_training(vc_anom) |>
   select(ends_with("_3yrAnom"))
 
 anom_params <- tibble(variable = names(anom),
                       mean = 0,
                       sd = map_dbl(anom, \(z) sd(z, na.rm = TRUE)),
                       n = colSums(!is.na(anom)),
-                      source = paste("training pixel-years", vc),
+                      source = paste("training pixel-years", vc_anom),
                       mean_obs = map_dbl(anom, \(z) mean(z, na.rm = TRUE)))
 
 stopifnot(ncol(anom) > 0, all(anom_params$sd > 0))
