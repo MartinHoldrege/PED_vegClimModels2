@@ -15,7 +15,8 @@
 #
 # Single-source panels use only pixel-years with that source alone. Pixel-years
 # with more than one field source (e.g. "fia,ldc") hold their average, so they
-# get their own panel rather than being attributed to one source.
+# get their own panel rather than being attributed to one source. In c03,
+# shrub and herbaceous in field rows with "rap" added are plotted as RAP.
 #
 # Each panel has an inset histogram of its non-zero pixel means, scaled to the
 # panel's own tallest bar, so shapes are comparable but counts are not (counts
@@ -42,6 +43,8 @@
 #   ecoregion/eco_cover_<vc>.png
 #   ecoregion/eco_proportions_<vc>.png
 #   ecoregion/eco_density_<vc>.png
+# Only groups in plot_groups are drawn (c03: shrub and herbaceous, and no
+# proportions figure).
 #
 # September, 2026
 
@@ -73,6 +76,9 @@ groups <- c(tree        = "cov_tree",
             shrub       = "cov_shrub",
             herbaceous  = "cov_herbaceous",
             bare_ground = "cov_bare_ground")
+
+# groups to make figures for; c03 differs from c01 only in shrub and herbaceous
+plot_groups <- if (vc == "c03") c("shrub", "herbaceous") else names(groups)
 
 # panel order and labels; names other than "all" and "multiple" are the
 # tokens in `sources`
@@ -106,13 +112,24 @@ message("pixel-years by source:")
 count(cover, sources, sort = TRUE) |> as.data.frame() |> print()
 
 # pixel means -------------------------------------------------------------
-# Every pixel-year goes in "all", and once more in its source panel.
+# Every pixel-year goes in "all", and once more in its source panel. The
+# source panel is set per group: in c03, a field row with "rap" added (e.g.
+# "ldc,rap") has RAP shrub and herbaceous, but field tree and bare ground.
 
-pixel_means <- cover |>
-  mutate(panel = if_else(str_detect(sources, ","), "multiple", sources)) |>
-  bind_rows(mutate(cover, panel = "all")) |>
-  summarise(across(all_of(unname(groups)), mean_na),
-            .by = c(panel, cell, x, y))
+rap_replaced_cols <- c("cov_shrub", "cov_herbaceous")
+
+cover_long <- cover |>
+  pivot_longer(all_of(unname(groups)), names_to = "col", values_to = "value") |>
+  filter(!is.na(value)) |>
+  mutate(src = if_else(col %in% rap_replaced_cols & str_detect(sources, "rap"),
+                       "rap", str_remove_all(sources, ",rap")),
+         panel = if_else(str_detect(src, ","), "multiple", src)) |>
+  select(-src)
+
+pixel_means <- cover_long |>
+  bind_rows(mutate(cover_long, panel = "all")) |>
+  summarise(value = mean(value), .by = c(panel, cell, x, y, col)) |>
+  pivot_wider(names_from = col, values_from = value)
 
 message("\npixels with data, by panel and group:")
 pixel_means |>
@@ -121,7 +138,7 @@ pixel_means |>
 
 # maps --------------------------------------------------------------------
 
-for (g in names(groups)) {
+for (g in plot_groups) {
   
   d <- pixel_means |>
     filter(!is.na(.data[[groups[[g]]]])) |>
@@ -349,7 +366,7 @@ eco_caption <- paste0(
   "cells passing the LCMAP and 2023 fire masks.\nEcoregions with ",
   "fewer than ", min_pixels, " sampled pixels are not shown.")
 
-cover_panels <- map(names(groups), \(g) {
+cover_panels <- map(plot_groups, \(g) {
   d <- filter(eco_cover, group == g)
   plot_eco(d,
            colorscale = colorscale_cover(
@@ -363,12 +380,16 @@ fig_cover <- wrap_plots(cover_panels, ncol = 2) +
   plot_annotation(title = "Mean cover by EPA Level III ecoregion, training data",
                   caption = eco_caption)
 
-ggsave(eco_file("eco_cover"), fig_cover, width = 12, height = 7.5,
+ggsave(eco_file("eco_cover"), fig_cover, width = 12,
+       height = 3.5 * ceiling(length(plot_groups) / 2) + 0.5,
        dpi = dpi, bg = "white")
 message("Wrote ", eco_file("eco_cover"))
 
 # * figure: proportions ---------------------------------------------------
 
+# proportions don't change between versions that share the field fractions,
+# so only drawn with the full set of groups
+if (setequal(plot_groups, names(groups))) {
 frac_scale <- colorscale_biomass(name = "Proportion", limits = c(0, 1))
 
 frac_panels <- imap(frac_labels, \(lab, v) {
@@ -395,6 +416,7 @@ fig_frac <- wrap_plots(frac_panels$frac_needle, frac_panels$frac_broad,
 ggsave(eco_file("eco_proportions"), fig_frac, width = 15, height = 6.5,
        dpi = dpi, bg = "white")
 message("Wrote ", eco_file("eco_proportions"))
+}
 
 # * figure: sampling density ----------------------------------------------
 
@@ -418,7 +440,7 @@ dens_lim   <- range(c(eco_density$km2_total, eco_density$km2_available),
 dens_scale <- colorscale_biomass(name = "km\u00b2 per\nsampled pixel",
                                  limits = dens_lim, transform = "log10")
 
-dens_panels <- map(names(groups), \(g) {
+dens_panels <- map(plot_groups, \(g) {
   d <- filter(eco_density, group == g)
   list(
     plot_eco(transmute(d, region, value = km2_total), dens_scale,
@@ -441,6 +463,7 @@ fig_density <- wrap_plots(dens_panels, ncol = 2) +
       " km\u00b2 of unmasked area per pixel.\nSampled pixels include any in ",
       "masked cells. Blank ecoregions have no sampled pixels."))
 
-ggsave(eco_file("eco_density"), fig_density, width = 11, height = 13,
+ggsave(eco_file("eco_density"), fig_density, width = 11,
+       height = 3.1 * length(plot_groups) + 0.6,
        dpi = dpi, bg = "white")
 message("Wrote ", eco_file("eco_density"))
