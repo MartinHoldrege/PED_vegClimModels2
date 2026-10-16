@@ -211,12 +211,19 @@ See each model's own diagnostics report for out-of-fold predictions.
   pixel. Observed shares are the field fractions (`frac_<type>`, as %);
   observed cover of a type is its parent cover times its fraction, as the
   predictions are built, e.g. modelled `share_c3` is compared with
-  `100 * frac_c3`, and `cover_c3` with `cov_herbaceous * frac_c3` (needleleaf:
-  `cov_tree * frac_needle`). Broadleaf isn't modelled directly (its share is
-  100% minus the needleleaf share), so its observations are those of the
-  needleleaf model, with `frac_broad` (= 1 - `frac_needle`). The
-  component covers (`c_<type>`) are not used: LFRDB's are summed species
-  cover, which can exceed 100%, and LDC's are any-hit rather than first-hit.
+  `100 * frac_c3`, and `cover_c3` with `cov_herbaceous * frac_c3`. The
+  exception is needleleaf and broadleaf cover, which are compared with
+  `c_needle` and `c_broad`: the field fractions times 2021 RAP tree cover at
+  the cell (0 where the RAP zero-tree layer is 1 or RAP tree cover is 0,
+  even if the fraction is NA; see
+  `08_combine_cover_and_covariates.R`), as the tree cover model is fit to
+  RAP. These are NA where the cell has no 2021 RAP tree cover, so they have
+  fewer pixel-years than the shares. Broadleaf isn't modelled directly (its
+  share is 100% minus the needleleaf share), so its observations are those
+  of the needleleaf model, with `frac_broad` (= 1 - `frac_needle`). The
+  other component covers (`c_<type>`) are not used: LFRDB's are summed
+  species cover, which can exceed 100%, and LDC's are any-hit rather than
+  first-hit.
 
 Quantile plots use the training pixel-years and the f5 predictors
 (`.pred_vars$f5`), whatever the models were fit with.
@@ -257,9 +264,10 @@ zt_threshold <- read_cover_model(zt$cover_type, zt$cover_model, zt$vc,
 #'
 #' Tree cover is set to 0 where the zero-tree % is above the zero-tree
 #' threshold (where that column exists), as the predictions are. Shares are
-#' the fractions (`frac_<type>`) as %; cover of a type is its parent cover
-#' times its fraction (needle, broad: `cov_tree`; c3, c4, forb:
-#' `cov_herbaceous`), and 0 where the parent cover is 0.
+#' the fractions (`frac_<type>`) as %. Needleleaf and broadleaf cover are
+#' `c_needle` and `c_broad` (field fraction x 2021 RAP tree cover, from
+#' `08_combine_cover_and_covariates.R`). Cover of c3, c4 and forb is
+#' `cov_herbaceous` times the fraction, and 0 where `cov_herbaceous` is 0.
 #'
 #' @param d Training data (`read_cover_training()`).
 #' @param layer Layer name, e.g. "cover_forb".
@@ -277,7 +285,9 @@ observed_layer <- function(d, layer) {
   if (type %in% c("shrub", "herbaceous")) return(d[[paste0("cov_", type)]])
   frac <- d[[paste0("frac_", type)]]
   if (str_starts(layer, "share_")) return(100 * frac)
-  parent <- if (type %in% c("needle", 'broad')) d$cov_tree else d$cov_herbaceous
+  # RAP-based, as the tree cover model is fit to RAP
+  if (type %in% c("needle", "broad")) return(d[[paste0("c_", type)]])
+  parent <- d$cov_herbaceous
   # fractions are undefined where the parent class is absent
   if_else(!is.na(parent) & parent == 0, 0, parent * frac)
 }
@@ -346,14 +356,25 @@ In sample, for every layer: at the training pixel-years (data version
 `vc`), and for tree cover also wall to wall against the RAP raster (all
 cells with RAP data). Units are % cover, or % share for shares. MSE is
 RMSE^2; R^2 is 1 - SSE/SST (negative when the predictions do worse than the
-observed mean); bias is mean(predicted - observed).
+observed mean); bias is mean(predicted - observed). Needleleaf and
+broadleaf cover also get a row for observed cover > 0 only, as the many
+observed zeros (wherever RAP tree cover is 0) can inflate the fit.
 
 ```{r resid-metrics}
 metrics <- pmap(vars, \(layer, label, vc, ...) {
   df <- resid_df(layer, vc)
-  cover_metrics(df$cover, df$cover_pred) |>
+  out <- cover_metrics(df$cover, df$cover_pred) |>
     mutate(layer = layer, label = label, compared_to = paste("training", vc),
            .before = 1)
+  if (layer %in% c("cover_needle", "cover_broad")) {
+    nz <- filter(df, cover > 0)
+    nz_row <- cover_metrics(nz$cover, nz$cover_pred) |>
+      mutate(layer = layer, label = label,
+             compared_to = paste("training", vc, "(observed > 0)"),
+             .before = 1)
+    out <- bind_rows(out, nz_row)
+  }
+  out
 }) |>
   bind_rows()
 

@@ -10,7 +10,8 @@
 # the cell, set to 0 where the RAP zero-tree layer is 1. RAP is treated as the
 # better estimate of tree cover over the 1 km cell, and it is what the tree
 # cover models are fit to, so these are comparable with the model's
-# needleleaf share x predicted tree cover. NA where the cell has no 2021 RAP
+# needleleaf share x predicted tree cover. 0 where the RAP tree cover is 0,
+# even where the field fraction is NA. NA where the cell has no 2021 RAP
 # tree cover (e.g. masked by LCMAP or fire in that export). Note: c_needle and
 # c_broad are not used for model fitting just in validation
 #
@@ -109,8 +110,13 @@ rap_tree_cell[!is.na(zero_cell) & zero_cell == 1] <- 0
 out <- out |>
   mutate(c_needle_field = c_needle,
          c_broad_field = c_broad,
-         c_needle = frac_needle * rap_tree_cell,
-         c_broad  = frac_broad * rap_tree_cell)
+         # 0 where RAP has no trees, even if the field fraction is NA (no
+         # trees in the plot); this adds observations only where RAP is 0, so
+         # the sample isn't random, but these columns are only for validation
+         c_needle = if_else(!is.na(rap_tree_cell) & rap_tree_cell == 0, 0,
+                            frac_needle * rap_tree_cell),
+         c_broad  = if_else(!is.na(rap_tree_cell) & rap_tree_cell == 0, 0,
+                            frac_broad * rap_tree_cell))
 
 message("rows with frac_needle: ", sum(!is.na(out$frac_needle)),
         " | with c_needle (RAP tree cover available): ",
