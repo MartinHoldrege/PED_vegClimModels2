@@ -43,7 +43,7 @@ if(vc == 'c02') {
   stop("cover data version 'c02' is created in 
        Analysis/Cover/DataPrep/05_rap_training_sample.R
        that version can't be created in this script")
-} else if (vc != 'c01') {
+} else if (!vc %in% c('c01', 'c03')) {
   stop('code not setup for other vc yet')
 }
 

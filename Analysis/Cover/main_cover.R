@@ -20,16 +20,18 @@ library(purrr)
 
 # what to run -------------------------------------------------------------
 
-run_fit      <- FALSE
+run_fit      <- TRUE
 run_predict  <- TRUE
 run_evaluate <- TRUE
 
-# cover data version: vc_default, unless the model is listed in vc_model (not
+# cover data version(s): vc_default, unless the model is listed in vc_model
+# (several versions = each vmc is run on each; not
 # used by combined runs)
 vc_default <- "c02"
-vc_model <- c(
-  #shrub = "c01", 
-  herbaceous = "c01",
+vc_model <- list(
+  bare_ground = c("c01", "c02"),
+  shrub = "c03", 
+  herbaceous = "c03",
   needle = "c01", c3 = "c01", c4 = "c01", forb = "c01")
 
 fit_scripts <- c(
@@ -47,8 +49,9 @@ cover_runs <- list(
   cover          = list(
     # tree_forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
     # tree_nonforest = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    # shrub = c('m01.5'),
-    # herbaceous = c('m01.5', 'm04.1')
+    shrub = c('m01.5', 'm04.1'),
+    herbaceous = c('m01.5', 'm04.1'),
+    bare_ground = c('m01.5', 'm04.1')
   ),
   proportion = list(
     # c3 = c('m01.5', 'm04.1'),
@@ -59,8 +62,8 @@ cover_runs <- list(
   # versions of cover_specs$combined
   combined       = list(
     # tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    # herbaceous = c('m01.5', 'm04.1'),
-    all = c('m01.5', 'm04.1')
+    herbaceous = c('m02.5', 'm04.5'),
+    all = c('m01.5', 'm02.5', 'm04.1', 'm04.5')
   )
 )
 
@@ -109,7 +112,8 @@ runs <- imap(cover_runs, \(models, cover_type) {
     bind_rows()
 }) |>
   bind_rows() |>
-  mutate(vc = coalesce(unname(vc_model[cover_model]), vc_default)) |>
+  mutate(vc = map(cover_model, \(m) vc_model[[m]] %||% vc_default)) |>
+  tidyr::unnest(vc) |>
   # combined runs use the outputs of the others, so they go last
   arrange(cover_type == "combined")
 
@@ -119,10 +123,21 @@ stopifnot(all(runs$cover_type %in% c(names(fit_scripts), "combined")),
 print(runs)
 
 
-# testing (other scripts to run) ------------------------------------------
+# misc other scripts to run (other scripts to run) ------------------------------------------
 
-# callr::rscript("Analysis/Cover/Fit/test_mars.R")
-
+if(TRUE) {
+# temporary: build the c03 training data
+  dataprep <- file.path("Analysis/Cover/DataPrep",
+                        c(# "06_cover_add-rap.R",
+                          # "07_summarise_daymet_climate_points.R",
+                          "08_combine_cover_and_covariates.R",
+                          "09_compute_scale_params.R"))
+  stopifnot(file.exists(dataprep))
+  for (s in dataprep) {
+    message('running: ', s)
+    callr::rscript(s, cmdargs = "--vc=c03")
+  }
+}
 # run ------------------------------------------------------------------------
 
 pwalk(runs, \(cover_type, cover_model, vmc, vc) {

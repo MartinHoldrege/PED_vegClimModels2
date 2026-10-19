@@ -53,9 +53,13 @@ vars <- tribble(
   "share_c4",         "C4 grass",    "C4 grass share of herbaceous cover",
   "cover_c4",         "C4 grass",    "C4 grass cover",
   "share_forb",       "Forb",        "Forb share of herbaceous cover",
-  "cover_forb",       "Forb",        "Forb cover"
+  "cover_forb",       "Forb",        "Forb cover",
+  "cover_bare_ground", "Bare ground", "Bare ground cover"
 ) |>
   mutate(is_share = str_detect(layer, "^share_"))
+# bare ground only if this version of cover_specs$combined$all includes it
+has_bare <- "cover_bare_ground" %in% names(pred$current)
+if (!has_bare) vars <- filter(vars, layer != "cover_bare_ground")
 stopifnot(all(vars$layer %in% names(pred$current)))
 
 # legends underneath each map (overview)
@@ -145,7 +149,7 @@ herb_vmc <- comp$vmc[comp$component == "herbaceous"]
 
 # the models behind each component
 bind_rows(
-  comp |> filter(component == "shrub"),
+  comp |> filter(component %in% c("shrub", "bare_ground")),
   cover_specs$combined$tree_all[[tree_vmc]]$components |>
     mutate(component = paste0("tree_all: ", component)),
   cover_specs$combined$herbaceous[[herb_vmc]]$components |>
@@ -167,10 +171,13 @@ g_all <- pmap(vars, \(layer, label, is_share, ...) {
 })
 names(g_all) <- vars$layer
 
-# rows: tree, needleleaf; shrub, herbaceous; herbaceous covers; shares
+# rows: tree, needleleaf; broadleaf, shrub; herbaceous, bare ground (if
+# modelled); herbaceous covers; shares
 layout <- list(g_all$cover_tree, g_all$cover_needle, g_all$share_needle,
                g_all$cover_broad, g_all$share_broad, g_all$cover_shrub,
-                g_all$cover_herbaceous, plot_spacer(), plot_spacer(),
+               g_all$cover_herbaceous,
+               if (has_bare) g_all$cover_bare_ground else plot_spacer(),
+               plot_spacer(),
                g_all$cover_c3, g_all$cover_c4, g_all$cover_forb,
                g_all$share_c3, g_all$share_c4, g_all$share_forb)
 wrap_plots(layout, ncol = 3) & legend_bottom
@@ -207,7 +214,8 @@ See each model's own diagnostics report for out-of-fold predictions.
   as in `01_tree_combined_diagnostics.Rmd`.
 - **Everything else**: the predictions extracted at the training pixels of
   the data version of the model(s) the layer comes from (e.g. c01 for
-  shrub, herbaceous and the shares), mapped as the mean over years at each
+  shrub, herbaceous, bare ground and the shares), mapped as the mean over
+  years at each
   pixel. Observed shares are the field fractions (`frac_<type>`, as %);
   observed cover of a type is its parent cover times its fraction, as the
   predictions are built, e.g. modelled `share_c3` is compared with
@@ -246,6 +254,8 @@ vc_lookup <- c(tree       = vc_tree,
                # broad isn't modelled directly (share = 1 - needle share)
                broad      = vc_of("needle", tree_all_comp),
                shrub      = vc_of("shrub", comp),
+               # character(0), so dropped, when there's no bare_ground model
+               bare_ground = vc_of("bare_ground", comp),
                herbaceous = vc_of("herbaceous", herb_comp),
                c3         = vc_of("c3", herb_comp),
                c4         = vc_of("c4", herb_comp),
@@ -282,7 +292,9 @@ observed_layer <- function(d, layer) {
     }
     return(if_else(zero, 0, d$cov_tree))
   }
-  if (type %in% c("shrub", "herbaceous")) return(d[[paste0("cov_", type)]])
+  if (type %in% c("shrub", "herbaceous", "bare_ground")) {
+    return(d[[paste0("cov_", type)]])
+  }
   frac <- d[[paste0("frac_", type)]]
   if (str_starts(layer, "share_")) return(100 * frac)
   # RAP-based, as the tree cover model is fit to RAP

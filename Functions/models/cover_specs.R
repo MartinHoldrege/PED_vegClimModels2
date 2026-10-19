@@ -385,35 +385,51 @@ source('Functions/models/predictors.R')
 #' Spec for all final cover layers (01_combined_all_diagnostics.Rmd,
 #' read_combined_all())
 #'
-#' Tree cover by leaf type, shrub cover, and herbaceous cover by functional
-#' type. Nothing is written to disk; `read_combined_all()` reads or computes
-#' the layers. No data version for the result: the models can be fit to
-#' different data.
+#' Tree cover by leaf type, shrub cover, herbaceous cover by functional
+#' type, and (optionally) bare ground cover. Nothing is written to disk;
+#' `read_combined_all()` reads or computes the layers. No data version for the
+#' result: the models can be fit to different data.
 #'
-#' @param .all_vmc Version used for all three components unless given
-#'   explicitly.
+#' @param .all_vmc Version used for all components unless given explicitly.
 #' @param .shrub_vc Data version of the shrub cover model.
+#' @param .bare_vc Data version of the bare ground cover model; NULL (the
+#'   default) leaves bare ground out.
 #' @param tree_all_vmc Version of `cover_specs$combined$tree_all`.
 #' @param herbaceous_vmc Version of `cover_specs$combined$herbaceous`.
 #' @param shrub `c(vc = , vmc = )`: data and model version of the shrub cover
 #'   model (cover/shrub).
+#' @param bare_ground `c(vc = , vmc = )`: data and model version of the bare
+#'   ground cover model (cover/bare_ground), or NULL for none.
 #' @return A spec list: `components` (tibble, one row per component; `vc` is
 #'   NA for the combined ones).
 .defaults_combined_all <- function(.all_vmc = NULL, .shrub_vc = NULL,
+                                   .bare_vc = NULL,
                                    tree_all_vmc = .all_vmc,
                                    herbaceous_vmc = .all_vmc,
-                                   shrub = c(vc = .shrub_vc, vmc = .all_vmc)) {
+                                   shrub = c(vc = .shrub_vc, vmc = .all_vmc),
+                                   bare_ground = if (!is.null(.bare_vc)) {
+                                     c(vc = .bare_vc, vmc = .all_vmc)
+                                   }) {
   stopifnot(length(tree_all_vmc) == 1, length(herbaceous_vmc) == 1,
-            setequal(names(shrub), c("vc", "vmc")))
-  list(
-    components = tibble::tibble(
-      component   = c("tree_all", "herbaceous", "shrub"),
-      cover_type  = c("combined", "combined", "cover"),
-      cover_model = c("tree_all", "herbaceous", "shrub"),
-      vc          = c(NA_character_, NA_character_, shrub[["vc"]]),
-      vmc         = c(tree_all_vmc, herbaceous_vmc, shrub[["vmc"]])
-    )
+            setequal(names(shrub), c("vc", "vmc")),
+            is.null(bare_ground) ||
+              setequal(names(bare_ground), c("vc", "vmc")))
+  components <- tibble::tibble(
+    component   = c("tree_all", "herbaceous", "shrub"),
+    cover_type  = c("combined", "combined", "cover"),
+    cover_model = c("tree_all", "herbaceous", "shrub"),
+    vc          = c(NA_character_, NA_character_, shrub[["vc"]]),
+    vmc         = c(tree_all_vmc, herbaceous_vmc, shrub[["vmc"]])
   )
+  if (!is.null(bare_ground)) {
+    components <- tibble::add_row(components,
+                                  component = "bare_ground",
+                                  cover_type = "cover",
+                                  cover_model = "bare_ground",
+                                  vc = bare_ground[["vc"]],
+                                  vmc = bare_ground[["vmc"]])
+  }
+  list(components = components)
 }
 
 
@@ -600,6 +616,15 @@ cover_specs <- list(
                               engine = "ranger", family = "gaussian",
                               pred_vars = .pred_vars$complex2,
                               ranger = list(importance = "permutation"))
+    ),
+    # bare ground: LDC only in c01 and c03 (left as in c01); RAP in c02
+    bare_ground = list(
+      m01.5 = .defaults_cover(response = 'cov_bare_ground',
+                              pred_vars = .pred_vars$f5),
+      m04.1 = .defaults_cover(response = 'cov_bare_ground',
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$complex2,
+                              ranger = list(importance = "permutation"))
     )
   ),
   # shares: needleleaf (of tree), forb / C3 / C4 (of herbaceous, rescaled to
@@ -661,13 +686,32 @@ cover_specs <- list(
     # herbaceous cover by functional type (04_combine_herb.R)
     herbaceous = list(
       m01.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m01.5"),
-      m04.1 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m04.1")
+      m02.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m01.5",
+                                      herbaceous = c(vc = 'c03',  vmc = "m01.5")),
+      m04.1 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m04.1"),
+      m04.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m04.1",
+                                      herbaceous = c(vc = 'c03',
+                                                     vmc = 'm04.1'))
     ),
-    # all final layers: tree_all, shrub and herbaceous (read_combined_all(),
-    # 01_combined_all_diagnostics.Rmd; not written to disk)
+    # all final layers: tree_all, shrub, herbaceous and (if .bare_vc is
+    # given) bare ground (read_combined_all(),
+    # 01_combined_all_diagnostics.Rmd; not written to disk). E.g.
+    # .defaults_combined_all(.all_vmc = "m01.5", .shrub_vc = "c01",
+    #                        .bare_vc = "c01")
     all = list(
-      m01.5 = .defaults_combined_all(.all_vmc = "m01.5", .shrub_vc = "c01"),
-      m04.1 = .defaults_combined_all(.all_vmc = "m04.1", .shrub_vc = "c01")
+      m01.5 = .defaults_combined_all(.all_vmc = "m01.5", 
+                                     .bare_vc = 'c01',
+                                     .shrub_vc = "c01"),
+      # same as m01.5 except herbaceous and shrub cover models fit to c03 dataset
+      # (which relies on rap in non forest)
+      m02.5 = .defaults_combined_all(.all_vmc = "m01.5", .shrub_vc = "c03",
+                                     .bare_vc = 'c02',
+                                     herbaceous_vmc = 'm02.5'),
+      m04.1 = .defaults_combined_all(.all_vmc = "m04.1", .shrub_vc = "c01",
+                                     .bare_vc = 'c01'),
+      m04.5 = .defaults_combined_all(.all_vmc = "m04.1", .shrub_vc = "c03",
+                                     .bare_vc = 'c02',
+                                     herbaceous_vmc = 'm04.5')
     )
   )
 )

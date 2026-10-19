@@ -757,7 +757,8 @@ tree_leaf_cover <- function(vmc, scenario, specs = cover_specs) {
 #' @return SpatRaster, all in %: `cover_tree`, `cover_needle`,
 #'   `share_needle` (% of tree cover), `cover_shrub`, `cover_herbaceous`,
 #'   `share_c3`, `share_c4`, `share_forb` (% of herbaceous cover, summing to
-#'   100), `cover_c3`, `cover_c4`, `cover_forb`.
+#'   100), `cover_c3`, `cover_c4`, `cover_forb`, and
+#'   `cover_bare_ground` if the spec has a bare_ground component.
 #' @examples
 #' vmc <- "m01.5"
 #' scenario <- "current"
@@ -791,6 +792,12 @@ read_combined_all <- function(vmc, scenario, specs = cover_specs) {
   names(out) <- c("cover_tree", names_leaf,
                   "cover_shrub", "cover_herbaceous",
                   names_herb_type)
+  if ("bare_ground" %in% comp$component) {
+    bare <- read_component_pred(comp[comp$component == "bare_ground", ],
+                                scenario)
+    names(bare) <- "cover_bare_ground"
+    out <- c(out, bare)
+  }
   out
 }
 
