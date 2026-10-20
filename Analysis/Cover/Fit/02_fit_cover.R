@@ -86,7 +86,9 @@ y_fit <- switch(spec$family,
                                   log1p = log1p(cover)),
                 stop("family not set up for cover models: ", spec$family))
 
-scale_df <- read_scale_params()  # climate and soils; no anomalies here
+# climate and soils, plus this version's anomaly sds if the model uses them
+uses_anom <- any(str_detect(spec$pred_vars, "_3yrAnom$"))
+scale_df <- read_scale_params(if (uses_anom) opt$vc)
 
 x <- prepare_predictors(dat,
                         pred_vars = spec$pred_vars,

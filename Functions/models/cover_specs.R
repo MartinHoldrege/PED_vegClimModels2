@@ -90,6 +90,15 @@ source('Functions/models/predictors.R')
 )
 
 
+# f5 plus the 3-yr anomaly of each of its climate variables (soils have no
+# anomalies). Only for data versions with anomalies (not c02). At raster
+# prediction time the anomalies are set to 0 (normal conditions)
+.pred_vars$f5_anom <- c(
+  .pred_vars$f5,
+  paste0(c('MAP', 'P_driestMonth', 'WD_mean', 'PrecipTempCorr', 'MAT',
+           'isothermality'), "_3yrAnom")
+)
+
 # zero tree model defaults
 .thresh_zt <- 90 # zt stands for 'zero tree', % of pixel threshold 
 
@@ -610,6 +619,9 @@ cover_specs <- list(
                               ranger = list(importance = "permutation"))
       ),
     herbaceous = list(
+      # as m01.5, plus the anomalies of the climate variables
+      m05.5 = .defaults_cover(response = 'cov_herbaceous',
+                              pred_vars = .pred_vars$f5_anom),
       m01.5 = .defaults_cover(response = 'cov_herbaceous',
                               pred_vars = .pred_vars$f5),
       m04.1 = .defaults_cover(response = 'cov_herbaceous',
@@ -639,6 +651,8 @@ cover_specs <- list(
                            ranger = list(importance = "permutation"))
     ),
     c3 = list(
+      m05.5 = .defaults_proportion(response = 'frac_c3',
+                                   pred_vars = .pred_vars$f5_anom),
       m01.5 = .defaults_proportion(response = 'frac_c3',
                                    pred_vars = .pred_vars$f5),
       m04.1 = .defaults_proportion(response = 'frac_c3',
@@ -647,6 +661,8 @@ cover_specs <- list(
                                    ranger = list(importance = "permutation"))
     ),
     c4 = list(
+      m05.5 = .defaults_proportion(response = 'frac_c4',
+                                   pred_vars = .pred_vars$f5_anom),
       m01.5 = .defaults_proportion(response = 'frac_c4',
                                    pred_vars = .pred_vars$f5),
       m04.1 = .defaults_proportion(response = 'frac_c4',
@@ -655,6 +671,8 @@ cover_specs <- list(
                                    ranger = list(importance = "permutation"))
     ),
     forb = list(
+      m05.5 = .defaults_proportion(response = 'frac_forb',
+                                   pred_vars = .pred_vars$f5_anom),
       m01.5 = .defaults_proportion(response = 'frac_forb',
                                    pred_vars = .pred_vars$f5),
       m04.1 = .defaults_proportion(response = 'frac_forb',
@@ -688,6 +706,8 @@ cover_specs <- list(
       m01.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m01.5"),
       m02.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m01.5",
                                       herbaceous = c(vc = 'c03',  vmc = "m01.5")),
+      # all four fit to c01 with f5 plus anomalies
+      m05.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m05.5"),
       m04.1 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m04.1"),
       m04.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m04.1",
                                       herbaceous = c(vc = 'c03',
@@ -707,6 +727,12 @@ cover_specs <- list(
       m02.5 = .defaults_combined_all(.all_vmc = "m01.5", .shrub_vc = "c03",
                                      .bare_vc = 'c02',
                                      herbaceous_vmc = 'm02.5'),
+      # as m01.5, but with herbaceous m05.5 (herbaceous and its shares fit
+      # with anomalies)
+      m05.5 = .defaults_combined_all(.all_vmc = "m01.5",
+                                     .bare_vc = 'c01',
+                                     .shrub_vc = "c01",
+                                     herbaceous_vmc = 'm05.5'),
       m04.1 = .defaults_combined_all(.all_vmc = "m04.1", .shrub_vc = "c01",
                                      .bare_vc = 'c01'),
       m04.5 = .defaults_combined_all(.all_vmc = "m04.1", .shrub_vc = "c03",

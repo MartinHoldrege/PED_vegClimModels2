@@ -296,10 +296,15 @@ predict_raster.cover_classification <- function(fit, rast, chunk_size = 1e6,
                                                  ...) {
   spec <- fit$config$spec
   source_vars <- unique(str_remove(spec$pred_vars, "^log1p_"))
+  # the rasters (current and future) are normals with no anomaly layers:
+  # predict for normal conditions, anomaly 0 (still 0 after scaling)
+  anom_vars <- str_subset(source_vars, "_3yrAnom$")
+  source_vars <- setdiff(source_vars, anom_vars)
   stopifnot(inherits(rast, "SpatRaster"), all(source_vars %in% names(rast)))
   
   # one row per cell with every predictor present
   df <- terra::as.data.frame(rast[[source_vars]], cells = TRUE, na.rm = TRUE)
+  df[anom_vars] <- 0
   
   rows <- seq_len(nrow(df))
   chunks <- split(rows, ceiling(rows / chunk_size))
@@ -496,9 +501,10 @@ ale_classification <- function(fit, dat, n_bins = 20, n_per_bin = 250,
   dat <- dat[complete.cases(dat[source_vars]), ]
   
   map(source_vars, \(v) {
-    .ale_one(fit, dat, v, n_bins = n_bins, n_per_bin = n_per_bin,
-             quantile_range = quantile_range) |>
-      mutate(variable = v, .before = 1)
+    ale <- .ale_one(fit, dat, v, n_bins = n_bins, n_per_bin = n_per_bin,
+                    quantile_range = quantile_range)
+    if (is.null(ale)) return(NULL)
+    mutate(ale, variable = v, .before = 1)
   }) |>
     bind_rows()
 }
@@ -554,9 +560,13 @@ ale_classification_filtered <- function(fit, dat, filter_vars = NULL,
     
     imap(subsets, \(d, category) {
       map(source_vars, \(v) {
-        .ale_one(fit, d, v, n_bins = n_bins, n_per_bin = n_per_bin,
-                 quantile_range = quantile_range) |>
-          mutate(filter_var = f, percentile_category = category,
+        ale <- .ale_one(fit, d, v, n_bins = n_bins, n_per_bin = n_per_bin,
+                        quantile_range = quantile_range)
+        # NULL if d is empty or v has too few distinct values in it (e.g. a
+        # filter variable with more than `low` of its rows tied at the
+        # minimum, so no rows fall below the low percentile)
+        if (is.null(ale)) return(NULL)
+        mutate(ale, filter_var = f, percentile_category = category,
                  variable = v, .before = 1)
       })
     })

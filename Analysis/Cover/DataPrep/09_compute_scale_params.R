@@ -75,7 +75,8 @@ if (!file.exists(p_global) || rerun) {
   # never logged. log1p rather than log so nothing fails on a zero in any
   # dataset the equations are later applied to (future climate, gridMET). Computing a few that no
   # model uses is harmless.
-  log_vars <- .possible_log_vars() # defined in models/predictors.R
+  log_vars <- .possible_log_vars(return_possibles = TRUE) # defined in models/predictors.R
+  stopifnot(length(log_vars) > 0, log_vars %in% names(r))
   
   stopifnot(log_vars %in% names(r))
 
