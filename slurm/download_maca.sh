@@ -13,4 +13,4 @@
 
 module load cray-R-spatial/4.6
 
-Rscript Analysis/BiomassQuantity/DataPrep/00_download_maca_rasters.R
+Rscript Analysis/Cover/DataPrep/00_download_maca_rasters.R

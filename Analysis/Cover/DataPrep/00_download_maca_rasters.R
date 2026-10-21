@@ -59,6 +59,15 @@ options(timeout = 3600) # default 60 s is too short for ~100 MB files
 #' @param url URL of the folder's catalog.xml.
 #' @return Tibble with columns `file` (dataset name) and `url_path`
 #'   (path used to build the download URL).
+#' @examples
+#' \dontrun{
+#' url <- paste0(
+#'   "https://www.reacchpna.org/thredds/catalog/",
+#'   "NWCSC_INTEGRATED_SCENARIOS_ALL_CLIMATE/macav2livneh/BNU-ESM/catalog.xml"
+#' )
+#' x <- list_thredds_files(url)
+#' head(x)
+#' }
 list_thredds_files <- function(url) {
   doc <- xml2::read_xml(url)
   xml2::xml_ns_strip(doc)
@@ -123,6 +132,17 @@ if (test_run) {
 #' @param url Download URL.
 #' @param dest Destination file path.
 #' @return TRUE if the file exists after the attempt, otherwise FALSE.
+#' @examples
+#' \dontrun{
+#' url <- paste0(
+#'   "https://www.reacchpna.org/thredds/fileServer/",
+#'   "NWCSC_INTEGRATED_SCENARIOS_ALL_CLIMATE/macav2livneh/BNU-ESM/",
+#'   "macav2livneh_tasmin_BNU-ESM_r1i1p1_rcp85_2086_2099_CONUS_monthly.nc"
+#' )
+#' dest <- file.path(tempdir(), basename(url))
+#' download_one(url, dest)
+#' terra::nlyr(terra::rast(dest)) # 168 (14 years x 12 months)
+#' }
 download_one <- function(url, dest) {
   if (file.exists(dest)) return(TRUE)
   tmp <- paste0(dest, ".part")
