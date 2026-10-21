@@ -78,15 +78,53 @@ list_thredds_files <- function(url) {
   )
 }
 
-files <- tibble(gcm_folder = gcms) |>
-  mutate(listing = map(
-    gcm_folder,
-    \(g) list_thredds_files(
-      file.path(thredds_base, "catalog", catalog_dir, g, "catalog.xml")
-    ),
-    .progress = TRUE
-  )) |>
-  unnest(listing)
+#' Call a function, retrying after a pause if it errors
+#'
+#' The server intermittently refuses connections, so network calls are
+#' retried rather than failing the whole run.
+#'
+#' @param f Function to call.
+#' @param ... Arguments passed to `f`.
+#' @param tries Maximum number of attempts.
+#' @param wait Seconds to wait between attempts.
+#' @return The value of `f(...)`; errors if all attempts fail.
+#' @examples
+#' \dontrun{
+#' url <- paste0(
+#'   "https://www.reacchpna.org/thredds/catalog/",
+#'   "NWCSC_INTEGRATED_SCENARIOS_ALL_CLIMATE/macav2livneh/BNU-ESM/catalog.xml"
+#' )
+#' x <- with_retry(list_thredds_files, url, tries = 3, wait = 5)
+#' }
+with_retry <- function(f, ..., tries = 5, wait = 60) {
+  for (i in seq_len(tries)) {
+    out <- tryCatch(f(...), error = function(e) e)
+    if (!inherits(out, "error")) return(out)
+    message("  attempt ", i, " of ", tries, " failed: ", conditionMessage(out))
+    if (i < tries) Sys.sleep(wait)
+  }
+  stop(out)
+}
+
+# The catalog listing takes ~5 min, so it is cached and reused on re-runs.
+# Delete this file to force a fresh listing.
+listing_file <- file.path(out_dir, "thredds_listing.rds")
+
+if (file.exists(listing_file)) {
+  files <- readRDS(listing_file)
+} else {
+  files <- tibble(gcm_folder = gcms) |>
+    mutate(listing = map(
+      gcm_folder,
+      \(g) with_retry(
+        list_thredds_files,
+        file.path(thredds_base, "catalog", catalog_dir, g, "catalog.xml")
+      ),
+      .progress = TRUE
+    )) |>
+    unnest(listing)
+  saveRDS(files, listing_file)
+}
 
 # e.g. macav2livneh_pr_BNU-ESM_r1i1p1_rcp85_2066_2085_CONUS_monthly.nc
 pattern <- "^macav2livneh_[^_]+_[^_]+_[^_]+_[^_]+_\\d{4}_\\d{4}_CONUS_[a-z]+\\.nc$"
@@ -131,7 +169,9 @@ if (test_run) {
 #'
 #' @param url Download URL.
 #' @param dest Destination file path.
-#' @return TRUE if the file exists after the attempt, otherwise FALSE.
+#' @param tries Maximum number of attempts.
+#' @param wait Seconds to wait between attempts.
+#' @return TRUE if the file exists after the attempts, otherwise FALSE.
 #' @examples
 #' \dontrun{
 #' url <- paste0(
@@ -143,17 +183,20 @@ if (test_run) {
 #' download_one(url, dest)
 #' terra::nlyr(terra::rast(dest)) # 168 (14 years x 12 months)
 #' }
-download_one <- function(url, dest) {
+download_one <- function(url, dest, tries = 5, wait = 60) {
   if (file.exists(dest)) return(TRUE)
   tmp <- paste0(dest, ".part")
   ok <- tryCatch(
-    download.file(url, tmp, mode = "wb", quiet = TRUE) == 0,
+    with_retry(
+      \() stopifnot(download.file(url, tmp, mode = "wb", quiet = TRUE) == 0),
+      tries = tries, wait = wait
+    ),
     error = function(e) {
-      message("  failed: ", basename(dest), " (", conditionMessage(e), ")")
+      message("  giving up on ", basename(dest))
       FALSE
     }
   )
-  if (ok) file.rename(tmp, dest) else unlink(tmp)
+  if (!isFALSE(ok)) file.rename(tmp, dest) else unlink(tmp)
   file.exists(dest)
 }
 
