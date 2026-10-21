@@ -5,9 +5,13 @@
 # climate projections, as a multi-band raster on the Daymet 1 km grid, for use
 # as inputs to the vegetation-climate models.
 #
-# Run once per climate model by setting `climate_model` below. Two models are
-# expected: "BNU-ESM" (cool/wet-ish) and "IPSL-CM5A-MR" (warm/dry), both
-# RCP 8.5, end of century.
+# Run once per climate model (GCM), scenario, and period. Periods match the
+# Climate Toolbox: historical 1971-2000; rcp45 and rcp85 2040-2069 and
+# 2070-2099. From the command line:
+#   Rscript 01_summarise_projected_climate_data.R <gcm> <scenario> <period>
+# e.g. Rscript ... BNU-ESM rcp85 2070-2099. On the HPC, slurm/summarise_maca.sh
+# runs all 20 GCMs x 5 scenario-periods as a job array. Run interactively, the
+# defaults below are used.
 #
 # Anomalies and the 3-year window are intentionally NOT calculated: anomalies
 # are treated as 0 at prediction time. Soils are added downstream and are not
@@ -34,15 +38,42 @@ source_functions()         # sources climate_functions.R
 
 # Parameters --------------------------------------------------------------
 
-# Which climate model to process: "BNU-ESM" or "IPSL-CM5A-MR".
-climate_model <- "IPSL-CM5A-MR" # "BNU-ESM" # 
+args <- commandArgs(trailingOnly = TRUE)
+if (length(args) == 3) {
+  climate_model <- args[1]
+  scenario <- args[2]
+  period <- args[3]
+} else {
+  climate_model <- "IPSL-CM5A-MR" # "BNU-ESM" # 
+    scenario <- "rcp85"
+    period <- "2070-2099"
+}
 rerun <- FALSE
-rcp        <- "rcp85"
-year_start <- 2068        # first year of the climate-normal window
-year_end   <- 2099        # last year (full available span: 32 years)
 
-# MACA files come in two time chunks; we read both and subset to the window.
-maca_chunks <- c("2066_2085", "2086_2099")
+# Climate-normal windows (matching the Climate Toolbox), by scenario.
+windows <- list(
+  historical = "1971-2000",
+  rcp45 = c("2040-2069", "2070-2099"),
+  rcp85 = c("2040-2069", "2070-2099")
+)
+stopifnot(scenario %in% names(windows), period %in% windows[[scenario]])
+year_start <- as.integer(str_sub(period, 1, 4))
+year_end   <- as.integer(str_sub(period, 6, 9))
+
+# MACA files come in time chunks; read every chunk that overlaps the window,
+# then subset to the window.
+all_chunks <- if (scenario == "historical") {
+  c("1950_1969", "1970_1989", "1990_2005")
+} else {
+  c("2006_2025", "2026_2045", "2046_2065", "2066_2085", "2086_2099")
+}
+chunk_start <- as.integer(str_sub(all_chunks, 1, 4))
+chunk_end   <- as.integer(str_sub(all_chunks, 6, 9))
+maca_chunks <- all_chunks[chunk_start <= year_end & chunk_end >= year_start]
+
+message("GCM: ", climate_model, "; scenario: ", scenario,
+        "; years: ", year_start, "-", year_end,
+        "; MACA chunks: ", paste(maca_chunks, collapse = ", "))
 
 # Directory holding the raw MACA NetCDFs (a subdirectory of paths$large0).
 maca_dir <- file.path(paths$large, "Data_raw/macaClimateProjections/Data")
@@ -53,7 +84,7 @@ maca_vars <- c(tasmin = "tmin", tasmax = "tmax", pr = "prcp")
 # Where per-year intermediate rasters are written (under paths$large).
 intermediate_dir <- file.path(paths$large, 'Data_processed/WallToWallClimateData', 
                               "ForecastedClimate_intermediate",
-                              paste0(climate_model, "_", rcp))
+                              paste0(climate_model, "_", scenario))
 
 out_dir <-  file.path(paths$large, 'Data_processed/WallToWallClimateData')
 dir.create(intermediate_dir, recursive = TRUE, showWarnings = FALSE)
@@ -65,11 +96,24 @@ dir.create(intermediate_dir, recursive = TRUE, showWarnings = FALSE)
 #'
 #' @param maca_var MACA variable string (e.g. "tasmin", "tasmax", "pr").
 #' @param chunk Time-chunk string (e.g. "2066_2085").
-#' @return Full file path under paths$large0.
+#' The ensemble member is matched by pattern because it is not always r1i1p1
+#' (CCSM4 is r6i1p1).
+#'
+#' @return Full file path under maca_dir.
+#' @examples
+#' \dontrun{
+#' climate_model <- "IPSL-CM5A-MR"; scenario <- "rcp85"
+#' maca_path("pr", "2066_2085")
+#' }
 maca_path <- function(maca_var, chunk) {
-  fname <- paste0("macav2livneh_", maca_var, "_", climate_model,
-                  "_r1i1p1_", rcp, "_", chunk, "_CONUS_monthly.nc")
-  file.path(maca_dir, fname)
+  pattern <- paste0("^macav2livneh_", maca_var, "_", climate_model,
+                    "_r\\d+i\\d+p\\d+_", scenario, "_", chunk,
+                    "_CONUS_monthly\\.nc$")
+  f <- list.files(maca_dir, pattern = pattern, full.names = TRUE)
+  if (length(f) != 1) {
+    stop("Expected 1 file matching ", pattern, ", found ", length(f))
+  }
+  f
 }
 
 
@@ -172,6 +216,7 @@ clim <- terra::project(clim, read_mask())   # bilinear (default for continuous)
 # 4. Write final per-model raster -----------------------------------------
 
 out_file <- file.path(out_dir,
-                      paste0("ForecastedClimateData_", climate_model, "_", rcp, "_CLIM.tif"))
+                      paste0("maca_", climate_model, "_",
+                             scenario, "_", period, "_CLIM.tif"))
 terra::writeRaster(clim, out_file, overwrite = TRUE)
 message("Wrote ", out_file)
