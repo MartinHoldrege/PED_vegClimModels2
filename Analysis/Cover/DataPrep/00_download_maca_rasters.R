@@ -22,7 +22,7 @@ library(xml2)
 
 # Parameters --------------------------------------------------------------
 
-test_run <- TRUE # if TRUE, download only one file (to check URLs work)
+test_run <- FALSE # if TRUE, download only one file (to check URLs work)
 
 vars <- c("pr", "tasmax", "tasmin")
 periods <- tribble(
@@ -96,7 +96,7 @@ list_thredds_files <- function(url) {
 #' )
 #' x <- with_retry(list_thredds_files, url, tries = 3, wait = 5)
 #' }
-with_retry <- function(f, ..., tries = 5, wait = 60) {
+with_retry <- function(f, ..., tries = 5, wait = 300) {
   for (i in seq_len(tries)) {
     out <- tryCatch(f(...), error = function(e) e)
     if (!inherits(out, "error")) return(out)
@@ -183,8 +183,9 @@ if (test_run) {
 #' download_one(url, dest)
 #' terra::nlyr(terra::rast(dest)) # 168 (14 years x 12 months)
 #' }
-download_one <- function(url, dest, tries = 5, wait = 60) {
+download_one <- function(url, dest, tries = 5, wait = 300) {
   if (file.exists(dest)) return(TRUE)
+  Sys.sleep(5) # be gentle with the server
   tmp <- paste0(dest, ".part")
   ok <- tryCatch(
     with_retry(
