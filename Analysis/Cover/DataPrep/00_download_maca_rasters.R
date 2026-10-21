@@ -3,7 +3,8 @@
 #
 # Periods downloaded:
 #   historical: 1970-1989, 1990-2005
-#   rcp45, rcp85: 2066-2085, 2086-2099
+#   rcp45, rcp85: 2026-2045, 2046-2065, 2066-2085, 2086-2099
+# (the chunks needed for the 1971-2000, 2040-2069 and 2070-2099 normals)
 #
 # Files are written to
 #   paths$large/Data_raw/macaClimateProjections/Data
@@ -29,8 +30,12 @@ periods <- tribble(
   ~scenario,    ~period,
   "historical", "1970_1989",
   "historical", "1990_2005",
+  "rcp45",      "2026_2045",
+  "rcp45",      "2046_2065",
   "rcp45",      "2066_2085",
   "rcp45",      "2086_2099",
+  "rcp85",      "2026_2045",
+  "rcp85",      "2046_2065",
   "rcp85",      "2066_2085",
   "rcp85",      "2086_2099"
 )
