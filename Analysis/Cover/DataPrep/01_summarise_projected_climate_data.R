@@ -8,8 +8,10 @@
 # Run once per climate model (GCM), scenario, and period. Periods match the
 # Climate Toolbox: historical 1971-2000; rcp45 and rcp85 2040-2069 and
 # 2070-2099. From the command line:
-#   Rscript 01_summarise_projected_climate_data.R <gcm> <scenario> <period>
-# e.g. Rscript ... BNU-ESM rcp85 2070-2099. On the HPC, slurm/summarise_maca.sh
+#   Rscript 01_summarise_projected_climate_data.R --gcm=<gcm> \
+#     --scenario=<scenario> --period=<period>
+# e.g. --gcm=BNU-ESM --scenario=rcp85 --period=2070-2099. The options are
+# defined in Functions/params.R. On the HPC, slurm/summarise_maca.sh
 # runs all 20 GCMs x 5 scenario-periods as a job array. Run interactively, the
 # defaults below are used.
 #
@@ -35,19 +37,19 @@ library(stringr)
 source("Functions/init.R")          # provides paths$large, paths$large0, daymet_grid
 source_functions()         # sources climate_functions.R
 
+# Cap terra's RAM use (GB) so it writes to temp files instead of exceeding the
+# Slurm memory request; terra otherwise sizes itself from the node's total RAM.
+# Keep this well below --mem in slurm/summarise_maca.sh.
+terra::terraOptions(memmax = 8)
+
 
 # Parameters --------------------------------------------------------------
 
-args <- commandArgs(trailingOnly = TRUE)
-if (length(args) == 3) {
-  climate_model <- args[1]
-  scenario <- args[2]
-  period <- args[3]
-} else {
-  climate_model <- "IPSL-CM5A-MR" # "BNU-ESM" # 
-    scenario <- "rcp85"
-    period <- "2070-2099"
-}
+# Passed as --gcm, --scenario, --period (defined in Functions/params.R);
+# defaults below are used when run interactively.
+climate_model <- if (is.null(opt$gcm)) "IPSL-CM5A-MR" else opt$gcm
+scenario <- if (is.null(opt$scenario)) "rcp85" else opt$scenario
+period <- if (is.null(opt$period)) "2070-2099" else opt$period
 rerun <- FALSE
 
 # Climate-normal windows (matching the Climate Toolbox), by scenario.

@@ -55,7 +55,15 @@ option_list <- list(
   # cover model version ('vmc' = version model, cover); separate from --vm,
   # which is the biomass model version
   optparse::make_option("--vmc", type = "character",
-                        default = "m01.5")
+                        default = "m01.5"),
+  
+  # MACA climate summaries (01_summarise_projected_climate_data.R) --------
+  # NULL unless passed; that script falls back to its own defaults
+  optparse::make_option("--gcm", type = "character", default = NULL),
+  # "historical", "rcp45" or "rcp85"
+  optparse::make_option("--scenario", type = "character", default = NULL),
+  # e.g. "1971-2000", "2040-2069", "2070-2099"
+  optparse::make_option("--period", type = "character", default = NULL)
   
 )
 

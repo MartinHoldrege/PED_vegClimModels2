@@ -70,6 +70,7 @@ Figures/
 cache/
 tmp/
 temp/
+logs/
 # compiled artifacts from using TMB
 src/*.o
 src/*.dll

@@ -36,4 +36,4 @@ period=${periods[$((SLURM_ARRAY_TASK_ID % n))]}
 
 module load cray-R-spatial/4.6
 
-Rscript Analysis/Cover/DataPrep/01_summarise_projected_climate_data.R "$gcm" "$scenario" "$period"
+Rscript Analysis/Cover/DataPrep/01_summarise_projected_climate_data.R --gcm="$gcm" --scenario="$scenario" --period="$period"
