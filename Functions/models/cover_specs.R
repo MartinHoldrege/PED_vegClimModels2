@@ -86,7 +86,10 @@ source('Functions/models/predictors.R')
   f6 = c('MAP', 'P_driestMonth', 'WD_mean',
          'PrecipTempCorr', 'MAT','coarse', 'awc'),
   f7 = c('MAP', 'P_driestMonth', 'WD_mean',
-         'PrecipTempCorr', 'MAT', 'isothermality', 'awc')
+         'PrecipTempCorr', 'MAT', 'isothermality', 'awc'),
+  # best subset of variables (based on RF) for predicting shrub cover
+  f8 = c('MAP', 'P_driestMonth', 'WD_mean',
+         'PrecipTempCorr', 'MAT', 'isothermality', 'clay_surface', 'sand') 
 )
 
 
@@ -613,6 +616,8 @@ cover_specs <- list(
     shrub = list(
       m01.5 = .defaults_cover(response = 'cov_shrub',
                               pred_vars = .pred_vars$f5),
+      m01.8 = .defaults_cover(response = 'cov_shrub',
+                              pred_vars = .pred_vars$f8),
       m04.1 = .defaults_cover(response = 'cov_shrub',
                               engine = "ranger", family = "gaussian",
                               pred_vars = .pred_vars$complex2,

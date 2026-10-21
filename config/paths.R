@@ -5,15 +5,18 @@
 # folder structure, except just store big files there so don't 
 # take up local storage
 paths <- list()
-if(dir.exists("D:/USGS")) {
-  .base <- "D:/USGS"
-} else if(dir.exists("E:/USGS")) {
-  .base <- "E:/USGS"
+if (dir.exists("/caldera/hovenweep")) {
+  # on the HPC, large files live inside the repo itself
+  paths$large <- getwd()
+  paths$large0 <- getwd()
 } else {
-  warning('directory not found')
+  if (dir.exists("D:/USGS")) {
+    .base <- "D:/USGS"
+  } else if (dir.exists("E:/USGS")) {
+    .base <- "E:/USGS"
+  } else {
+    stop("large-file directory not found")
+  }
+  paths$large <- file.path(.base, "large_files/PED_vegClimModels2")
+  paths$large0 <- file.path(.base, "large_files/PED_vegClimModels")
 }
-paths$large <- file.path(.base, "large_files/PED_vegClimModels2")
-
-# used in a few cases to avoid copying raw data
-# unnecessarily, this is the directory created by Alice:
-paths$large0 <- file.path(.base, "large_files/PED_vegClimModels")
