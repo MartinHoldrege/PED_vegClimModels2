@@ -1,17 +1,17 @@
-# Download MACAv2-LIVNEH monthly climate projections (pr, tasmax, tasmin)
-# for all 20 GCMs from the NKN THREDDS server.
+# Download MACAv2-METDATA monthly climate projections (pr, tasmax, tasmin)
+# for all 20 GCMs from the NKN THREDDS server. MACAv2-METDATA is trained on,
+# and on the same ~4 km grid as, gridMET.
 #
-# Periods downloaded:
-#   historical: 1970-1989, 1990-2005
-#   rcp45, rcp85: 2026-2045, 2046-2065, 2066-2085, 2086-2099
-# (the chunks needed for the 1971-2000, 2040-2069 and 2070-2099 normals)
+# Files come in 5-year chunks; every chunk overlapping one of the normal
+# windows below is downloaded (historical 1971-2000; rcp45 and rcp85
+# 2040-2069 and 2070-2099).
 #
 # Files are written to
-#   paths$large/Data_raw/macaClimateProjections/Data
+#   paths$large/Data_raw/macav2metdata
 # which is where 01_summarise_projected_climate_data.R reads them from.
 # Re-running skips files that already exist, so an interrupted run can be
 # restarted.
-# Note: if on HPC run this script as a job using slurm/download_maca.sh
+# Note: if on HPC run this script as a job using hpc/download_maca.sh
 
 source("config/paths.R") # provides paths
 library(dplyr)
@@ -26,24 +26,20 @@ library(xml2)
 test_run <- FALSE # if TRUE, download only one file (to check URLs work)
 
 vars <- c("pr", "tasmax", "tasmin")
-periods <- tribble(
-  ~scenario,    ~period,
-  "historical", "1970_1989",
-  "historical", "1990_2005",
-  "rcp45",      "2026_2045",
-  "rcp45",      "2046_2065",
-  "rcp45",      "2066_2085",
-  "rcp45",      "2086_2099",
-  "rcp85",      "2026_2045",
-  "rcp85",      "2046_2065",
-  "rcp85",      "2066_2085",
-  "rcp85",      "2086_2099"
+# Normal windows; files are downloaded if they overlap any of these.
+windows <- tribble(
+  ~scenario,    ~win_start, ~win_end,
+  "historical", 1971,       2000,
+  "rcp45",      2040,       2069,
+  "rcp45",      2070,       2099,
+  "rcp85",      2040,       2069,
+  "rcp85",      2070,       2099
 )
 
 thredds_base <- "https://www.reacchpna.org/thredds"
-catalog_dir <- "NWCSC_INTEGRATED_SCENARIOS_ALL_CLIMATE/macav2livneh"
+catalog_dir <- "MACAV2"
 
-# Folder names from the macav2livneh catalog (accessed 2026-10-20)
+# Folder names from the MACAV2 (METDATA) catalog (accessed 2026-10-22)
 gcms <- c(
   "BNU-ESM", "CCSM4", "CNRM-CM5", "CSIRO-Mk3-6-0", "CanESM2",
   "GFDL-ESM2G", "GFDL-ESM2M", "HadGEM2-CC365", "HadGEM2-ES365",
@@ -52,7 +48,7 @@ gcms <- c(
   "bcc-csm1-1", "bcc-csm1-1-m", "inmcm4"
 )
 
-out_dir <- file.path(paths$large, "Data_raw/macaClimateProjections/Data")
+out_dir <- file.path(paths$large, "Data_raw/macav2metdata")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 options(timeout = 3600) # default 60 s is too short for ~100 MB files
@@ -68,7 +64,7 @@ options(timeout = 3600) # default 60 s is too short for ~100 MB files
 #' \dontrun{
 #' url <- paste0(
 #'   "https://www.reacchpna.org/thredds/catalog/",
-#'   "NWCSC_INTEGRATED_SCENARIOS_ALL_CLIMATE/macav2livneh/BNU-ESM/catalog.xml"
+#'   "MACAV2/BNU-ESM/catalog.xml"
 #' )
 #' x <- list_thredds_files(url)
 #' head(x)
@@ -97,7 +93,7 @@ list_thredds_files <- function(url) {
 #' \dontrun{
 #' url <- paste0(
 #'   "https://www.reacchpna.org/thredds/catalog/",
-#'   "NWCSC_INTEGRATED_SCENARIOS_ALL_CLIMATE/macav2livneh/BNU-ESM/catalog.xml"
+#'   "MACAV2/BNU-ESM/catalog.xml"
 #' )
 #' x <- with_retry(list_thredds_files, url, tries = 3, wait = 5)
 #' }
@@ -131,15 +127,15 @@ if (file.exists(listing_file)) {
   saveRDS(files, listing_file)
 }
 
-# e.g. macav2livneh_pr_BNU-ESM_r1i1p1_rcp85_2066_2085_CONUS_monthly.nc
-pattern <- "^macav2livneh_[^_]+_[^_]+_[^_]+_[^_]+_\\d{4}_\\d{4}_CONUS_[a-z]+\\.nc$"
+# e.g. macav2metdata_pr_BNU-ESM_r1i1p1_rcp85_2066_2070_CONUS_monthly.nc
+pattern <- "^macav2metdata_[^_]+_[^_]+_[^_]+_[^_]+_\\d{4}_\\d{4}_CONUS_[a-z]+\\.nc$"
 
 parsed <- files |>
   filter(str_detect(file, pattern)) |>
   separate_wider_regex(
     file,
     patterns = c(
-      "macav2livneh_", var = "[^_]+", "_", gcm = "[^_]+", "_",
+      "macav2metdata_", var = "[^_]+", "_", gcm = "[^_]+", "_",
       member = "[^_]+", "_", scenario = "[^_]+", "_",
       period = "\\d{4}_\\d{4}", "_CONUS_", freq = "[a-z]+", "\\.nc"
     ),
@@ -150,16 +146,22 @@ parsed <- files |>
 
 to_get <- parsed |>
   filter(freq == "monthly", var %in% vars) |>
-  semi_join(periods, by = c("scenario", "period")) |>
+  mutate(file_start = as.integer(str_sub(period, 1, 4)),
+         file_end = as.integer(str_sub(period, 6, 9))) |>
+  # keep files that overlap any normal window for their scenario
+  inner_join(windows, by = "scenario", relationship = "many-to-many") |>
+  filter(file_start <= win_end, file_end >= win_start) |>
+  distinct(file, .keep_all = TRUE) |>
+  select(-win_start, -win_end) |>
   mutate(
     url = file.path(thredds_base, "fileServer", url_path),
     dest = file.path(out_dir, file)
   )
 
-# Expect one file per GCM x variable x scenario-period
-n_expected <- length(gcms) * length(vars) * nrow(periods)
-if (nrow(to_get) != n_expected) {
-  warning("Found ", nrow(to_get), " files; expected ", n_expected)
+# Every GCM should have the same number of files
+n_by_gcm <- count(to_get, gcm)
+if (n_distinct(n_by_gcm$n) != 1 || nrow(n_by_gcm) != length(gcms)) {
+  warning("Number of files differs among GCMs; see `n_by_gcm`")
 }
 
 if (test_run) {
@@ -181,16 +183,16 @@ if (test_run) {
 #' \dontrun{
 #' url <- paste0(
 #'   "https://www.reacchpna.org/thredds/fileServer/",
-#'   "NWCSC_INTEGRATED_SCENARIOS_ALL_CLIMATE/macav2livneh/BNU-ESM/",
-#'   "macav2livneh_tasmin_BNU-ESM_r1i1p1_rcp85_2086_2099_CONUS_monthly.nc"
+#'   "MACAV2/BNU-ESM/",
+#'   "macav2metdata_tasmin_BNU-ESM_r1i1p1_rcp85_2096_2099_CONUS_monthly.nc"
 #' )
 #' dest <- file.path(tempdir(), basename(url))
 #' download_one(url, dest)
-#' terra::nlyr(terra::rast(dest)) # 168 (14 years x 12 months)
+#' terra::nlyr(terra::rast(dest)) # 48 (4 years x 12 months)
 #' }
 download_one <- function(url, dest, tries = 5, wait = 300) {
   if (file.exists(dest)) return(TRUE)
-  Sys.sleep(5) # be gentle with the server
+  Sys.sleep(2) # be gentle with the server
   tmp <- paste0(dest, ".part")
   ok <- tryCatch(
     with_retry(

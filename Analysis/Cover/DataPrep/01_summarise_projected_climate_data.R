@@ -1,9 +1,8 @@
 # //////////////////////////////////////////////////////////////////////////
-# 07_GetForecastedClimateData.R
 #
-# Derive end-of-century climate "normals" (the _CLIM variable set) from MACA
-# climate projections, as a multi-band raster on the Daymet 1 km grid, for use
-# as inputs to the vegetation-climate models.
+# Derive climate "normals" (the _CLIM variable set) from MACAv2-METDATA
+# climate projections, as a multi-band raster on the native ~4 km
+# MACAv2-METDATA (gridMET) grid.
 #
 # Run once per climate model (GCM), scenario, and period. Periods match the
 # Climate Toolbox: historical 1971-2000; rcp45 and rcp85 2040-2069 and
@@ -62,30 +61,32 @@ stopifnot(scenario %in% names(windows), period %in% windows[[scenario]])
 year_start <- as.integer(str_sub(period, 1, 4))
 year_end   <- as.integer(str_sub(period, 6, 9))
 
-# MACA files come in time chunks; read every chunk that overlaps the window,
-# then subset to the window.
-all_chunks <- if (scenario == "historical") {
-  c("1950_1969", "1970_1989", "1990_2005")
-} else {
-  c("2006_2025", "2026_2045", "2046_2065", "2066_2085", "2086_2099")
-}
+# Directory holding the raw MACAv2-METDATA NetCDFs (00_download_maca_rasters.R).
+maca_dir <- file.path(paths$large, "Data_raw/macav2metdata")
+
+# MACA files come in 5-year time chunks (e.g. "2066_2070"); read every chunk
+# on disk that overlaps the window, then subset to the window.
+all_chunks <- list.files(
+  maca_dir,
+  pattern = paste0("^macav2metdata_pr_", climate_model, "_r\\d+i\\d+p\\d+_",
+                   scenario, "_\\d{4}_\\d{4}_CONUS_monthly\\.nc$")
+) |>
+  str_extract("\\d{4}_\\d{4}")
 chunk_start <- as.integer(str_sub(all_chunks, 1, 4))
 chunk_end   <- as.integer(str_sub(all_chunks, 6, 9))
 maca_chunks <- all_chunks[chunk_start <= year_end & chunk_end >= year_start]
+if (length(maca_chunks) == 0) stop("No MACA files found for this window")
 
 message("GCM: ", climate_model, "; scenario: ", scenario,
         "; years: ", year_start, "-", year_end,
         "; MACA chunks: ", paste(maca_chunks, collapse = ", "))
-
-# Directory holding the raw MACA NetCDFs (a subdirectory of paths$large0).
-maca_dir <- file.path(paths$large, "Data_raw/macaClimateProjections/Data")
 
 # MACA variable name -> our short name. tasmin/tasmax are in Kelvin; pr in mm.
 maca_vars <- c(tasmin = "tmin", tasmax = "tmax", pr = "prcp")
 
 # Where per-year intermediate rasters are written (under paths$large).
 intermediate_dir <- file.path(paths$large, 'Data_processed/WallToWallClimateData', 
-                              "ForecastedClimate_intermediate",
+                              "ForecastedClimate_intermediate", "macav2metdata",
                               paste0(climate_model, "_", scenario))
 
 out_dir <-  file.path(paths$large, 'Data_processed/WallToWallClimateData')
@@ -104,11 +105,11 @@ dir.create(intermediate_dir, recursive = TRUE, showWarnings = FALSE)
 #' @return Full file path under maca_dir.
 #' @examples
 #' \dontrun{
-#' climate_model <- "IPSL-CM5A-MR"; scenario <- "rcp85"
+#' climate_model <- "CCSM4"; scenario <- "rcp85"
 #' maca_path("pr", "2066_2085")
 #' }
 maca_path <- function(maca_var, chunk) {
-  pattern <- paste0("^macav2livneh_", maca_var, "_", climate_model,
+  pattern <- paste0("^macav2metdata_", maca_var, "_", climate_model,
                     "_r\\d+i\\d+p\\d+_", scenario, "_", chunk,
                     "_CONUS_monthly\\.nc$")
   f <- list.files(maca_dir, pattern = pattern, full.names = TRUE)
@@ -121,24 +122,21 @@ maca_path <- function(maca_var, chunk) {
 
 # 1. Read and prepare monthly stacks --------------------------------------
 
-#' Read both MACA chunks for one variable, project to the Daymet grid, label
-#' layers by date, and (for temperature) convert Kelvin to Celsius.
+#' Read the MACA chunks for one variable and label layers by date.
+#'
+#' Layers stay file-backed (not read into memory). Temperatures are left in
+#' Kelvin here and converted per year in the loop below; converting the whole
+#' multi-decade stack at once forced terra to write it all to temp files.
 #'
 #' @param maca_var MACA variable string ("tasmin", "tasmax", "pr").
-#' @return SpatRaster of monthly layers on daymet_grid, named by date.
+#' @return SpatRaster of monthly layers, named by date.
 read_maca_var <- function(maca_var) {
   parts <- lapply(maca_chunks, function(chunk) {
     r <- terra::rast(maca_path(maca_var, chunk))
     names(r) <- terra::time(r)
     r
   })
-  r <- do.call(c, parts)
-
-  # Kelvin -> Celsius for temperature variables.
-  if (maca_var %in% c("tasmin", "tasmax")) {
-    r <- r - 273.15
-  }
-  r
+  do.call(c, parts)
 }
 
 message("Reading MACA data for ", climate_model, " ...")
@@ -169,8 +167,8 @@ for (yr in years) {
   stopifnot(length(idx) == 12)   # expect exactly 12 monthly layers per year
 
   metrics <- calc_annual_metrics(
-    tmin12 = tmin_all[[idx]],
-    tmax12 = tmax_all[[idx]],
+    tmin12 = tmin_all[[idx]] - 273.15, # Kelvin -> Celsius
+    tmax12 = tmax_all[[idx]] - 273.15,
     prcp12 = prcp_all[[idx]]
   )
   terra::writeRaster(metrics, out_file, overwrite = TRUE)
@@ -209,11 +207,8 @@ clim_layers <- lapply(climate_reductions, function(spec) {
 })
 
 clim <- do.call(c, clim_layers)
-
-
-# * project to daymet grid --------------------------------------------------
-
-clim <- terra::project(clim, read_mask())   # bilinear (default for continuous)
+# Left on the native MACAv2-METDATA (gridMET) ~4 km grid; cells outside
+# CONUS land are already NA.
 
 # 4. Write final per-model raster -----------------------------------------
 
