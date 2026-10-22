@@ -11,7 +11,7 @@
 #   Rscript 01_summarise_projected_climate_data.R --gcm=<gcm> \
 #     --scenario=<scenario> --period=<period>
 # e.g. --gcm=BNU-ESM --scenario=rcp85 --period=2070-2099. The options are
-# defined in Functions/params.R. On the HPC, slurm/summarise_maca.sh
+# defined in Functions/params.R. On the HPC, hpc/summarise_maca.sh
 # runs all 20 GCMs x 5 scenario-periods as a job array. Run interactively, the
 # defaults below are used.
 #

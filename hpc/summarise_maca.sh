@@ -1,9 +1,9 @@
 #!/bin/bash
 # Summarise MACA projections to _CLIM normals: one array task per
 # GCM x scenario-period (20 x 5 = 100 tasks).
-# Submit from the repository root:   sbatch slurm/summarise_maca.sh
+# Submit from the repository root:   sbatch hpc/summarise_maca.sh
 # Test a single task (BNU-ESM historical 1971-2000) first:
-#                                     sbatch --array=0 slurm/summarise_maca.sh
+#                                     sbatch --array=0 hpc/summarise_maca.sh
 # this script works b/ slurm 'loops' over the array (0-99) 
 # with SLURM_ARRAY_TASK_ID being like 'i' in the loop
 
@@ -11,7 +11,7 @@
 #SBATCH --account=swbsc
 #SBATCH --partition=cpu
 #SBATCH --array=0-99
-#SBATCH --time=12:00:00
+#SBATCH --time=20:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1

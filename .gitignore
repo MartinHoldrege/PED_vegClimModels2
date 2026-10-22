@@ -90,6 +90,7 @@ src/*.exp
 !*.toml
 !*.json
 !*.txt
+!*.sh
 !*.gitignore
 !*.gitattributes
 !DESCRIPTION
