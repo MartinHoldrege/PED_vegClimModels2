@@ -167,10 +167,11 @@ for (yr in years) {
   stopifnot(length(idx) == 12)   # expect exactly 12 monthly layers per year
 
   metrics <- calc_annual_metrics(
-    tmin12 = tmin_all[[idx]] - 273.15, # Kelvin -> Celsius
-    tmax12 = tmax_all[[idx]] - 273.15,
-    prcp12 = prcp_all[[idx]]
+    tmin12 = terra::toMemory(tmin_all[[idx]] - 273.15), # Kelvin -> Celsius
+    tmax12 = terra::toMemory(tmax_all[[idx]] - 273.15),
+    prcp12 = terra::toMemory(prcp_all[[idx]])
   )
+  
   terra::writeRaster(metrics, out_file, overwrite = TRUE)
 }
 

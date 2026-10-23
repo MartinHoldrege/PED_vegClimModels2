@@ -11,7 +11,7 @@
 #SBATCH --account=swbsc
 #SBATCH --partition=cpu
 #SBATCH --array=0-99
-#SBATCH --time=20:00:00
+#SBATCH --time=24:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
