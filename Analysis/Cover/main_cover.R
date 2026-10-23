@@ -19,8 +19,11 @@ library(dplyr)
 library(purrr)
 
 # what to run -------------------------------------------------------------
+# Wait before starting (another job is still running)
+wait_hours <- 0
 
-run_fit      <- TRUE
+
+run_fit      <- FALSE
 run_predict  <- TRUE
 run_evaluate <- TRUE
 
@@ -30,8 +33,8 @@ run_evaluate <- TRUE
 vc_default <- "c02"
 vc_model <- list(
   bare_ground = c("c01", "c02"),
-  shrub = "c03", 
-  herbaceous = "c03",
+  shrub = c("c01", 'c03'),
+  herbaceous = "c01", # "c03",
   needle = "c01", c3 = "c01", c4 = "c01", forb = "c01")
 
 fit_scripts <- c(
@@ -49,21 +52,23 @@ cover_runs <- list(
   cover          = list(
     # tree_forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
     # tree_nonforest = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    shrub = c('m01.5', 'm04.1'),
-    herbaceous = c('m01.5', 'm04.1'),
-    bare_ground = c('m01.5', 'm04.1')
+    # shrub = c('m01.8')
+    # herbaceous = c('m01.5', 'm04.1'),
+    # m05.5: f5 plus anomalies
+    herbaceous = 'm05.5'
+    # bare_ground = c('m01.5', 'm04.1')
   ),
   proportion = list(
-    # c3 = c('m01.5', 'm04.1'),
-    # c4 = c('m01.5', 'm04.1'),
-    # forb = c('m01.5', 'm04.1'),
+    c3 = 'm05.5',
+    c4 = 'm05.5',
+    forb = 'm05.5'
     # needle = c('m01.5', 'm04.1')
     ),
   # versions of cover_specs$combined
   combined       = list(
     # tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    herbaceous = c('m02.5', 'm04.5'),
-    all = c('m01.5', 'm02.5', 'm04.1', 'm04.5')
+    herbaceous = 'm05.5',
+    all = 'm05.5'
   )
 )
 
@@ -123,14 +128,20 @@ stopifnot(all(runs$cover_type %in% c(names(fit_scripts), "combined")),
 print(runs)
 
 
+# delay -------------------------------------------------------------------
+
+
+message("Sleeping ", wait_hours, " h; started ", format(Sys.time()))
+Sys.sleep(wait_hours * 3600)
+message("Resuming at ", format(Sys.time()))
 # misc other scripts to run (other scripts to run) ------------------------------------------
 
-if(TRUE) {
+if(FALSE) {
 # temporary: build the c03 training data
   dataprep <- file.path("Analysis/Cover/DataPrep",
                         c(# "06_cover_add-rap.R",
                           # "07_summarise_daymet_climate_points.R",
-                          "08_combine_cover_and_covariates.R",
+                          # "08_combine_cover_and_covariates.R",
                           "09_compute_scale_params.R"))
   stopifnot(file.exists(dataprep))
   for (s in dataprep) {

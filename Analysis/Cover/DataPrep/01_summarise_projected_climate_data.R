@@ -88,7 +88,7 @@ intermediate_dir <- file.path(paths$large, 'Data_processed/WallToWallClimateData
                               "ForecastedClimate_intermediate",
                               paste0(climate_model, "_", scenario))
 
-out_dir <-  file.path(paths$large, 'Data_processed/WallToWallClimateData')
+out_dir <-  file.path(paths$large, 'Data_processed/WallToWallClimateData/maca')
 dir.create(intermediate_dir, recursive = TRUE, showWarnings = FALSE)
 
 
