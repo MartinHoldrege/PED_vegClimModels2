@@ -1,6 +1,6 @@
 #!/bin/bash
 # Download MACA monthly projections.
-# Submit from the repository root:  sbatch slurm/download_maca.sh
+# Submit from the repository root:  sbatch hpc/download_maca.sh
 #SBATCH --job-name=maca_download
 #SBATCH --account=swbsc
 #SBATCH --partition=cpu
