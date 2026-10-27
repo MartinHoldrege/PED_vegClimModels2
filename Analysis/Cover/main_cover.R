@@ -23,7 +23,7 @@ library(purrr)
 wait_hours <- 0
 
 
-run_fit      <- FALSE
+run_fit      <- TRUE
 run_predict  <- TRUE
 run_evaluate <- TRUE
 
@@ -32,8 +32,8 @@ run_evaluate <- TRUE
 # used by combined runs)
 vc_default <- "c02"
 vc_model <- list(
-  bare_ground = c("c01", "c02"),
-  shrub = c("c01", 'c03'),
+  bare_ground = "c01", # c("c01", "c02"),
+  shrub = "c01", # c("c01", 'c03'),
   herbaceous = "c01", # "c03",
   needle = "c01", c3 = "c01", c4 = "c01", forb = "c01")
 
@@ -44,10 +44,13 @@ fit_scripts <- c(
 )
 
 # model versions to run, by family and model
+# m01.51: every component of combined all m01.51 (grplasso)
 cover_runs <- list(
   classification = list(
     # forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
     # zero_tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1')
+    forest    = 'm01.51',
+    zero_tree = 'm01.51'
     ),
   cover          = list(
     # tree_forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
@@ -55,20 +58,31 @@ cover_runs <- list(
     # shrub = c('m01.8')
     # herbaceous = c('m01.5', 'm04.1'),
     # m05.5: f5 plus anomalies
-    herbaceous = 'm05.5'
     # bare_ground = c('m01.5', 'm04.1')
+    tree_forest    = 'm01.51',
+    tree_nonforest = 'm01.51',
+    shrub          = 'm01.51',
+    herbaceous     = 'm01.51',
+    bare_ground    = 'm01.51'
   ),
   proportion = list(
-    c3 = 'm05.5',
-    c4 = 'm05.5',
-    forb = 'm05.5'
+    # c3 = 'm05.5',
+    # c4 = 'm05.5',
+    # forb = 'm05.5'
     # needle = c('m01.5', 'm04.1')
+    needle = 'm01.51',
+    c3     = 'm01.51',
+    c4     = 'm01.51',
+    forb   = 'm01.51'
     ),
   # versions of cover_specs$combined
   combined       = list(
     # tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    herbaceous = 'm05.5',
-    all = 'm05.5'
+    # herbaceous = 'm05.5',
+    # all = 'm05.5'
+    tree       = 'm01.51',
+    herbaceous = 'm01.51',
+    all        = 'm01.51'
   )
 )
 

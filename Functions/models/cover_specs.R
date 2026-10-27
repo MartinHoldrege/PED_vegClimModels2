@@ -18,7 +18,9 @@
 #                 (see select_rows())
 #   engine        "glmnet" (penalized regression), "ranger" (random forest),
 #                 "grpreg" (hierarchical group lasso: x^2 only enters with
-#                 x, and x:z with x and z; see hier_groups()) or "gam" (one
+#                 x, and x:z with x and z; see hier_groups()), "grplasso"
+#                 (hierarchical group lasso that also fits proportions, with
+#                 the hierarchy rule in grplasso$hierarchy) or "gam" (one
 #                 smooth per predictor; see gam_helpers.R)
 #   pred_vars     predictors (short climate/soil names), with the log1p_
 #                 versions of log1p_vars appended by the constructor
@@ -31,7 +33,11 @@
 #   ranger        list of arguments passed on to ranger::ranger(); NULL
 #                 otherwise
 #   grpreg        list of arguments passed on to grpreg::grpreg() (e.g.
-#                 nlambda); NULL otherwise
+#                 nlambda), plus hierarchy ("strict", the default, "form" or
+#                 "variable"; see hier_groups()); NULL otherwise
+#   grplasso      list: nlambda, lambda_min_ratio (smallest lambda as a
+#                 share of the largest) and hierarchy ("strict", "form" or
+#                 "variable"; see hier_groups()); NULL otherwise
 #   gam           list: k (knots per smooth), bs (basis), log10_mult
 #                 (multipliers on REML's smoothing parameters to try, as
 #                 log10), metric (CV score), interactions (moved here from
@@ -113,7 +119,7 @@ source('Functions/models/predictors.R')
 #' @param response Column in the cover training data.
 #' @param rows Which pixel-years to fit to: "all", or a quoted condition such
 #'   as `quote(MAP < 700)`; see `select_rows()`.
-#' @param engine "glmnet", "ranger", "grpreg" or "gam".
+#' @param engine "glmnet", "ranger", "grpreg", "grplasso" or "gam".
 #' @param family "binomial" (fit to the class), "gaussian" / "poisson"
 #'   (fit to cover; gaussian with glmnet, grpreg or ranger, poisson with
 #'   grpreg only), or "quasibinomial" (fit to cover / 100 with
@@ -136,12 +142,20 @@ source('Functions/models/predictors.R')
 #' @param grpreg List of extra arguments for `grpreg::grpreg()`. For grpreg
 #'   specs, `max.iter` defaults to 1e5: grpreg's own default (1e4) caps the
 #'   iterations for the whole lambda path, which can end a binomial path
-#'   early.
+#'   early. `hierarchy` ("strict", the default, "form" or "variable"; see
+#'   `hier_groups()`) sets the hierarchy rule and isn't passed on.
 #' @param cluster_vars Variables for the environmental clusters.
 #' @param n_folds Number of CV folds.
 #' @param env_clusters Number of environmental clusters (k-means), randomly
 #'   grouped into the `n_folds` folds. NULL (the default) uses `n_folds`:
 #'   one cluster per fold.
+#' @param grplasso List of settings for `engine = "grplasso"`, overriding
+#'   the defaults: `nlambda = 12`, `lambda_min_ratio = 1e-3`, and
+#'   `hierarchy = "strict"` (x and log1p_x enter alone, x^2 needs x, and an
+#'   interaction needs the same forms of its variables as main effects, e.g.
+#'   log1p_x:z needs log1p_x and z; "form" lets x^2 enter alone, and
+#'   "variable" lets any form of each variable do; see `hier_groups()`). A
+#'   pure group lasso, so `alpha` is ignored.
 #' @param gam List of settings for `engine = "gam"`, overriding the
 #'   defaults (see function body for defaults) `interactions = TRUE` adds a smooth of
 #'   the product of each pair (see gam_formula()); it is stored as
@@ -167,6 +181,7 @@ source('Functions/models/predictors.R')
                                    alpha = 1,
                                    ranger = NULL,
                                    grpreg = list(nlambda = 25),
+                                   grplasso = NULL,
                                    gam = NULL,
                                    cluster_vars = .default_cluster_vars,
                                    n_folds = 10,
@@ -183,7 +198,7 @@ source('Functions/models/predictors.R')
     interact_log1p <- FALSE
   }
   stopifnot(identical(rows, "all") || is.language(rows),
-            engine %in% c("glmnet", "ranger", "grpreg", "gam"),
+            engine %in% c("glmnet", "ranger", "grpreg", "grplasso", "gam"),
             family %in% c("binomial", "quasibinomial", "gaussian", "poisson"),
             response_transform %in% c("identity", "log1p"),
             select_rule %in% c("min", "1se"),
@@ -194,7 +209,11 @@ source('Functions/models/predictors.R')
             engine == "grpreg" || family != "poisson",
             # grpreg's binomial needs a 0/1 response, and ranger isn't set up
             # for proportions
-            family != "quasibinomial" || engine %in% c("glmnet", "gam"),
+            family != "quasibinomial" ||
+              engine %in% c("glmnet", "gam", "grplasso"),
+            # binomial: use grpreg, which fits the same model much faster
+            engine != "grplasso" ||
+              family %in% c("quasibinomial", "gaussian"),
             !family %in% c("binomial", "quasibinomial") ||
               response_transform == "identity",
             # predicted cover isn't a probability, so only prevalence matching
@@ -204,6 +223,15 @@ source('Functions/models/predictors.R')
   
   if (engine == "grpreg") {
     grpreg <- utils::modifyList(list(max.iter = 1e5), as.list(grpreg))
+    stopifnot(is.null(grpreg$hierarchy) ||
+                grpreg$hierarchy %in% c("strict", "form", "variable"))
+  }
+  if (engine == "grplasso") {
+    # nlambda: grplasso is slow (pure R), so a coarse path (~1.9x per step)
+    grplasso <- utils::modifyList(list(nlambda = 12, lambda_min_ratio = 1e-3,
+                                       hierarchy = "strict"),
+                                  as.list(grplasso))
+    stopifnot(grplasso$hierarchy %in% c("strict", "form", "variable"))
   }
   if (engine == "gam") {
     gam_default <- list(
@@ -240,6 +268,7 @@ source('Functions/models/predictors.R')
     alpha = alpha,
     ranger = ranger,
     grpreg = grpreg,
+    grplasso = grplasso,
     gam = gam,
     cv = list(cluster_vars = cluster_vars,
               n_folds = n_folds,
@@ -473,6 +502,14 @@ cover_specs <- list(
         # also based on VIP from m04.1
         pred_vars = .pred_vars$f5,
         interact_log1p = TRUE),
+      # as m01.5, but a hierarchical group lasso: x and log1p_x enter alone,
+      # x^2 needs x, and an interaction needs the same forms of its variables
+      # as main effects, e.g. log1p_x:z needs log1p_x and z (hier_groups(),
+      # rule "strict"). Same for every m01.51 below. Binomial m01.51 models
+      # use grpreg (much faster); the cover and proportion ones grplasso
+      m01.51 = .defaults_class_forest(pred_vars = .pred_vars$f5,
+                                      interact_log1p = TRUE,
+                                      engine = "grpreg"),
       m01.6 = .defaults_class_forest(
         # also based on VIP from m04.1
         pred_vars = .pred_vars$f6,
@@ -559,6 +596,8 @@ cover_specs <- list(
       m01.2 = .defaults_zero_tree(pred_vars = .pred_vars$complex2),
       m01.4 = .defaults_zero_tree(pred_vars = .pred_vars$f4),
       m01.5 = .defaults_zero_tree(pred_vars = .pred_vars$f5),
+      m01.51 = .defaults_zero_tree(pred_vars = .pred_vars$f5,
+                                   engine = "grpreg"),
       m01.6 = .defaults_zero_tree(pred_vars = .pred_vars$f6),
       m01.7 = .defaults_zero_tree(pred_vars = .pred_vars$f7),
       # random forest
@@ -585,6 +624,9 @@ cover_specs <- list(
                               pred_vars = .pred_vars$f4),
       m01.5 = .defaults_cover(rows = quote(cov_tree > 10),
                               pred_vars = .pred_vars$f6),
+      m01.51 = .defaults_cover(rows = quote(cov_tree > 10),
+                               pred_vars = .pred_vars$f5,
+                               engine = "grplasso"),
       m01.6 = .defaults_cover(rows = quote(cov_tree > 10),
                               pred_vars = .pred_vars$f6),
       m01.7 = .defaults_cover(rows = quote(cov_tree > 10),
@@ -602,6 +644,9 @@ cover_specs <- list(
                               pred_vars = .pred_vars$f4),
       m01.5 = .defaults_cover(rows = quote(cov_tree <= 10),
                               pred_vars = .pred_vars$f5),
+      m01.51 = .defaults_cover(rows = quote(cov_tree <= 10),
+                               pred_vars = .pred_vars$f5,
+                               engine = "grplasso"),
       m01.6 = .defaults_cover(rows = quote(cov_tree <= 10),
                               pred_vars = .pred_vars$f6),
       m01.7 = .defaults_cover(rows = quote(cov_tree <= 10),
@@ -616,6 +661,9 @@ cover_specs <- list(
     shrub = list(
       m01.5 = .defaults_cover(response = 'cov_shrub',
                               pred_vars = .pred_vars$f5),
+      m01.51 = .defaults_cover(response = 'cov_shrub',
+                               pred_vars = .pred_vars$f5,
+                               engine = "grplasso"),
       m01.8 = .defaults_cover(response = 'cov_shrub',
                               pred_vars = .pred_vars$f8),
       m04.1 = .defaults_cover(response = 'cov_shrub',
@@ -629,6 +677,9 @@ cover_specs <- list(
                               pred_vars = .pred_vars$f5_anom),
       m01.5 = .defaults_cover(response = 'cov_herbaceous',
                               pred_vars = .pred_vars$f5),
+      m01.51 = .defaults_cover(response = 'cov_herbaceous',
+                               pred_vars = .pred_vars$f5,
+                               engine = "grplasso"),
       m04.1 = .defaults_cover(response = 'cov_herbaceous',
                               engine = "ranger", family = "gaussian",
                               pred_vars = .pred_vars$complex2,
@@ -638,6 +689,9 @@ cover_specs <- list(
     bare_ground = list(
       m01.5 = .defaults_cover(response = 'cov_bare_ground',
                               pred_vars = .pred_vars$f5),
+      m01.51 = .defaults_cover(response = 'cov_bare_ground',
+                               pred_vars = .pred_vars$f5,
+                               engine = "grplasso"),
       m04.1 = .defaults_cover(response = 'cov_bare_ground',
                               engine = "ranger", family = "gaussian",
                               pred_vars = .pred_vars$complex2,
@@ -650,6 +704,9 @@ cover_specs <- list(
     needle = list(
       m01.5 = .defaults_proportion(response = 'frac_needle',
                               pred_vars = .pred_vars$f5),
+      m01.51 = .defaults_proportion(response = 'frac_needle',
+                                    pred_vars = .pred_vars$f5,
+                                    engine = "grplasso"),
       m04.1 = .defaults_proportion(response = 'frac_needle',
                            engine = "ranger", family = "gaussian",
                            pred_vars = .pred_vars$complex2,
@@ -660,6 +717,9 @@ cover_specs <- list(
                                    pred_vars = .pred_vars$f5_anom),
       m01.5 = .defaults_proportion(response = 'frac_c3',
                                    pred_vars = .pred_vars$f5),
+      m01.51 = .defaults_proportion(response = 'frac_c3',
+                                    pred_vars = .pred_vars$f5,
+                                    engine = "grplasso"),
       m04.1 = .defaults_proportion(response = 'frac_c3',
                                    engine = "ranger", family = "gaussian",
                                    pred_vars = .pred_vars$complex2,
@@ -670,6 +730,9 @@ cover_specs <- list(
                                    pred_vars = .pred_vars$f5_anom),
       m01.5 = .defaults_proportion(response = 'frac_c4',
                                    pred_vars = .pred_vars$f5),
+      m01.51 = .defaults_proportion(response = 'frac_c4',
+                                    pred_vars = .pred_vars$f5,
+                                    engine = "grplasso"),
       m04.1 = .defaults_proportion(response = 'frac_c4',
                                    engine = "ranger", family = "gaussian",
                                    pred_vars = .pred_vars$complex2,
@@ -680,6 +743,9 @@ cover_specs <- list(
                                    pred_vars = .pred_vars$f5_anom),
       m01.5 = .defaults_proportion(response = 'frac_forb',
                                    pred_vars = .pred_vars$f5),
+      m01.51 = .defaults_proportion(response = 'frac_forb',
+                                    pred_vars = .pred_vars$f5,
+                                    engine = "grplasso"),
       m04.1 = .defaults_proportion(response = 'frac_forb',
                                    engine = "ranger", family = "gaussian",
                                    pred_vars = .pred_vars$complex2,
@@ -694,6 +760,7 @@ cover_specs <- list(
       m01.0 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.0"),
       m01.4 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.4"),
       m01.5 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.5"),
+      m01.51 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.51"),
       m01.6 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.6"),
       m01.7 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.7"),
       m04.1 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m04.1")
@@ -703,6 +770,8 @@ cover_specs <- list(
     tree_all = list(
       m01.5 = .defaults_combined_tree_prop(.all_vmc = "m01.5",
                                            .needle_vc = "c01"),
+      m01.51 = .defaults_combined_tree_prop(.all_vmc = "m01.51",
+                                            .needle_vc = "c01"),
       m04.1 = .defaults_combined_tree_prop(.all_vmc = "m04.1",
                                            .needle_vc = "c01")
     ),
@@ -711,6 +780,9 @@ cover_specs <- list(
       m01.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m01.5"),
       m02.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m01.5",
                                       herbaceous = c(vc = 'c03',  vmc = "m01.5")),
+      # m01.5 and m02.5 with the m01.51 (grplasso) models
+      m01.51 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m01.51"),
+
       # all four fit to c01 with f5 plus anomalies
       m05.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m05.5"),
       m04.1 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m04.1"),
@@ -732,6 +804,10 @@ cover_specs <- list(
       m02.5 = .defaults_combined_all(.all_vmc = "m01.5", .shrub_vc = "c03",
                                      .bare_vc = 'c02',
                                      herbaceous_vmc = 'm02.5'),
+      # m01.5 and m02.5 with the m01.51 (grplasso) models
+      m01.51 = .defaults_combined_all(.all_vmc = "m01.51",
+                                      .bare_vc = 'c01',
+                                      .shrub_vc = "c01"),
       # as m01.5, but with herbaceous m05.5 (herbaceous and its shares fit
       # with anomalies)
       m05.5 = .defaults_combined_all(.all_vmc = "m01.5",

@@ -164,6 +164,13 @@ predict_score <- function(fit, x) {
                     type = "response")
       .untransform_cover(as.vector(mu), fit$config$spec$response_transform)
     },
+    grplasso = {
+      # coefficients already summed over each column's copies, so the
+      # expanded matrix isn't needed
+      b <- fit$fit$coef
+      .grpl_score(b[["(Intercept)"]] + drop(x %*% b[colnames(x)]),
+                  fit$config$spec)
+    },
     gam = {
       requireNamespace("mgcv")  # to get the predict() method
       # discrete = FALSE: exact predictions (discretized ones are approximate)

@@ -134,7 +134,7 @@ if (engine == "glmnet") {
     print(vip_plot)
   }
 
-} else if (engine == "grpreg") {
+} else if (engine %in% c("grpreg", "grplasso")) {
 
   cv_plot <- ggplot(fit$fit$cv, aes(x = log(lambda), y = cvm)) +
     geom_pointrange(aes(ymin = cvm - cvsd, ymax = cvm + cvsd), size = 0.2) +
@@ -168,9 +168,9 @@ if (engine == "glmnet") {
 ## Performance
 
 Predicted vs observed cover (%) at the training pixel-years. Out-of-fold
-predictions come from the environmental folds; for glmnet, grpreg and gam
+predictions come from the environmental folds; for glmnet, grpreg, grplasso and gam
 those are the same folds that chose the penalty, so they are mildly
-optimistic. The other set is in-sample for glmnet, grpreg and gam, and
+optimistic. The other set is in-sample for glmnet, grpreg, grplasso and gam, and
 out-of-bag for ranger. R^2 is 1 - SSE/SST (negative when the model does worse
 than the mean); bias is mean(predicted - observed).
 

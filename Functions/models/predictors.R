@@ -136,26 +136,41 @@ prepare_predictors <- function(dat, pred_vars, scale_df, squares,
 
 #' Hierarchical groups for a design matrix
 #'
-#' One group per term, holding the term and the terms it requires: a main
-#' effect or `log1p_x` alone, `I(x^2)` with `x`, and `x:z` with `x` and `z`.
-#' Fitting a group lasso to the design matrix with its columns repeated once
-#' per group they belong to (the latent overlapping group lasso; the
-#' formulation glinternet uses) means a square can only enter with its main
-#' effect, and an interaction only with both of its terms. `log1p_x` can enter
-#' without `x`. A term's coefficient is then the sum over its copies.
+#' Groups for the latent overlapping group lasso (the formulation glinternet
+#' uses): the design matrix's columns are repeated once per group they belong
+#' to, and a term can only enter the model along with the rest of a group
+#' that holds it. A term's coefficient is then the sum over its copies. Which
+#' groups are made depends on `rule`:
+#'
+#' - "strict": one group per term, holding the term and the terms it
+#'   requires: a main effect or `log1p_x` alone, `I(x^2)` with `x`, and `x:z`
+#'   with `x` and `z` (`log1p_x:z` with `log1p_x` and `z`).
+#' - "form": as "strict", but `I(x^2)` enters alone. An interaction still
+#'   needs the same forms as main effects (`log1p_x:z` needs `log1p_x`).
+#' - "variable": main effects, squares and `log1p_x` alone; an interaction
+#'   needs some main-effect form (`x`, `I(x^2)` or `log1p_x`) of each of its
+#'   two variables. One group per interaction and pair of forms, e.g. `x:z`
+#'   gets {x, z, x:z}, {log1p_x, z, x:z}, {I(x^2), z, x:z}, ...
 #'
 #' @param terms Column names of a design matrix from `make_design_matrix()`.
+#' @param rule "strict", "form" or "variable".
 #' @return Tibble with one row per column of the expanded matrix: `group`
-#'   (the term the group is for) and `term` (the design-matrix column).
+#'   (the group's name; for "strict" and "form", the term it is for) and
+#'   `term` (the
+#'   design-matrix column).
 #' @examples
-#' terms <- c("MAT", "MAP", "log1p_MAP", "I(MAT^2)", "MAT:MAP",
+#' terms <- c("MAT", "MAP", "log1p_MAP", "I(MAT^2)", "I(MAP^2)", "MAT:MAP",
 #'            "MAT:log1p_MAP")
-#' hier_groups(terms = terms)
-hier_groups <- function(terms) {
+#' rule <- "variable"
+#' hier_groups(terms = terms, rule = rule)
+hier_groups <- function(terms, rule = c("strict", "form", "variable")) {
+  rule <- match.arg(rule)
+  
+  if (rule %in% c("strict", "form")) {
   groups <- map(terms, \(term) {
     parents <- if (str_detect(term, ":")) {
       strsplit(term, ":", fixed = TRUE)[[1]]
-    } else if (str_detect(term, "^I\\(.+\\^2\\)$")) {
+      } else if (rule == "strict" && str_detect(term, "^I\\(.+\\^2\\)$")) {
       str_remove_all(term, "^I\\(|\\^2\\)$")
     } else {
       character(0)
@@ -163,6 +178,25 @@ hier_groups <- function(terms) {
     tibble(group = term, term = c(parents, term))
   }) |>
     bind_rows()
+  } else {
+    # the variable each non-interaction term is a form of (x for x, I(x^2)
+    # and log1p_x)
+    term_var <- function(t) str_remove_all(t, "^I\\(|\\^2\\)$|^log1p_")
+    mains <- terms[!str_detect(terms, ":")]
+    forms <- split(mains, term_var(mains))
+    
+    groups <- map(terms, \(term) {
+      if (!str_detect(term, ":")) return(tibble(group = term, term = term))
+      pair <- strsplit(term, ":", fixed = TRUE)[[1]]
+      # one group per combination of a form of each variable
+      parents <- expand_grid(a = forms[[term_var(pair[1])]],
+                             b = forms[[term_var(pair[2])]])
+      tibble(group = rep(paste0(term, " | ", parents$a, ", ", parents$b),
+                         each = 3),
+             term = c(rbind(parents$a, parents$b, term)))
+    }) |>
+      bind_rows()
+  }
   
   # every required term must be in the design matrix
   stopifnot(all(groups$term %in% terms))

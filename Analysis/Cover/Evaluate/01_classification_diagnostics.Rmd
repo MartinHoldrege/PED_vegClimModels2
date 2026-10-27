@@ -108,7 +108,7 @@ For glmnet, the cross-validation curve (binomial deviance vs log(lambda);
 dashed lines mark min and 1se) and the non-zero coefficients at the selected
 lambda. For ranger, the forest settings and the out-of-bag error, and
 variable importance if the spec asked for it (`importance` in `spec$ranger`).
-For grpreg
+For grpreg and grplasso
 (hierarchical group lasso), the cross-validation curve (mean out-of-fold
 deviance +/- 1 SE; dashed line at the selected lambda) and the non-zero
 coefficients, each summed over the groups it was fit
@@ -155,7 +155,7 @@ tibble(term = rownames(coefs), coefficient = as.numeric(coefs)) |>
     print(vip_plot)
   }
   
-} else if (engine == "grpreg") {
+} else if (engine %in% c("grpreg", "grplasso")) {
   
   cv_plot <- ggplot(fit$fit$cv, aes(x = log(lambda), y = cvm)) +
     geom_pointrange(aes(ymin = cvm - cvsd, ymax = cvm + cvsd), size = 0.2) +
@@ -193,9 +193,9 @@ tibble(term = rownames(coefs), coefficient = as.numeric(coefs)) |>
 ## Classification performance
 
 AUC and the confusion matrix at the cutoff. Out-of-fold predictions come from
-the environmental folds; for glmnet and grpreg those are the same folds that
+the environmental folds; for glmnet, grpreg and grplasso those are the same folds that
 chose lambda, so they are mildly optimistic. The other set is in-sample for
-glmnet and grpreg, and out-of-bag for ranger.
+glmnet, grpreg and grplasso, and out-of-bag for ranger.
 
 ```{r performance}
 
