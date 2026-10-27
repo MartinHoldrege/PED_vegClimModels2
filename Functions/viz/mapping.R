@@ -583,3 +583,88 @@ if(FALSE) {
                  colorscale = colorscale_cover(),
                  title = "RAP Cover")
 }
+
+
+# National Climate Assessment (NCA5) regions for CONUS. The regions follow
+# state boundaries, so they are built from spData::us_states.
+
+#' NCA region of each CONUS state
+#'
+#' Region codes run roughly west to east and set the plotting order.
+#'
+#' @return Tibble with `state`, `region` and `region_code`.
+#' @examples
+#' nca_region_lookup()
+nca_region_lookup <- function() {
+  regions <- list(
+    "Northwest" = c("Washington", "Oregon", "Idaho"),
+    "Southwest" = c("California", "Nevada", "Utah", "Arizona", "Colorado",
+                    "New Mexico"),
+    "Northern Great Plains" = c("Montana", "Wyoming", "North Dakota",
+                                "South Dakota", "Nebraska"),
+    "Southern Great Plains" = c("Kansas", "Oklahoma", "Texas"),
+    "Midwest" = c("Minnesota", "Iowa", "Missouri", "Wisconsin", "Illinois",
+                  "Indiana", "Michigan", "Ohio"),
+    "Northeast" = c("Maine", "New Hampshire", "Vermont", "Massachusetts",
+                    "Rhode Island", "Connecticut", "New York", "New Jersey",
+                    "Pennsylvania", "Delaware", "Maryland", "West Virginia",
+                    "District of Columbia"),
+    "Southeast" = c("Virginia", "North Carolina", "South Carolina", "Georgia",
+                    "Florida", "Alabama", "Mississippi", "Tennessee",
+                    "Kentucky", "Arkansas", "Louisiana")
+  )
+  tibble::tibble(
+    state = unlist(regions, use.names = FALSE),
+    region = rep(names(regions), lengths(regions)),
+    region_code = rep(seq_along(regions), lengths(regions))
+  )
+}
+
+#' Rasterize NCA regions onto a template grid
+#'
+#' A cell gets the region of the state containing its centre; coastal and
+#' border cells whose centre falls outside every state are NA.
+#'
+#' @param template SpatRaster defining the grid.
+#' @return Single-layer SpatRaster of `region_code` (see `nca_region_lookup()`).
+#' @examples
+#' \dontrun{
+#' template <- terra::rast(xmin = -125, xmax = -66, ymin = 24, ymax = 50,
+#'                         res = 0.25, crs = "EPSG:4326")
+#' r <- rasterize_nca_regions(template)
+#' terra::plot(r)
+#' }
+#' Rasterize NCA regions onto a template grid
+#'
+#' A cell gets the region of the state containing its centre; coastal and
+#' border cells whose centre falls outside every state are NA.
+#'
+#' @param template SpatRaster defining the grid.
+#' @return Single-layer SpatRaster of `region_code` (see `nca_region_lookup()`).
+#' @examples
+#' \dontrun{
+#' template <- terra::rast(xmin = -125, xmax = -66, ymin = 24, ymax = 50,
+#'                         res = 0.25, crs = "EPSG:4326")
+#' r <- rasterize_nca_regions(template)
+#' terra::plot(r)
+#' }
+rasterize_nca_regions <- function(template) {
+  lookup <- nca_region_lookup()
+  states <- spData::us_states
+  # every CONUS state (plus DC) must have exactly one region
+  stopifnot(setequal(states$NAME, lookup$state),
+            !anyDuplicated(lookup$state))
+  
+  states <- states |>
+    dplyr::left_join(lookup, by = c("NAME" = "state")) |>
+    sf::st_transform(terra::crs(template))
+  
+  # MACA NetCDFs use 0-360 longitudes; shift the states to match
+  if (terra::is.lonlat(template) && terra::xmin(template) > 180) {
+    states <- sf::st_shift_longitude(states)
+  }
+  
+  r <- terra::rasterize(terra::vect(states), template, field = "region_code")
+  names(r) <- "region_code"
+  r
+}
