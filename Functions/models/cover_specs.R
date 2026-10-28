@@ -213,7 +213,7 @@ source('Functions/models/predictors.R')
               engine %in% c("glmnet", "gam", "grplasso"),
             # binomial: use grpreg, which fits the same model much faster
             engine != "grplasso" ||
-              family %in% c("quasibinomial", "gaussian"),
+              family %in% c("quasibinomial", "gaussian", "binomial"),
             !family %in% c("binomial", "quasibinomial") ||
               response_transform == "identity",
             # predicted cover isn't a probability, so only prevalence matching

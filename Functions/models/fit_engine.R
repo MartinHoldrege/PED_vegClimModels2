@@ -259,8 +259,7 @@ fit_engine <- function(spec, x, y_fit, foldid) {
     lambda <- lambdas[i_sel]
 
     fit_all <- grplasso::grplasso(x_grp, y = y_fit, index = index,
-                                  lambda = lambda * nrow(x_grp) *
-                                    nrow(x_grp),
+                                  lambda = lambda * nrow(x_grp),
                                   model = model, control = ctrl)
     b <- fit_all$coefficients[, 1]  # one per column of x_grp
     converged <- fit_all$converged
