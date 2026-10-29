@@ -29,7 +29,7 @@ Started: October 2026
 // params -------------------------------------------
 var yearStart = 2000;
 var yearEnd = 2024;
-var step = 1;  // 1: make the 250 m assets; 2: export them at 1 km to Drive
+var step = 2;  // 1: make the 250 m assets; 2: export them at 1 km to Drive
 
 var driveFolder = 'PED_vegClimModels2';
 
