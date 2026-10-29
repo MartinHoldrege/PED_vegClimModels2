@@ -47,7 +47,7 @@
 # proportions figure).
 #
 # September, 2026
-
+# NOTE: this file needs updating to work w/ new data input datasets
 
 # dependencies ------------------------------------------------------------
 
@@ -67,7 +67,7 @@ vc <- opt$vc  # cover data version
 test_run <- FALSE
 
 in_file <- file.path(paths$large, "Data_processed/cover_combined",
-                     paste0("cover_by_pixel_year_all-sources_", vc, ".csv"))
+                     paste0("cover_by_pixel_year_", vc, ".csv"))
 
 out_dir <- file.path("Figures/Cover/training_data")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)

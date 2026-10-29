@@ -39,7 +39,7 @@ for (var i = 0; i < cutoffs.length; i++) {
     
   var cutoff = cutoffs[i];
   var notForest = rapMean
-    .lt(ee.Image(cutoff)); // <1% cover
+    .lt(ee.Image(cutoff)); 
   
   // mask: unburned AND natural land
   var keepMask = everBurned.not().and(fg.lcmapMask);

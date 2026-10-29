@@ -1,7 +1,7 @@
 /*
 Fraction of natural-land 30m pixels per daymet cell 
 that have <x% tree cover. Cells are masked with the 1km fire mask
-(02_fire_fracUnburned.js) and LCMAP mask, as in 03_rap_sample.js.
+(02_fire_fracUnburned.js) and LCMAP mask.
 
 Author: Martin Holdrege
 Started: April 2026

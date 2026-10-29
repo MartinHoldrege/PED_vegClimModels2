@@ -29,9 +29,9 @@ source_functions()
 
 # Parameters --------------------------------------------------------------
 
-rerun <-  FALSE # recreate intermediate files, needed if input data locations have change
+rerun <-  TRUE # recreate intermediate files, needed if input data locations have change
 test_run <- FALSE 
-vc <- opt$vc
+vc <- "c04-c06" # cover versions the cell-years cover (one climate file for all)
 # Daymet years available on disk. Windows are truncated to this range.
 daymet_years <- 1980:2023
 
@@ -58,14 +58,15 @@ out_file <- file.path(cov_dir,
 # the join key; x, y are checked against it below and carried to the output.
 
 mask_r <- read_mask()
-# file with all pixel-years of cover data, created in 06_cover_add-rap.R
+# all cell-years across the cover versions, created in
+# 06_build_cover_datasets.R
 obs <- read_csv(file.path(
-  cov_dir, paste0("cover_by_pixel_year_all-sources_",  vc, ".csv")),
+  cov_dir, paste0("cover_cell_years_",  vc, ".csv")),
   show_col_types = FALSE) |> 
   select(cell, year, x, y)
 
 if(test_run) {
-  obs_sf <- sample_n(obs_sf, size = 5)
+  obs <- sample_n(obs, size = 5)
 }
 # one row per cell-year, since results are joined back on cell and year
 stopifnot(!anyDuplicated(obs[c("cell", "year")]))

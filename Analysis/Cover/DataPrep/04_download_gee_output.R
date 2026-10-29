@@ -1,8 +1,9 @@
 # Download the mask and RAP cover GeoTIFFs from Google Drive.
 #
 # Exported in:
-#   04_export_masks.js   LCMAP_*, MTBS_*
-#   05_rap_cover.js      RAP_v3_cover-*
+#   03_export_masks.js         LCMAP_*, MTBS_*
+#   01_rap_cover.js            RAP_v3_cover-*
+#   03_rap_frac-zero-tree.js   RAP_v3_fracZeroTree_*
 #
 # Only downloads if the Drive version is newer than the local copy.
 
@@ -15,11 +16,10 @@ drive_folder <- "PED_vegClimModels2"
 base_local <- file.path(paths$large, "Data_processed")
 
 file_specs <- tribble(
-  ~pattern,             ~local_dir,
+  ~pattern,                 ~local_dir,
   "^(LCMAP|MTBS).*gt",      file.path(base_local, "masks"),
-  "^RAP_v\\d_cover.*thin",    file.path(base_local, "CoverData/rap"),
-  "^RAP_v\\d_cover_\\d{4}",    file.path(base_local, "CoverData/rap"),
-  "^RAP_v\\d_fracZeroTree",    file.path(base_local, "CoverData/rap")
+  "^RAP_v\\d_cover-",       file.path(base_local, "CoverData/rap"),
+  "^RAP_v\\d_fracZeroTree", file.path(base_local, "CoverData/rap")
 )
 
 walk(file_specs$local_dir, dir.create, recursive = TRUE, showWarnings = FALSE)
