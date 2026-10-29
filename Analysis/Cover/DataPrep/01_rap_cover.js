@@ -29,7 +29,8 @@ Started: October 2026
 // params -------------------------------------------
 var yearStart = 2000;
 var yearEnd = 2024;
-var step = 2;  // 1: make the 250 m assets; 2: export them at 1 km to Drive
+var step = 1;  // 1: make the 250 m assets; 2: export them at 1 km to Drive;
+               // 3: delete the 250 m assets
 
 var driveFolder = 'PED_vegClimModels2';
 
@@ -113,5 +114,14 @@ if (step === 2) {
         {min: 0, max: 60, palette: ['white', 'darkgreen']},
         'tree ' + yearEnd + ', 1 km', false);
     }
+  }
+}
+
+// step 3: delete the 250 m assets ------------------
+// permanent; only run once the step 2 files are downloaded and checked
+if (step === 3) {
+  for (var d = yearStart; d <= yearEnd; d++) {
+    ee.data.deleteAsset(assetId(d));
+    print('deleted', assetId(d));
   }
 }
