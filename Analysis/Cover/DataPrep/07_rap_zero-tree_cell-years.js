@@ -6,17 +6,19 @@ c_needle/c_broad zeroing in 08_combine_cover_and_covariates.R.
 Same definition as the 2021 layer (02_rap_no-tree.js and
 03_rap_frac-zero-tree.js), applied to each year:
   - 30 m: 1 where RAP tree cover < cutoff, masked to pixels unburned in that
-    year's 20-year window and kept by the LCMAP mask; resampled onto a 30 m
-    grid in the daymet CRS, as the 02 export is
-  - 1 km: mean of that over the snap cell (fracZeroTree), masked by the 1 km
-    LCMAP mask and that year's fire mask; zeroTree = 1 where
-    fracZeroTree > zeroTreeFracCutoff
-Values are sampled at the cell centres, so GEE only computes the sampled
-cells (no CONUS-wide 30 m export).
+    year's 20-year window and kept by the LCMAP mask
+  - 1 km: mean of that over the snap cell (fracZeroTree), computed at 30 m in
+    the daymet CRS over each cell's square; zeroTree = 1 where
+    fracZeroTree > zeroTreeFracCutoff. Unlike 03, no 1 km masks: the
+    cell-years were already filtered by them in 06 (except FIA-only rows,
+    which aren't LCMAP-masked and so also get a value here)
+Only the uploaded cells are computed (reduceRegions over each cell's square),
+so there is no CONUS-wide 30 m step.
 
 Input: cover_cell_years_c04-c06.csv (06_build_cover_datasets.R), uploaded as
 a table asset to <fg.pathAsset>cover/cover_cell_years_c04-c06, with
-longitude and latitude as the X and Y columns.
+longitude and latitude as the X and Y columns. The x, y columns (cell centres
+in the daymet CRS) are used to build each cell's square.
 
 Output (Drive): RAP_v3_zeroTree_lt3_cell-years_c04-c06.csv, downloaded with
 04_download_gee_output.R
@@ -59,8 +61,19 @@ var burned = ee.ImageCollection('USFS/GTAC/MTBS/annual_burn_severity_mosaics/v1'
 
 // process ------------------------------------------
 
-// fracZeroTree and zeroTree on the snap grid, for one year
-var zeroTreeYear = function(year) {
+// each cell-year's geometry becomes its 1 km snap cell (x, y are the centre)
+var proj = ee.Projection(fg.crs);
+var cells = cellYears.map(function(f) {
+  var x = ee.Number(f.get('x'));
+  var y = ee.Number(f.get('y'));
+  var square = ee.Geometry.Rectangle(
+    [x.subtract(500), y.subtract(500), x.add(500), y.add(500)], proj, false);
+  return f.setGeometry(square);
+});
+
+// 30 m layer for one year: 1 = tree cover < cutoff, masked to unburned
+// natural land
+var notTreeYear = function(year) {
   var tree = ee.Image(rap.filter(ee.Filter.calendarRange(year, year, 'year'))
     .first()).select('TRE');
 
@@ -70,39 +83,33 @@ var zeroTreeYear = function(year) {
     .max()
     .unmask(0);
 
-  var notTree30 = tree.lt(cutoff)
-    .updateMask(everBurned.not().and(fg.lcmapMask))
-    .reproject({crs: fg.crs, scale: 30});
-
-  var cellKeep = fg.lcmapMaskBinary().and(fg.fireMaskYear(year));
-
-  var frac = notTree30
-    .reduceResolution({reducer: ee.Reducer.mean(), bestEffort: true,
-                       maxPixels: 2e3})
-    .reproject({crs: fg.crs, crsTransform: fg.crsTransform})
-    .updateMask(cellKeep)
-    .rename('fracZeroTree');
-
-  return frac.addBands(frac.gt(zeroTreeFracCutoff).rename('zeroTree'));
+  return tree.lt(cutoff)
+    .updateMask(everBurned.not().and(fg.lcmapMask));
 };
 
-// sample each year's cell-years from that year's layer; masked cells give an
-// empty value
+// zeroTree from fracZeroTree; left empty where fracZeroTree is (cell with no
+// unmasked 30 m pixels)
+var addZeroTree = function(f) {
+  var frac = f.get('fracZeroTree');
+  return f.set('zeroTree', ee.Algorithms.If(
+    ee.Algorithms.IsEqual(frac, null),
+    null,
+    ee.Number(frac).gt(zeroTreeFracCutoff)));
+};
+
+// mean over each cell, by year. The mean weights pixels by how much of each
+// lies in the cell, as reduceResolution does in 03
 var sampled = ee.FeatureCollection([]);
 for (var year = yearStart; year <= yearEnd; year++) {
-  var pts = cellYears.filter(ee.Filter.eq('year', year));
-  var s = zeroTreeYear(year).reduceRegions({
-    collection: pts,
-    reducer: ee.Reducer.first(),
+  var s = notTreeYear(year).reduceRegions({
+    collection: cells.filter(ee.Filter.eq('year', year)),
+    reducer: ee.Reducer.mean().setOutputs(['fracZeroTree']),
     crs: fg.crs,
-    crsTransform: fg.crsTransform
+    scale: 30,
+    tileScale: 4
   });
-  sampled = sampled.merge(s);
+  sampled = sampled.merge(s.map(addZeroTree));
 }
-
-// visualize ----------------------------------------
-Map.addLayer(zeroTreeYear(2021).select('zeroTree').selfMask(),
-  {palette: ['black']}, 'zero tree 2021 (should match 03 layer)', false);
 
 // export -------------------------------------------
 var fileName = 'RAP_v3_zeroTree_lt' + cutoff + '_cell-years_' + vcLabel;
@@ -114,3 +121,15 @@ Export.table.toDrive({
   fileFormat: 'CSV',
   selectors: ['cell', 'year', 'fracZeroTree', 'zeroTree']
 });
+
+if(false) {
+  // check: computed 2021 layer vs the stored 02 asset, at 300 2021 cells
+  var test = cells.filter(ee.Filter.eq('year', 2021)).limit(300);
+  var stored = ee.Image(fg.pathAsset + 'rap/RAP_v3_tree-lt3_masked_2021-2021_30m');
+  var both = notTreeYear(2021).rename('computed')
+    .addBands(stored.rename('stored'));
+  var res = both.reduceRegions({collection: test, reducer: ee.Reducer.mean(),
+                                crs: fg.crs, scale: 30});
+  print(ui.Chart.feature.byFeature(res, 'stored', ['computed'])
+    .setChartType('ScatterChart'));
+}
