@@ -253,11 +253,20 @@ cover <- list(
 )
 names(cover) <- c(vc_field, vc_rap, vc_blend)
 
-# combined cell-years for 07; c06's are a subset of c04's and c05's
+# combined cell-years for 07 and 07_rap_zero-tree_cell-years.js; c06's are a
+# subset of c04's and c05's. longitude, latitude (cell centres) are for the
+# GEE table upload
 cell_years <- bind_rows(cover) |>
   distinct(cell, year, x, y) |>
   arrange(cell, year)
 
+lonlat <- terra::vect(as.matrix(cell_years[c("x", "y")]),
+                      crs = terra::crs(snap)) |>
+  terra::project("EPSG:4326") |>
+  terra::crds()
+
+cell_years$longitude <- lonlat[, "x"]
+cell_years$latitude  <- lonlat[, "y"]
 
 # checks ------------------------------------------------------------------
 
