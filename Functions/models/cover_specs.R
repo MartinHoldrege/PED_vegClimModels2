@@ -675,6 +675,9 @@ cover_specs <- list(
       # as m01.5, plus the anomalies of the climate variables
       m05.5 = .defaults_cover(response = 'cov_herbaceous',
                               pred_vars = .pred_vars$f5_anom),
+      m05.51 = .defaults_cover(response = 'cov_herbaceous',
+                               pred_vars = .pred_vars$f5_anom,
+                               engine = "grplasso"),
       m01.5 = .defaults_cover(response = 'cov_herbaceous',
                               pred_vars = .pred_vars$f5),
       m01.51 = .defaults_cover(response = 'cov_herbaceous',
@@ -715,6 +718,8 @@ cover_specs <- list(
     c3 = list(
       m05.5 = .defaults_proportion(response = 'frac_c3',
                                    pred_vars = .pred_vars$f5_anom),
+      m05.51 = .defaults_proportion(response = 'frac_c3',
+                                   pred_vars = .pred_vars$f5_anom),
       m01.5 = .defaults_proportion(response = 'frac_c3',
                                    pred_vars = .pred_vars$f5),
       m01.51 = .defaults_proportion(response = 'frac_c3',
@@ -728,6 +733,9 @@ cover_specs <- list(
     c4 = list(
       m05.5 = .defaults_proportion(response = 'frac_c4',
                                    pred_vars = .pred_vars$f5_anom),
+      m05.51 = .defaults_proportion(response = 'frac_c4',
+                                   pred_vars = .pred_vars$f5_anom,
+                                   engine = "grplasso"),
       m01.5 = .defaults_proportion(response = 'frac_c4',
                                    pred_vars = .pred_vars$f5),
       m01.51 = .defaults_proportion(response = 'frac_c4',
@@ -741,6 +749,9 @@ cover_specs <- list(
     forb = list(
       m05.5 = .defaults_proportion(response = 'frac_forb',
                                    pred_vars = .pred_vars$f5_anom),
+      m05.51 = .defaults_proportion(response = 'frac_forb',
+                                   pred_vars = .pred_vars$f5_anom,
+                                   engine = "grplasso"),
       m01.5 = .defaults_proportion(response = 'frac_forb',
                                    pred_vars = .pred_vars$f5),
       m01.51 = .defaults_proportion(response = 'frac_forb',

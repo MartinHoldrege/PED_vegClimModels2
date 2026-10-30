@@ -63,7 +63,17 @@ option_list <- list(
   # "historical", "rcp45" or "rcp85"
   optparse::make_option("--scenario", type = "character", default = NULL),
   # e.g. "1971-2000", "2040-2069", "2070-2099"
-  optparse::make_option("--period", type = "character", default = NULL)
+  optparse::make_option("--period", type = "character", default = NULL),
+  
+  # main_cover.R ------------------------------------------------------------
+  # NULL unless passed; if passed, they replace run_fit, run_predict and
+  # run_evaluate as set in main_cover.R
+  optparse::make_option("--run_fit", type = "logical", default = NULL),
+  optparse::make_option("--run_predict", type = "logical", default = NULL),
+  optparse::make_option("--run_evaluate", type = "logical", default = NULL),
+  # row of main_cover.R's runs table to run (one per SLURM array task, see
+  # hpc/run_cover.sh); NULL runs every row
+  optparse::make_option("--run_index", type = "integer", default = NULL)
   
 )
 

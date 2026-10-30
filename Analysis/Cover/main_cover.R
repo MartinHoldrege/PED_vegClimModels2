@@ -7,6 +7,11 @@
 # Each model is cover_specs[[cover_type]][[cover_model]][[vmc]]; the options
 # are passed to the scripts on the command line (see params.R).
 #
+# On the HPC, each model is fit and/or predicted in its own SLURM array task
+# (hpc/run_cover.sh):
+# --run_index picks one row of the runs table below, and --run_fit,
+# --run_predict and --run_evaluate (params.R) override the settings below.
+#
 # Combined predictions (cover_type 'combined': combined tree cover, herbaceous
 # cover by functional type) are not fit or predicted: they combine the
 # prediction rasters of their component models (04_combine_tree.R,
@@ -17,6 +22,7 @@
 
 library(dplyr)
 library(purrr)
+source("Functions/params.R")
 
 # what to run -------------------------------------------------------------
 # Wait before starting (another job is still running)
@@ -27,15 +33,20 @@ run_fit      <- FALSE
 run_predict  <- FALSE
 run_evaluate <- FALSE
 
+# command-line overrides (params.R; NULL unless passed, e.g. on the HPC)
+run_fit      <- opt$run_fit %||% run_fit
+run_predict  <- opt$run_predict %||% run_predict
+run_evaluate <- opt$run_evaluate %||% run_evaluate
+
 # cover data version(s): vc_default, unless the model is listed in vc_model
 # (several versions = each vmc is run on each; not
 # used by combined runs)
 vc_default <- "c05"
 vc_model <- list(
-  bare_ground = "c05", # c("c01", "c02"),
-  shrub = "c06", # c("c01", 'c03'),
-  herbaceous = "c04", # "c03",
-  needle = "c04", c3 = "c01", c4 = "c01", forb = "c01")
+  bare_ground = "c05", 
+  shrub = "c06", 
+  herbaceous = "c06", 
+  needle = "c04", c3 = "c04", c4 = "c04", forb = "c04")
 
 fit_scripts <- c(
   classification = "Analysis/Cover/Fit/02_fit_classification.R",
@@ -45,23 +56,25 @@ fit_scripts <- c(
 
 # model versions to run, by family and model
 # m01.51: every component of combined all m01.51 (grplasso)
+
+mods1 <- c('m01.5', 'm01.51', 'm04.1')
 cover_runs <- list(
   classification = list(
-    forest    = 'm01.51'
-    # zero_tree = 'm01.51'
+    forest    = mods1,
+    zero_tree = mods1
     ),
   cover          = list(
-    # tree_forest    = 'm01.51',
-    # tree_nonforest = 'm01.51',
-    # shrub          = 'm01.51',
-    # herbaceous     = 'm01.51',
-    # bare_ground    = 'm01.51'
+    tree_forest    = mods1,
+    tree_nonforest = mods1,
+    shrub          = mods1,
+    herbaceous     = c(mods1, 'm05.5', 'm05.51'),
+    bare_ground    = mods1
   ),
   proportion = list(
-    # needle = 'm01.51',
-    # c3     = 'm01.51',
-    # c4     = 'm01.51',
-    # forb   = 'm01.51'
+    needle = mods1,
+    c3     = c(mods1, 'm05.5', 'm05.51'),
+    c4     = c(mods1, 'm05.5', 'm05.51'),
+    forb   = c(mods1, 'm05.5', 'm05.51')
     ),
   # versions of cover_specs$combined
   combined       = list(
@@ -124,7 +137,14 @@ runs <- imap(cover_runs, \(models, cover_type) {
 stopifnot(all(runs$cover_type %in% c(names(fit_scripts), "combined")),
           with(runs, all(cover_model[cover_type == "combined"] %in%
                            c(names(combine_scripts), names(combined_rmds)))))
-print(runs)
+# run_index: the row number to pass as --run_index (SLURM array task id)
+print(mutate(runs, run_index = row_number(), .before = 1))
+
+# one row only (one SLURM array task; see hpc/run_cover.sh)
+if (!is.null(opt$run_index)) {
+  stopifnot(opt$run_index >= 1, opt$run_index <= nrow(runs))
+  runs <- runs[opt$run_index, ]
+}
 
 
 # delay -------------------------------------------------------------------
@@ -135,12 +155,13 @@ Sys.sleep(wait_hours * 3600)
 message("Resuming at ", format(Sys.time()))
 # misc other scripts to run (other scripts to run) ------------------------------------------
 
-if(FALSE) {
+# not in array tasks, which run one model each
+if(FALSE && is.null(opt$run_index)) {
 # temporary: build the c04-c06 training data
-  dataprep <- file.path("Analysis/Cover/DataPrep",
-                        c(# "07_summarise_daymet_climate_points.R", # not run for vc
-                          "08_combine_cover_and_covariates.R",
-                          "09_compute_scale_params.R"))
+  dataprep <- c(
+    # "Analysis/Cover/DataPrep/08_combine_cover_and_covariates.R",
+    # "Analysis/Cover/DataPrep/09_compute_scale_params.R", 
+    'Analysis/Cover/Evaluate/cover_training_data_maps.R')
   stopifnot(file.exists(dataprep))
   for (s in dataprep) {
     for (vc in c('c04', 'c05', 'c06')) {
@@ -149,6 +170,7 @@ if(FALSE) {
     }
   }
 }
+
 # run ------------------------------------------------------------------------
 
 pwalk(runs, \(cover_type, cover_model, vmc, vc) {

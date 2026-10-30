@@ -6,8 +6,7 @@
 # Turn sections on/off with the true/false switches below.
 #
 # Requires rsync, the `hwdtn` alias in ~/.ssh/config, and calderaProject
-# exported in ~/.bashrc (kept out of this file so the HPC path isn't on
-# GitHub).
+# exported in ~/.bashrc
 
 set -e
 
@@ -25,7 +24,7 @@ sync_maca_climate=true
 # MACA climate normals (01_summarise_projected_climate_data.R) ------------
 # final rasters only; the per-year intermediate folders are skipped
 if $sync_maca_climate; then
-  sub=Data_processed/WallToWallClimateData
+  sub=Data_processed/WallToWallClimateData/maca
   mkdir -p "$local_root/$sub"
   rsync -avP --include='*maca*_CLIM.tif' --exclude='*' \
     "$remote/$sub/" "$local_root/$sub/"
