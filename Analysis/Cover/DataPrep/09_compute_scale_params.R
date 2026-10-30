@@ -10,9 +10,11 @@
 # or fire-masked. Written once and not overwritten unless rerun = TRUE, because
 # changing them changes the scale of every fitted model.
 #
-# Anomalies (_3yrAnom): sd across all training pixel-years (all sources). mean
-# is set to 0, so normalizing only divides by the sd and 0 stays "normal". The
-# observed mean is stored as mean_obs, for reference.
+# Anomalies (_3yrAnom): sd across the training pixel-years of c04 and c05
+# combined (c06's are a subset of those two), each cell-year counted once, so
+# models fit to any of c04-c06 are on the same scale. mean is set to 0, so
+# normalizing only divides by the sd and 0 stays "normal". The observed mean
+# is stored as mean_obs, for reference.
 #
 # Inputs:
 #   DaymetClimateData_1991-2020_CLIM.tif - 01b_summarise_daymet_climate_data.R
@@ -20,7 +22,8 @@
 #   soil_covariates_solus100_1000m.tif   - 02_soils_calculate_variables.R
 #   daymet_conus_snap_1000m.tif          - 00_create_snap_raster.R
 #                                          (read_mask())
-#   cover_clim_soils_<vc>.csv            - 08_combine_cover_and_covariates.R
+#   cover_clim_soils_<vc>.csv, for c04 and c05
+#                                        - 08_combine_cover_and_covariates.R
 #
 # Outputs (Data_processed/scale_params/):
 #   scale_params_climate_soils.csv
@@ -123,17 +126,25 @@ if (!file.exists(p_global) || rerun) {
 
 # anomalies (training pixel-years) ----------------------------------------
 
-# c03 uses c01's anomaly sds, so models fit to either are on the same scale
-vc_anom <- if (vc == "c03") "c01" else vc
+# c04-c06 share one set of anomaly sds, from the c04 and c05 pixel-years
+stopifnot(vc %in% c("c04", "c05", "c06"))
+vcs_anom <- c("c04", "c05")
 
-anom <- read_cover_training(vc_anom) |>
+# a cell-year in both c04 and c05 has the same climate, so it's counted once
+anom <- map(vcs_anom, \(v) {
+  read_cover_training(v) |>
+    select(cell, year, ends_with("_3yrAnom"))
+}) |>
+  bind_rows() |>
+  distinct(cell, year, .keep_all = TRUE) |>
   select(ends_with("_3yrAnom"))
 
 anom_params <- tibble(variable = names(anom),
                       mean = 0,
                       sd = map_dbl(anom, \(z) sd(z, na.rm = TRUE)),
                       n = colSums(!is.na(anom)),
-                      source = paste("training pixel-years", vc_anom),
+                      source = paste("training pixel-years",
+                                     paste(vcs_anom, collapse = ", ")),
                       mean_obs = map_dbl(anom, \(z) mean(z, na.rm = TRUE)))
 
 stopifnot(ncol(anom) > 0, all(anom_params$sd > 0))

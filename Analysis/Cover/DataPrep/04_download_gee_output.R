@@ -17,16 +17,16 @@ base_local <- file.path(paths$large, "Data_processed")
 
 file_specs <- tribble(
   ~pattern,                 ~local_dir,
-  "^(LCMAP|MTBS).*gt",      file.path(base_local, "masks"),
-  "^RAP_v\\d_cover-",       file.path(base_local, "CoverData/rap"),
-  "^RAP_v\\d_fracZeroTree", file.path(base_local, "CoverData/rap"),
-  "^RAP_v\\d_zeroTree_.*cell-years", file.path(base_local, "CoverData/rap")
+  "^(LCMAP|MTBS).*gt.*tif$",      file.path(base_local, "masks"),
+  "^RAP_v\\d_cover-.*tif$",       file.path(base_local, "CoverData/rap"),
+  "^RAP_v\\d_fracZeroTree.*tif$", file.path(base_local, "CoverData/rap"),
+  "^RAP_v\\d_zeroTree_.*cell-years.*csv$", file.path(base_local, "CoverData/rap")
 )
 
 walk(file_specs$local_dir, dir.create, recursive = TRUE, showWarnings = FALSE)
 
 # drive_auth() # run once to set up authentication
-drive_files <- drive_ls(path = drive_folder, pattern = "\\.tif$") |>
+drive_files <- drive_ls(path = drive_folder) |>
   mutate(modifiedTime = map_chr(drive_resource, \(x) x$modifiedTime)) |>
   slice_max(modifiedTime, n = 1, by = name)
 

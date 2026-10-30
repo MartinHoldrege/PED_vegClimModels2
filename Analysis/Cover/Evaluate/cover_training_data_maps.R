@@ -1,7 +1,7 @@
 # cover_training_data_maps.R
 #
-# Maps of the cover training data (field plots + RAP augmentation) for tree,
-# shrub, herbaceous and bare ground.
+# Maps of the cover training data for one cover version (c04 field only, c05
+# RAP only, c06 blended) for tree, shrub, herbaceous and bare ground.
 #
 # Part 1: pixel maps. Pixel-years at the same pixel are averaged, so each map
 # shows one value per 1 km pixel. One figure per group, with a panel for all
@@ -15,8 +15,7 @@
 #
 # Single-source panels use only pixel-years with that source alone. Pixel-years
 # with more than one field source (e.g. "fia,ldc") hold their average, so they
-# get their own panel rather than being attributed to one source. In c03,
-# shrub and herbaceous in field rows with "rap" added are plotted as RAP.
+# get their own panel rather than being attributed to one source.
 #
 # Each panel has an inset histogram of its non-zero pixel means, scaled to the
 # panel's own tallest bar, so shapes are comparable but counts are not (counts
@@ -26,8 +25,7 @@
 # at the start of Part 2).
 #
 # Inputs:
-#   cover_by_pixel_year_all-sources_<vc>.csv - 06_cover_add-rap.R
-#   ecoregion_sampling_gap.csv               - 06_cover_add-rap.R
+#   cover_by_pixel_year_<vc>.csv             - 06_build_cover_datasets.R
 #   EPA_L3_ecoregion_daymet_1000m.tif (load_ecoregion_raster())
 #                                            - 01_rasterize_ecoregions.R
 #   LCMAP_fracKeep_gte90_1000m.tif           - 03_export_masks.js, via
@@ -41,13 +39,12 @@
 # Outputs (Figures/Cover/training_data/):
 #   cover_training_<group>_<vc>.png
 #   ecoregion/eco_cover_<vc>.png
-#   ecoregion/eco_proportions_<vc>.png
+#   ecoregion/eco_proportions_<vc>.png (c04 only)
 #   ecoregion/eco_density_<vc>.png
-# Only groups in plot_groups are drawn (c03: shrub and herbaceous, and no
-# proportions figure).
+# Only groups in plot_groups are drawn (c06: shrub and herbaceous, since its
+# tree and bare ground are only the RAP rows below the tree cutoff).
 #
 # September, 2026
-# NOTE: this file needs updating to work w/ new data input datasets
 
 # dependencies ------------------------------------------------------------
 
@@ -59,6 +56,7 @@ source_functions()
 # from spatial.R; mean_na() from general.R; load_ecoregion_raster()
 
 vc <- opt$vc  # cover data version
+stopifnot(vc %in% c("c04", "c05", "c06"))
 
 # params ------------------------------------------------------------------
 
@@ -77,8 +75,8 @@ groups <- c(tree        = "cov_tree",
             herbaceous  = "cov_herbaceous",
             bare_ground = "cov_bare_ground")
 
-# groups to make figures for; c03 differs from c01 only in shrub and herbaceous
-plot_groups <- if (vc == "c03") c("shrub", "herbaceous") else names(groups)
+# groups to make figures for; c06 is the shrub and herbaceous dataset
+plot_groups <- if (vc == "c06") c("shrub", "herbaceous") else names(groups)
 
 # panel order and labels; names other than "all" and "multiple" are the
 # tokens in `sources`
@@ -112,19 +110,12 @@ message("pixel-years by source:")
 count(cover, sources, sort = TRUE) |> as.data.frame() |> print()
 
 # pixel means -------------------------------------------------------------
-# Every pixel-year goes in "all", and once more in its source panel. The
-# source panel is set per group: in c03, a field row with "rap" added (e.g.
-# "ldc,rap") has RAP shrub and herbaceous, but field tree and bare ground.
-
-rap_replaced_cols <- c("cov_shrub", "cov_herbaceous")
+# Every pixel-year goes in "all", and once more in its source panel.
 
 cover_long <- cover |>
   pivot_longer(all_of(unname(groups)), names_to = "col", values_to = "value") |>
   filter(!is.na(value)) |>
-  mutate(src = if_else(col %in% rap_replaced_cols & str_detect(sources, "rap"),
-                       "rap", str_remove_all(sources, ",rap")),
-         panel = if_else(str_detect(src, ","), "multiple", src)) |>
-  select(-src)
+  mutate(panel = if_else(str_detect(sources, ","), "multiple", sources))
 
 pixel_means <- cover_long |>
   bind_rows(mutate(cover_long, panel = "all")) |>
@@ -199,32 +190,31 @@ for (g in plot_groups) {
 # All sources combined. Three figures:
 #   eco_cover       - mean cover per EPA Level III ecoregion, by group
 #   eco_proportions - needle/broad shares of tree, forb/C3/C4 shares of
-#                     herbaceous
+#                     herbaceous (c04 only: the other versions have no field
+#                     fractions)
 #   eco_density     - total and unmasked area per sampled pixel, by group
 #
-# Means are drawn only on unmasked cells (LCMAP and the 2023 fire mask, i.e.
-# unburned 2004-2023; read_available_mask()), so masked land is not coloured
+# Means are drawn only on unmasked cells (LCMAP and the 2021 fire mask, i.e.
+# unburned 2002-2021; read_available_mask()). 2021 is the default target year
+# (1991-2020 normals). This keeps masked land from being coloured
 # as if it were represented. Density is drawn over the whole ecoregion; its
-# "unmasked area" is 06's available area (2011-2023 mean fire mask), because
-# it's compared with the RAP sampling target. Sampled pixels include any in masked cells (FIA plots, which skip
-# the LCMAP mask, and plots measured before a later fire), as in the density
-# check at the end of 06.
+# "unmasked area" uses the same mask. Sampled pixels include any in masked
+# cells (FIA plots, which skip the LCMAP mask, and pixel-years before a later
+# fire).
 #
 # Cover means are means of pixel means (repeat years averaged first), so each
 # pixel counts once. Proportions follow 05_combine_field_cover.R: components
 # are averaged over years, then over pixels, and the proportion is taken once.
 # That weights pixels by their cover, and pixels with none drop out. The
 # herbaceous proportions use only pixel-years with a C3/C4 split, so FIA-only
-# pixel-years are excluded. RAP has no components.
+# pixel-years are excluded.
 
 # * params ----------------------------------------------------------------
 
-mask_dir    <- file.path(paths$large, "Data_processed/masks")
 eco_out_dir <- file.path(out_dir, "ecoregion")
 dir.create(eco_out_dir, recursive = TRUE, showWarnings = FALSE)
 
 min_pixels <- 10     # ecoregion means from fewer pixels are not shown
-target_km2 <- 24.28  # target unmasked area per sampled pixel, as in 06
 # 4381 x 2733 cells; 5e6 is near-native for these panel sizes
 maxcell    <- if (test_run) 1e4 else 5e6
 
@@ -246,11 +236,20 @@ eco  <- load_ecoregion_raster("L3")  # values are eco_id (`region` in 06)
 # ecoregion id on unmasked cells (LCMAP, 2023 fire mask), NA elsewhere
 eco_avail <- terra::mask(eco, read_available_mask(2023))
 
-# km2 per ecoregion, as defined in 06
-eco_area <- read_csv(file.path(paths$large, "Data_processed/cover_combined",
-                               "ecoregion_sampling_gap.csv"),
-                     show_col_types = FALSE) |>
-  distinct(region, area_total, area_available)
+# km2 per ecoregion: all snap cells, and the unmasked ones
+cell_area <- terra::cellSize(snap, unit = "km") |>
+  terra::mask(snap)
+
+area_total <- terra::zonal(cell_area, eco, fun = "sum", na.rm = TRUE) |>
+  setNames(c("region", "area_total"))
+area_available <- terra::zonal(cell_area, eco_avail, fun = "sum",
+                               na.rm = TRUE) |>
+  setNames(c("region", "area_available"))
+
+eco_area <- area_total |>
+  left_join(area_available, by = "region") |>
+  mutate(area_available = replace_na(area_available, 0)) |>
+  as_tibble()
 stopifnot(!anyDuplicated(eco_area$region))
 
 # * helpers ---------------------------------------------------------------
@@ -387,9 +386,8 @@ message("Wrote ", eco_file("eco_cover"))
 
 # * figure: proportions ---------------------------------------------------
 
-# proportions don't change between versions that share the field fractions,
-# so only drawn with the full set of groups
-if (setequal(plot_groups, names(groups))) {
+# only c04 has field fractions
+if (vc == "c04") {
 frac_scale <- colorscale_biomass(name = "Proportion", limits = c(0, 1))
 
 frac_panels <- imap(frac_labels, \(lab, v) {
@@ -458,10 +456,9 @@ fig_density <- wrap_plots(dens_panels, ncol = 2) +
   plot_annotation(
     title = "Sampling density by EPA Level III ecoregion, training data",
     caption = paste0(
-      "All sources. Unmasked area passes the LCMAP and 2011-2023 mean fire ",
-      "masks; the RAP augmentation target was ", target_km2,
-      " km\u00b2 of unmasked area per pixel.\nSampled pixels include any in ",
-      "masked cells. Blank ecoregions have no sampled pixels."))
+      "All sources. Unmasked area passes the LCMAP and 2021 fire masks.\n",
+      "Sampled pixels include any in masked cells. Blank ecoregions have no ",
+      "sampled pixels."))
 
 ggsave(eco_file("eco_density"), fig_density, width = 11,
        height = 3.1 * length(plot_groups) + 0.6,

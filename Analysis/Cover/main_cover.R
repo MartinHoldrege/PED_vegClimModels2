@@ -23,19 +23,19 @@ library(purrr)
 wait_hours <- 0
 
 
-run_fit      <- TRUE
-run_predict  <- TRUE
-run_evaluate <- TRUE
+run_fit      <- FALSE
+run_predict  <- FALSE
+run_evaluate <- FALSE
 
 # cover data version(s): vc_default, unless the model is listed in vc_model
 # (several versions = each vmc is run on each; not
 # used by combined runs)
-vc_default <- "c02"
+vc_default <- "c05"
 vc_model <- list(
-  bare_ground = "c01", # c("c01", "c02"),
-  shrub = "c01", # c("c01", 'c03'),
-  herbaceous = "c01", # "c03",
-  needle = "c01", c3 = "c01", c4 = "c01", forb = "c01")
+  bare_ground = "c05", # c("c01", "c02"),
+  shrub = "c06", # c("c01", 'c03'),
+  herbaceous = "c04", # "c03",
+  needle = "c04", c3 = "c01", c4 = "c01", forb = "c01")
 
 fit_scripts <- c(
   classification = "Analysis/Cover/Fit/02_fit_classification.R",
@@ -47,42 +47,27 @@ fit_scripts <- c(
 # m01.51: every component of combined all m01.51 (grplasso)
 cover_runs <- list(
   classification = list(
-    # forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    # zero_tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1')
-    forest    = 'm01.51',
-    zero_tree = 'm01.51'
+    forest    = 'm01.51'
+    # zero_tree = 'm01.51'
     ),
   cover          = list(
-    # tree_forest    = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    # tree_nonforest = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    # shrub = c('m01.8')
-    # herbaceous = c('m01.5', 'm04.1'),
-    # m05.5: f5 plus anomalies
-    # bare_ground = c('m01.5', 'm04.1')
-    tree_forest    = 'm01.51',
-    tree_nonforest = 'm01.51',
-    shrub          = 'm01.51',
-    herbaceous     = 'm01.51',
-    bare_ground    = 'm01.51'
+    # tree_forest    = 'm01.51',
+    # tree_nonforest = 'm01.51',
+    # shrub          = 'm01.51',
+    # herbaceous     = 'm01.51',
+    # bare_ground    = 'm01.51'
   ),
   proportion = list(
-    # c3 = 'm05.5',
-    # c4 = 'm05.5',
-    # forb = 'm05.5'
-    # needle = c('m01.5', 'm04.1')
-    needle = 'm01.51',
-    c3     = 'm01.51',
-    c4     = 'm01.51',
-    forb   = 'm01.51'
+    # needle = 'm01.51',
+    # c3     = 'm01.51',
+    # c4     = 'm01.51',
+    # forb   = 'm01.51'
     ),
   # versions of cover_specs$combined
   combined       = list(
-    # tree = c('m01.4', 'm01.5', 'm01.6', 'm01.7', 'm04.1'),
-    # herbaceous = 'm05.5',
-    # all = 'm05.5'
-    tree       = 'm01.51',
-    herbaceous = 'm01.51',
-    all        = 'm01.51'
+    # tree       = 'm01.51',
+    # herbaceous = 'm01.51',
+    # all        = 'm01.51'
   )
 )
 
@@ -151,16 +136,17 @@ message("Resuming at ", format(Sys.time()))
 # misc other scripts to run (other scripts to run) ------------------------------------------
 
 if(FALSE) {
-# temporary: build the c03 training data
+# temporary: build the c04-c06 training data
   dataprep <- file.path("Analysis/Cover/DataPrep",
-                        c(# "06_cover_add-rap.R",
-                          # "07_summarise_daymet_climate_points.R",
-                          # "08_combine_cover_and_covariates.R",
+                        c(# "07_summarise_daymet_climate_points.R", # not run for vc
+                          "08_combine_cover_and_covariates.R",
                           "09_compute_scale_params.R"))
   stopifnot(file.exists(dataprep))
   for (s in dataprep) {
-    message('running: ', s)
-    callr::rscript(s, cmdargs = "--vc=c03")
+    for (vc in c('c04', 'c05', 'c06')) {
+      message('running: ', s, '\nvc: ', vc)
+      callr::rscript(s, cmdargs = paste0("--vc=", vc))
+    }
   }
 }
 # run ------------------------------------------------------------------------

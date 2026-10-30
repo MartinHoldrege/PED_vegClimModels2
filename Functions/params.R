@@ -15,7 +15,7 @@ option_list <- list(
                         default = "d05"),
   # version of the real data ('vc' = version cover data)
   optparse::make_option("--vc", type = "character", 
-                        default = "c01"),
+                        default = "c04"),
   # purer selection version 
   optparse::make_option("--vp", type = "character", 
                         default = "p04"),

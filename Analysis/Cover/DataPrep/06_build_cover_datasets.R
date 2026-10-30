@@ -86,23 +86,6 @@ field_only_cols <- c("c_forb", "c_c3", "c_c4", "c_gram", "c_needle",
 
 # functions ---------------------------------------------------------------
 
-#' RAP cover at given cell-years
-#'
-#' @param r SpatRaster with one band per year, named 'year_YYYY'.
-#' @param cell_years Data frame with `cell` and `year` columns.
-#' @return Numeric vector of cover, one value per row of `cell_years`.
-#' @examples
-#' r <- rap$tree
-#' cell_years <- tibble(cell = c(4190, 4191), year = c(2015L, 2020L))
-#' rap_at(r = r, cell_years = cell_years)
-rap_at <- function(r, cell_years) {
-  # one row per cell-year, one column per year
-  vals <- as.matrix(r[cell_years$cell])
-  col <- match(paste0("year_", cell_years$year), names(r))
-  stopifnot(!anyNA(col))
-  vals[cbind(seq_len(nrow(cell_years)), col)]
-}
-
 #' Final formatting shared by the three cover tables
 #'
 #' Adds NA columns for any field-only variables the table lacks (so all
