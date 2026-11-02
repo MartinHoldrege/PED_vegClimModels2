@@ -211,11 +211,20 @@ pwalk(runs, \(cover_type, cover_model, vmc, vc) {
                             ".html")
     }
     
+    # render a copy of the Rmd from its own temp folder: knitr writes figures
+    # to <Rmd name>_files/ next to the Rmd, which array tasks rendering the
+    # same Rmd at once would share
+    render_dir <- tempfile("render_")
+    dir.create(render_dir)
+    stopifnot(all(file.copy(c(unname(rmd),
+                              file.path(dirname(rmd), "report_style.html")),
+                            render_dir)))
+
     rmarkdown::render(
-      unname(rmd),
+      file.path(render_dir, basename(rmd)),
       params = params,
       output_file = output_file,
-      output_dir = out_dir,
+      output_dir = normalizePath(out_dir),  # absolute: the Rmd copy is elsewhere
       knit_root_dir = getwd(),  # the Rmd sources Functions/init.R
       envir = new.env()
     )
