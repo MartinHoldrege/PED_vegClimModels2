@@ -60,27 +60,27 @@ fit_scripts <- c(
 mods1 <- c('m01.5', 'm01.51', 'm04.1')
 cover_runs <- list(
   classification = list(
-    forest    = mods1,
-    zero_tree = mods1
+    # forest    = mods1,
+    # zero_tree = mods1
     ),
   cover          = list(
-    tree_forest    = mods1,
-    tree_nonforest = mods1,
-    shrub          = mods1,
-    herbaceous     = c(mods1, 'm05.5'),# 'm05.51'),
-    bare_ground    = mods1
+    # tree_forest    = mods1,
+    # tree_nonforest = mods1,
+    # shrub          = mods1,
+    # herbaceous     = c(mods1, 'm05.5', 'm05.51'), # m05.51 required >64gb mem
+    # bare_ground    = mods1
   ),
   proportion = list(
-    needle = mods1,
-    c3     = c(mods1, 'm05.5', 'm05.51'),
-    c4     = c(mods1, 'm05.5', 'm05.51'),
-    forb   = c(mods1, 'm05.5', 'm05.51')
+    # needle = mods1,
+    # c3     = c(mods1, 'm05.5', 'm05.51'),
+    # c4     = c(mods1, 'm05.5', 'm05.51'),
+    # forb   = c(mods1, 'm05.5', 'm05.51')
     ),
   # versions of cover_specs$combined
   combined       = list(
-    # tree       = 'm01.51',
-    # herbaceous = 'm01.51',
-    # all        = 'm01.51'
+    tree       = c('m11.5', 'm11.51', 'm14.1'),
+    herbaceous = c('m11.5', 'm11.51', 'm14.1', 'm15.5'),#, 'm15.51'),
+    #all        = c('m11.5', 'm11.51', 'm14.1', 'm15.5')#, 'm15.51')
   )
 )
 

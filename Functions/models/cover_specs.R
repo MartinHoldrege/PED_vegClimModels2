@@ -775,7 +775,10 @@ cover_specs <- list(
       m01.51 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.51"),
       m01.6 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.6"),
       m01.7 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m01.7"),
-      m04.1 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m04.1")
+      m04.1 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m04.1"),
+      m11.5 = .defaults_combined_tree(.all_vc = "c05", .all_vmc = "m01.5"),
+      m11.51 = .defaults_combined_tree(.all_vc = "c05", .all_vmc = "m01.51"),
+      m14.1 = .defaults_combined_tree(.all_vc = "c05", .all_vmc = "m04.1")
     ),
     # tree cover by leaf type: combined tree cover x needleleaf share
     # (tree_leaf_cover(); not written to disk)
@@ -785,7 +788,13 @@ cover_specs <- list(
       m01.51 = .defaults_combined_tree_prop(.all_vmc = "m01.51",
                                             .needle_vc = "c01"),
       m04.1 = .defaults_combined_tree_prop(.all_vmc = "m04.1",
-                                           .needle_vc = "c01")
+                                           .needle_vc = "c01"),
+      m11.5 = .defaults_combined_tree_prop(tree_vmc = 'm11.5',
+                                           needle = c(vc = 'c04', vmc = 'm01.5')),
+      m11.51 = .defaults_combined_tree_prop(tree_vmc = 'm11.51',
+                                           needle = c(vc = 'c04', vmc = 'm01.51')),
+      m14.1 = .defaults_combined_tree_prop(tree_vmc = 'm14.1',
+                                            needle = c(vc = 'c04', vmc = 'm04.1'))
     ),
     # herbaceous cover by functional type (04_combine_herb.R)
     herbaceous = list(
@@ -800,7 +809,19 @@ cover_specs <- list(
       m04.1 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m04.1"),
       m04.5 = .defaults_combined_herb(.all_vc = "c01", .all_vmc = "m04.1",
                                       herbaceous = c(vc = 'c03',
-                                                     vmc = 'm04.1'))
+                                                     vmc = 'm04.1')),
+      m11.5 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m01.5",
+                                      herbaceous = c(vc = 'c06', vmc = 'm01.5')),
+      # m01.5 and m02.5 with the m01.51 (grplasso) models
+      m11.51 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m01.51",
+                                      herbaceous = c(vc = 'c06', vmc = 'm01.51')),
+      # all four fit to c01 with f5 plus anomalies
+      m15.5 =  .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m05.5",
+                                       herbaceous = c(vc = 'c06', vmc = 'm05.5')),
+      m15.51 =  .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m05.51",
+                                       herbaceous = c(vc = 'c06', vmc = 'm05.51')),
+      m14.1 =  .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m04.1",
+                                       herbaceous = c(vc = 'c06', vmc = 'm04.1'))
     ),
     # all final layers: tree_all, shrub, herbaceous and (if .bare_vc is
     # given) bare ground (read_combined_all(),
@@ -830,7 +851,24 @@ cover_specs <- list(
                                      .bare_vc = 'c01'),
       m04.5 = .defaults_combined_all(.all_vmc = "m04.1", .shrub_vc = "c03",
                                      .bare_vc = 'c02',
-                                     herbaceous_vmc = 'm04.5')
+                                     herbaceous_vmc = 'm04.5'),
+      #####
+      m11.5  = .defaults_combined_all(
+        .all_vmc = 'm01.5', .shrub_vc = 'c06', .bare_vc = 'c05',
+        tree_all_vmc = 'm11.5',  herbaceous_vmc = 'm11.5'),
+      m11.51 = .defaults_combined_all(
+        .all_vmc = 'm01.51', .shrub_vc = 'c06', .bare_vc = 'c05',
+        tree_all_vmc = 'm11.51',  herbaceous_vmc = 'm11.51'),
+      # 11.5 but also anomalies for herbaceous
+      m15.5  = .defaults_combined_all(
+        .all_vmc = 'm01.5', .shrub_vc = 'c06', .bare_vc = 'c05',
+        tree_all_vmc = 'm11.5',  herbaceous_vmc = 'm15.5'),
+      m15.51 = .defaults_combined_all(
+        .all_vmc = 'm01.51', .shrub_vc = 'c06', .bare_vc = 'c05',
+        tree_all_vmc = 'm11.51',  herbaceous_vmc = 'm15.51'),
+      m14.1  = .defaults_combined_all(
+        .all_vmc = 'm04.1', .shrub_vc = 'c06', .bare_vc = 'c05',
+        tree_all_vmc = 'm14.1',  herbaceous_vmc = 'm14.1')
     )
   )
 )
