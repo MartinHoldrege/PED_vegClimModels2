@@ -9,8 +9,7 @@
 #
 # Assumes `daymet_grid` and `crs_daymet` are available (via source('Functions/init.R')).
 
-library(terra)
-
+suppressPackageStartupMessages(library(terra))
 
 # Metric metadata -------------------------------------------------------------
 
