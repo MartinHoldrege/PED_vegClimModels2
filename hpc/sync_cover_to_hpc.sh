@@ -29,6 +29,7 @@ local_root="/d/USGS/large_files/PED_vegClimModels2"  # paths$large
 # which parts to run
 sync_fit_data=true      # training data and scaling parameters
 sync_predict_data=true  # mask, climate and soils rasters (~2.3 GB)
+sync_eval_data=true     # data used in evaluation (i.e. html reports)
 sync_fits=false         # models fit locally, to predict them on the HPC
 
 # cover data versions (training data and anomaly scaling parameters)
@@ -62,6 +63,24 @@ if $sync_predict_data; then
           Data_processed/WallToWallClimateData/DaymetClimateData_1991-2020_CLIM.tif
           Data_processed/WallToWallClimateData/ForecastedClimateData_BNU-ESM_rcp85_CLIM.tif
           Data_processed/WallToWallClimateData/ForecastedClimateData_IPSL-CM5A-MR_rcp85_CLIM.tif)
+fi
+
+if [ ${#files[@]} -gt 0 ]; then
+  for f in "${files[@]}"; do
+    if [ ! -f "$f" ]; then
+      echo "missing: $local_root/$f" >&2
+      exit 1
+    fi
+  done
+  # -R (--relative) recreates the Data_processed/... paths under the repo
+  rsync -avPR $dry_run "${files[@]}" "$remote/"
+fi
+
+# evaluation inputs -------------------------------------------------------
+# needed for creating evaluation htmls
+if $sync_eval_data; then
+  files+=(Data_processed/CoverData/rap/RAP_v3_cover_2021_1000m.tif,
+          Data_processed/CoverData/rap/RAP_v3_fracZeroTree_lt3_2021-2021_1000m.tif)
 fi
 
 if [ ${#files[@]} -gt 0 ]; then

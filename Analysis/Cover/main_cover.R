@@ -20,7 +20,7 @@
 #
 # September, 2026
 
-library(dplyr)
+library(dplyr, warn.conflicts = FALSE)
 library(purrr)
 source("Functions/params.R")
 
@@ -79,7 +79,7 @@ cover_runs <- list(
   # versions of cover_specs$combined
   combined       = list(
     tree       = c('m11.5', 'm11.51', 'm14.1'),
-    herbaceous = c('m11.5', 'm11.51', 'm14.1', 'm15.5'),#, 'm15.51'),
+    herbaceous = c('m11.5', 'm11.51', 'm14.1', 'm15.5')#, 'm15.51'),
     #all        = c('m11.5', 'm11.51', 'm14.1', 'm15.5')#, 'm15.51')
   )
 )
@@ -155,6 +155,7 @@ if (!is.null(opt$run_index)) {
 message("Sleeping ", wait_hours, " h; started ", format(Sys.time()))
 Sys.sleep(wait_hours * 3600)
 message("Resuming at ", format(Sys.time()))
+start_time <- Sys.time()
 # misc other scripts to run (other scripts to run) ------------------------------------------
 
 # not in array tasks, which run one model each
@@ -232,3 +233,6 @@ pwalk(runs, \(cover_type, cover_model, vmc, vc) {
     )
   }
 })
+
+message("main_cover.R finished in ",
+        format(round(difftime(Sys.time(), start_time, units = "mins"), 1)))
