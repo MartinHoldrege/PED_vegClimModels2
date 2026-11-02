@@ -30,8 +30,8 @@ wait_hours <- 0
 
 
 run_fit      <- FALSE
-run_predict  <- FALSE
-run_evaluate <- FALSE
+run_predict  <- TRUE
+run_evaluate <- TRUE
 
 # command-line overrides (params.R; NULL unless passed, e.g. on the HPC)
 run_fit      <- opt$run_fit %||% run_fit
@@ -67,7 +67,7 @@ cover_runs <- list(
     tree_forest    = mods1,
     tree_nonforest = mods1,
     shrub          = mods1,
-    herbaceous     = c(mods1, 'm05.5', 'm05.51'),
+    herbaceous     = c(mods1, 'm05.5'),# 'm05.51'),
     bare_ground    = mods1
   ),
   proportion = list(
@@ -144,6 +144,8 @@ print(mutate(runs, run_index = row_number(), .before = 1))
 if (!is.null(opt$run_index)) {
   stopifnot(opt$run_index >= 1, opt$run_index <= nrow(runs))
   runs <- runs[opt$run_index, ]
+  message('row run:\n')
+  print(runs)
 }
 
 

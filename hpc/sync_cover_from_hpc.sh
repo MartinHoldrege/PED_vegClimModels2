@@ -22,11 +22,13 @@ local_root="/d/USGS/large_files/PED_vegClimModels2"  # paths$large
 
 # which parts to run
 sync_fits=true
-sync_predictions=true
+sync_predictions=false
+sync_reports=true
 
 # files to copy (rsync patterns), e.g. '*_c05-m01.51*' for one version
 fits_include='*.rds'
 predictions_include='*.tif'
+reports_include='*.html'
 
 dry_run=""
 if [ "$1" = "--dry-run" ]; then
@@ -49,4 +51,19 @@ if $sync_predictions; then
   mkdir -p "$local_root/$sub"
   rsync -avPu $dry_run --include="$predictions_include" --exclude='*' \
     "$remote/$sub/" "$local_root/$sub/"
+fi
+
+# evaluation reports (main_cover.R, run_evaluate) --------------------------
+# Reports/Cover/<cover_type>/<...>.html. Reports/ is in the repo dir: on the
+# HPC that's also paths$large, but locally it's the git repo, so this copies
+# into the folder the script is run from (the local repo root)
+if $sync_reports; then
+  if [ ! -d hpc ]; then
+    echo "run from the local repository root (for Reports/)" >&2
+    exit 1
+  fi
+  sub=Reports/Cover
+  mkdir -p "$sub"
+  rsync -avPum $dry_run --include='*/' --include="$reports_include" \
+    --exclude='*' "$remote/$sub/" "$sub/"
 fi
