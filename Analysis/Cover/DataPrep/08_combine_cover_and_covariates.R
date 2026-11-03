@@ -1,6 +1,6 @@
 # 08_combine_cover_and_covariates.R
 #
-# Joins the cover pixel-years of one cover version (c04, c05 or c06) to the
+# Joins the cover pixel-years of one cover version (c04-c08) to the
 # climate at each pixel-year, the zero-tree status at each pixel-year and the
 # soil covariates at each pixel, giving one table for the cover models. Joins
 # are on cell (and year), with checks that x, y agree with the cell. Rows
@@ -24,8 +24,8 @@
 #
 # Inputs:
 #   cover_by_pixel_year_<vc>.csv              - 06_build_cover_datasets.R
-#   daymet_climate-at-points_c04-c06.csv      - 07_summarise_daymet_climate_points.R
-#   RAP_v3_zeroTree_lt3_cell-years_c04-c06.csv
+#   daymet_climate-at-points_<cell_years_vc>.csv - 07_summarise_daymet_climate_points.R
+#   RAP_v3_zeroTree_lt3_cell-years_<cell_years_vc>.csv
 #                                             - 07_rap_zero-tree_cell-years.js,
 #                                               via 04_download_gee_output.R
 #   soil_covariates_solus100_1000m.tif        - 02_soils_calculate_variables.R
@@ -50,8 +50,15 @@ source_functions()
 
 vc <- opt$vc
 
-if (!vc %in% c("c04", "c05", "c06")) {
-  stop("this script only builds c04-c06")
+# cell-years set (06 suffix) that 07 and the zero-tree extraction were last
+# run on; must match vc in 07. c04 is in every set (its rows don't depend on
+# the RAP sample), so it uses whichever set is current
+cell_years_vc <- "c04-c07-c08"
+cell_year_sets <- list("c04-c06"     = c("c04", "c05", "c06"),
+                       "c04-c07-c08" = c("c04", "c07", "c08"))
+
+if (!vc %in% cell_year_sets[[cell_years_vc]]) {
+  stop("vc ", vc, " is not in the cell-years set ", cell_years_vc)
 }
 
 # params ------------------------------------------------------------------
@@ -59,7 +66,7 @@ if (!vc %in% c("c04", "c05", "c06")) {
 cov_dir  <- file.path(paths$large, "Data_processed/cover_combined")
 rap_dir  <- file.path(paths$large, "Data_processed/CoverData/rap")
 soil_dir <- file.path(paths$large, "Data_processed/soils")
-cell_years_vc <- "c04-c06"  # 07 and the zero-tree extraction cover all three
+
 out_file <- file.path(cov_dir, paste0("cover_clim_soils_", vc, ".csv"))
 
 # read --------------------------------------------------------------------

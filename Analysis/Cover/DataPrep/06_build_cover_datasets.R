@@ -57,15 +57,40 @@ source_functions()
 # params ------------------------------------------------------------------
 
 vc_field <- "c04"
-vc_rap   <- "c05"
-vc_blend <- "c06"
+vc_rap   <- "c07"
 
-n_cells      <- 1e5
-n_years_cell <- 3
+vc_blend <- switch(vc_rap, 
+                   "c05" = 'c06',
+                   "c07" = 'c08',
+                   stop("unknown vc_rap: ", vc_rap))
+
+n_cells      <- switch(vc_rap, 
+                       "c05" = 1e5,
+                       "c07" = 5e4,
+                       stop("unknown vc_rap: ", vc_rap))
+
+n_years_cell <- switch(vc_rap,
+                       "c05" = 3,
+                       "c07" = 15,
+                       stop("unknown vc_rap: ", vc_rap))
+
+# usable years a cell needs to enter the pool
+min_years    <- switch(vc_rap,
+                       "c05" = 7,
+                       "c07" = 15,
+                       stop("unknown vc_rap: ", vc_rap))
+
+# label for the combined cell-years file; letters, digits, - and _ only, so
+# it is also a valid GEE asset name
+suffix       <- switch(vc_rap, 
+                       "c05" = 'c04-c06',
+                       "c07" = "c04-c07-c08",
+                       stop("unknown vc_rap: ", vc_rap))
+
 # 2010 is the first year with a full 30-yr normal. Field rows keep all years
 # (2000 on, >= 20-yr normals) to retain as much field data as possible
 rap_years    <- 2010:2024
-min_years    <- 7          # usable years a cell needs to enter the pool
+        
 tree_cutoff  <- 10         # percent; RAP understorey not usable at or above
 seed         <- 1234
 
@@ -276,4 +301,5 @@ iwalk(cover, \(d, vc) {
                          paste0("cover_by_pixel_year_", vc, ".csv")))
 })
 
-write_csv(cell_years, file.path(cov_dir, "cover_cell_years_c04-c06.csv"))
+write_csv(cell_years, 
+          file.path(cov_dir, paste0("cover_cell_years_", suffix, ".csv")))
