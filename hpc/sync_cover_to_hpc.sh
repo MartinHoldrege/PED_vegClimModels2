@@ -34,6 +34,7 @@ sync_fits=false         # models fit locally, to predict them on the HPC
 
 # cover data versions (training data and anomaly scaling parameters)
 vcs=(c04 c05 c06)
+
 # fitted models to copy, if sync_fits (rsync pattern)
 fits_include='*.rds'
 
@@ -65,22 +66,15 @@ if $sync_predict_data; then
           Data_processed/WallToWallClimateData/ForecastedClimateData_IPSL-CM5A-MR_rcp85_CLIM.tif)
 fi
 
-if [ ${#files[@]} -gt 0 ]; then
-  for f in "${files[@]}"; do
-    if [ ! -f "$f" ]; then
-      echo "missing: $local_root/$f" >&2
-      exit 1
-    fi
-  done
-  # -R (--relative) recreates the Data_processed/... paths under the repo
-  rsync -avPR $dry_run "${files[@]}" "$remote/"
-fi
-
 # evaluation inputs -------------------------------------------------------
 # needed for creating evaluation htmls
+
 if $sync_eval_data; then
-  files+=(Data_processed/CoverData/rap/RAP_v3_cover_2021_1000m.tif,
-          Data_processed/CoverData/rap/RAP_v3_fracZeroTree_lt3_2021-2021_1000m.tif)
+  files+=(Data_processed/CoverData/rap/RAP_v3_fracZeroTree_lt3_2021-2021_1000m.tif
+          # read_rap_cover_raster(): LCMAP and fire masks, RAP cover
+          Data_processed/CoverData/rap/RAP_v3_cover-tree_2000-2024_1000m.tif # add other pfts if needed
+          Data_processed/masks/LCMAP_fracKeep_gte90_1000m.tif
+          Data_processed/masks/MTBS_fracUnburned_gte90_20yr_2000-2024_1000m.tif)
 fi
 
 if [ ${#files[@]} -gt 0 ]; then

@@ -397,27 +397,52 @@ read_zero_tree_raster <- function(layer = c('zeroTree', 'fracZeroTree'),
   r
 }
 
-#' Read the 1 km RAP v3 cover for one year
+#' Read the 1 km annual RAP v3 cover for one functional group
 #'
-#' Wall-to-wall export from 03_rap_sample.js (LCMAP and that year's fire mask
-#' applied), aligned to the snap grid. Values are % cover.
+#' Wall-to-wall export from Analysis/Cover/DataPrep/01_rap_cover.js (mean of
+#' RAP over each 1 km cell), aligned to the snap grid. Values are % cover.
+#' Optionally masked by LCMAP (>= 90% keepable) and, for each year, by the
+#' fire mask for that year (>= 90% unburned in the 20 years up to that year).
 #'
-#' @param year Year of the export.
-#' @param layers Layers to keep (tree, shrub, herbaceous, bare_ground); NULL
-#'   keeps all.
+#' @param pft Functional group: tree, shrub, herbaceous, or bare_ground.
+#' @param years Years to keep (2000-2024); NULL keeps all.
+#' @param mask_lcmap Logical; apply the LCMAP mask.
+#' @param mask_fire Logical; apply each year's fire mask.
 #' @param root Root path for large files.
-#' @return SpatRaster on the snap grid.
-read_rap_cover_raster <- function(year = 2021, layers = NULL, root = paths$large) {
+#' @return SpatRaster on the snap grid, one layer per year (year_YYYY).
+read_rap_cover_raster <- function(pft = c("tree", "shrub", "herbaceous",
+                                          "bare_ground"),
+                                  years = 2021, mask_lcmap = TRUE,
+                                  mask_fire = TRUE, root = paths$large) {
+  pft <- match.arg(pft)
   path <- file.path(root, "Data_processed/CoverData/rap",
-                    paste0("RAP_v3_cover_", year, "_1000m.tif"))
+                    paste0("RAP_v3_cover-", pft, "_2000-2024_1000m.tif"))
   stopifnot(file.exists(path))
   r <- terra::rast(path)
-  if (!is.null(layers)) {
-    stopifnot(all(layers %in% names(r)))
-    r <- r[[layers]]
+  if (!is.null(years)) {
+    lyrs <- paste0("year_", years)
+    stopifnot(all(lyrs %in% names(r)))
+    r <- r[[lyrs]]
   }
   # GEE exports come back one cell larger in each direction than the snap grid
-  align_raster(r, read_mask())
+  snap <- read_mask()
+  r <- align_raster(r, snap)
+
+  mask_dir <- file.path(root, "Data_processed/masks")
+  if (mask_lcmap) {
+    lcmap <- terra::rast(file.path(mask_dir, "LCMAP_fracKeep_gte90_1000m.tif")) |>
+      align_raster(snap)
+    r <- terra::mask(r, lcmap, maskvalues = c(0, NA))
+  }
+  if (mask_fire) {
+    fire <- terra::rast(file.path(mask_dir,
+                                  "MTBS_fracUnburned_gte90_20yr_2000-2024_1000m.tif"))
+    stopifnot(all(names(r) %in% names(fire)))
+    # layer-wise: each RAP year is masked by the same year's fire layer
+    fire <- align_raster(fire[[names(r)]], snap)
+    r <- terra::mask(r, fire, maskvalues = c(0, NA))
+  }
+  r
 }
 
 #' Load EPA L3 ecoregion raster on the daymet grid

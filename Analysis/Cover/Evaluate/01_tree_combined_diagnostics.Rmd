@@ -42,8 +42,9 @@ zt <- filter(blend, component == "zero_tree")
 zt_threshold <- read_cover_model(zt$cover_type, zt$cover_model, zt$vc,
                                  zt$vmc)$config$spec$cover_threshold
 
-rap_tree <- terra::rast(file.path(paths$large, "Data_processed/CoverData/rap",
-                                  "RAP_v3_cover_2021_1000m.tif"))[["tree"]]
+rap_tree <- read_rap_cover_raster("tree", years = 2021, mask_lcmap = TRUE,
+                                  mask_fire = TRUE)
+
 rap_zero <- 100 * read_zero_tree_raster("fracZeroTree") > zt_threshold
 # GEE exports are one cell larger than the snap grid
 rap_tree <- align_raster(rap_tree, pred$current)
