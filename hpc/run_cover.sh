@@ -42,6 +42,9 @@
 
 module load cray-R-spatial/4.6
 
+# pandoc for the reports (rmarkdown::render()); see hpc/check_report_setup.R
+export RSTUDIO_PANDOC=$HOME/software/pandoc-3.5/bin
+
 # ranger uses 2 threads unless told otherwise
 export R_RANGER_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
