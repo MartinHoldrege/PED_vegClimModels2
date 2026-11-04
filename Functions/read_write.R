@@ -379,19 +379,23 @@ load_cover <- function(cover_source = c('rap', 'model'),
   r_cover
 }
 
-# raster showing areas we'd like to classify as having zero trees
+# raster showing areas we'd like to classify as having zero trees, for one year
 # zeroTree is the binary layer (1 if no trees, 0 otherwise); fracZeroTree the
-# fraction (0-1) of the cell's natural-land 30 m pixels with < 3% tree cover
-read_zero_tree_raster <- function(layer = c('zeroTree', 'fracZeroTree'), 
+# fraction (0-1) of the cell's natural-land, unburned 30 m pixels with < 3%
+# tree cover. Not aligned to the snap grid (GEE export, one cell larger).
+# year defaults to 2021, the default target year (1991-2020 normals)
+read_zero_tree_raster <- function(layer = c('zeroTree', 'fracZeroTree'),
+                                  year = 2021,
                                   root = paths$large) {
   
-  # file output by "Analysis/Cover/DataPrep/03_rap_frac-zero-tree.js"
-  path <- file.path(paths$large, 'Data_processed/CoverData/rap',
-                    'RAP_v3_fracZeroTree_lt3_2021-2021_1000m.tif')
-  r <- terra::rast(path)
+  # files output by "Analysis/Cover/DataPrep/02_rap_zero-tree_annual.js"
   layer <- match.arg(layer)
-  lyr <- stringr::str_subset(names(r), layer)
-  stopifnot(length(lyr) == 1)
+  file <- c(zeroTree = 'RAP_v3_annualZeroTree_lt3_2010-2024_1000m.tif',
+            fracZeroTree = 'RAP_v3_annualFracZeroTree_lt3_2010-2024_1000m.tif')
+  path <- file.path(root, 'Data_processed/CoverData/rap', file[[layer]])
+  r <- terra::rast(path)
+  lyr <- paste0('year_', year)
+  stopifnot(length(year) == 1, lyr %in% names(r))
   r <- r[[lyr]]
   names(r) <- layer
   r
@@ -1187,4 +1191,3 @@ read_shrub_biomass <- function() {
     bind_rows(.id = 'study')
   dat
 }
-

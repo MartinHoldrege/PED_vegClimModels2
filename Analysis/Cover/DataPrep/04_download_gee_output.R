@@ -3,7 +3,7 @@
 # Exported in:
 #   03_export_masks.js         LCMAP_*, MTBS_*
 #   01_rap_cover.js            RAP_v3_cover-*
-#   03_rap_frac-zero-tree.js   RAP_v3_fracZeroTree_*
+#   02_rap_zero-tree_annual.js RAP_v3_annual*ZeroTree_*
 #
 # Only downloads if the Drive version is newer than the local copy.
 
@@ -19,8 +19,7 @@ file_specs <- tribble(
   ~pattern,                 ~local_dir,
   "^(LCMAP|MTBS).*gt.*tif$",      file.path(base_local, "masks"),
   "^RAP_v\\d_cover-.*tif$",       file.path(base_local, "CoverData/rap"),
-  "^RAP_v\\d_fracZeroTree.*tif$", file.path(base_local, "CoverData/rap"),
-  "^RAP_v\\d_zeroTree_.*cell-years.*csv$", file.path(base_local, "CoverData/rap")
+  "^RAP_v\\d_annual(Frac)?ZeroTree.*tif$", file.path(base_local, "CoverData/rap")
 )
 
 walk(file_specs$local_dir, dir.create, recursive = TRUE, showWarnings = FALSE)

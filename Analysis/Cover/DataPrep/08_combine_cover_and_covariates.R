@@ -8,8 +8,11 @@
 #
 # Zero tree (response of the zero-tree model): pct_zero_tree, the % of the
 # cell's natural-land, unburned 30 m pixels with < 3% RAP tree cover that
-# year, and zero_tree (1 where that is above 90%). NA only where a cell has
-# no unmasked 30 m pixels that year.
+# year, and zero_tree (1 where that is above 90%). Looked up from annual 1 km
+# rasters (bands 2010-2024), so NA for rows before 2010, and NA where the cell
+# fails the 1 km LCMAP mask or that year's 1 km fire mask, or is outside CONUS.
+# (These rasters replace the per-cell-year zero-tree CSV from
+# 07_rap_zero-tree_cell-years.js.)
 #
 # c_needle and c_broad (needleleaf and broadleaf tree cover) are replaced by
 # the field fractions (frac_needle, frac_broad) times same-year RAP tree cover
@@ -25,17 +28,14 @@
 # Inputs:
 #   cover_by_pixel_year_<vc>.csv              - 06_build_cover_datasets.R
 #   daymet_climate-at-points_<cell_years_vc>.csv - 07_summarise_daymet_climate_points.R
-#   RAP_v3_zeroTree_lt3_cell-years_<cell_years_vc>.csv
-#                                             - 07_rap_zero-tree_cell-years.js,
+#   RAP_v3_annualFracZeroTree_lt3_2010-2024_1000m.tif
+#   RAP_v3_annualZeroTree_lt3_2010-2024_1000m.tif
+#                                             - 02_rap_zero-tree_annual.js,
 #                                               via 04_download_gee_output.R
 #   soil_covariates_solus100_1000m.tif        - 02_soils_calculate_variables.R
 #   daymet_conus_snap_1000m.tif               - 00_create_snap_raster.R
 #                                               (read_mask())
 #   RAP_v3_cover-tree_2000-2024_1000m.tif     - 01_rap_cover.js
-#   RAP_v3_fracZeroTree_lt3_2021-2021_1000m.tif
-#                                             - 03_rap_frac-zero-tree.js
-#                                               (read_zero_tree_raster(); only
-#                                               to check the 2021 rows)
 #
 # Output:
 #   cover_clim_soils_<vc>.csv (read with read_cover_training())
@@ -50,7 +50,7 @@ source_functions()
 
 vc <- opt$vc
 
-# cell-years set (06 suffix) that 07 and the zero-tree extraction were last
+# cell-years set (06 suffix) that 07 was last
 # run on; must match vc in 07. c04 is in every set (its rows don't depend on
 # the RAP sample), so it uses whichever set is current
 cell_years_vc <- "c04-c07-c08"
@@ -80,36 +80,27 @@ clim <- read_csv(
                             ".csv")),
   show_col_types = FALSE)
 
-zero_tree <- read_csv(
-  file.path(rap_dir, paste0("RAP_v3_zeroTree_lt3_cell-years_", cell_years_vc,
-                            ".csv")),
-  # set explicitly: masked cells are written as empty values, and readr
-  # could guess the wrong type if the first rows are all empty
-  col_types = cols(cell = "d", year = "d", fracZeroTree = "d",
-                   zeroTree = "d")) |>
-  transmute(cell, year,
-            # % (not 0-1), like cover, so cover_threshold and the
-            # quasibinomial fit (response / 100) work on it unchanged
-            pct_zero_tree = 100 * fracZeroTree,
-            zero_tree = as.integer(zeroTree))
-
 mask_r <- read_mask()
 soil_r <- terra::rast(file.path(soil_dir, "soil_covariates_solus100_1000m.tif"))
+
+# GEE exports come back one cell larger in each direction than the snap grid
+zero_frac_r <- terra::rast(file.path(
+  rap_dir, "RAP_v3_annualFracZeroTree_lt3_2010-2024_1000m.tif")) |>
+  align_raster(mask_r)
+zero_class_r <- terra::rast(file.path(
+  rap_dir, "RAP_v3_annualZeroTree_lt3_2010-2024_1000m.tif")) |>
+  align_raster(mask_r)
 
 # checks ------------------------------------------------------------------
 
 stopifnot(
   !anyDuplicated(cover[c("cell", "year")]),
   !anyDuplicated(clim[c("cell", "year")]),
-  !anyDuplicated(zero_tree[c("cell", "year")]),
   # x, y lie in the cell they're labelled with
   all(terra::cellFromXY(mask_r, as.matrix(cover[c("x", "y")])) == cover$cell),
-  # 07 and the zero-tree extraction are built from the cell-years of all three
-  # 06 tables, so every cover row should be in both; a missing one means one
-  # is stale (rerun it)
+  # 07 is built from the cell-years of all three 06 tables, so every cover
+  # row should be in it; a missing one means it is stale (rerun it)
   nrow(anti_join(cover, clim, by = c("cell", "year"))) == 0,
-  nrow(anti_join(cover, zero_tree, by = c("cell", "year"))) == 0,
-  all(zero_tree$zero_tree %in% c(0, 1, NA)),
   # soils are looked up by cell, so the grids must match
   terra::compareGeom(soil_r, mask_r)
 )
@@ -124,20 +115,21 @@ stopifnot(all(out$x == out$x_clim), all(out$y == out$y_clim))
 
 out <- out |>
   select(-x_clim, -y_clim) |>
-  left_join(zero_tree, by = c("cell", "year")) |>
   bind_cols(as_tibble(soil_r[out$cell]))
 
-message("rows missing zero-tree data: ", sum(is.na(out$zero_tree)))
+# same-year zero tree; the rasters start in 2010 (rap_at() stops if a row's
+# year has no band), so earlier rows stay NA. pct_zero_tree is % (not 0-1),
+# like cover, so cover_threshold and the quasibinomial fit (response / 100)
+# work on it unchanged
+has_zero <- out$year >= 2010
+out$pct_zero_tree <- NA_real_
+out$zero_tree <- NA_integer_
+out$pct_zero_tree[has_zero] <- 100 * rap_at(zero_frac_r, out[has_zero, ])
+out$zero_tree[has_zero] <- as.integer(rap_at(zero_class_r, out[has_zero, ]))
+stopifnot(all(out$zero_tree %in% c(0, 1, NA)))
 
-# the extraction uses the 2021 layer's definition, so its 2021 rows should
-# match that layer (small differences can come from resampling)
-zero_2021 <- read_zero_tree_raster("zeroTree") |>
-  align_raster(mask_r)
-is_2021 <- out$year == 2021
-match_2021 <- out$zero_tree[is_2021] == zero_2021[out$cell[is_2021]][[1]]
-message("2021 rows where zero_tree matches the 2021 layer: ",
-        round(100 * mean(match_2021, na.rm = TRUE), 2), "% of ",
-        sum(!is.na(match_2021)))
+message("rows missing zero-tree data: ", sum(is.na(out$zero_tree)),
+        " (", sum(!has_zero), " from before 2010)")
 
 # needleleaf and broadleaf cover from RAP tree cover ----------------------
 
