@@ -49,9 +49,9 @@ Started: November 2026
 // params -------------------------------------------
 var cutoff = 3;               // % tree cover, as in 02_rap_no-tree.js
 var zeroTreeFracCutoff = 0.9; // as in 03_rap_frac-zero-tree.js
-var yearStart = 2015;
-var yearEnd = 2015;
-var step = 1;  // 1: make the 250 m assets; 2: export at 1 km to Drive;
+var yearStart = 2010;
+var yearEnd = 2024;
+var step = 2;  // 1: make the 250 m assets; 2: export at 1 km to Drive;
                // 3: delete the 250 m assets
 
 var driveFolder = 'PED_vegClimModels2';
