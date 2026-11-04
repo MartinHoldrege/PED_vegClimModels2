@@ -99,7 +99,7 @@ if (spec$family == "binomial") {
                   log1p = log1p(cover))
 }
 
-scale_df <- read_scale_params()  # climate and soils; no anomalies here
+scale_df <- read_scale_params()
 
 x <- prepare_predictors(dat,
                         pred_vars = spec$pred_vars,

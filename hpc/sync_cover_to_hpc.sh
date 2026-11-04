@@ -32,7 +32,7 @@ sync_predict_data=true  # mask, climate and soils rasters (~2.3 GB)
 sync_eval_data=true     # data used in evaluation (i.e. html reports)
 sync_fits=false         # models fit locally, to predict them on the HPC
 
-# cover data versions (training data and anomaly scaling parameters)
+# cover data versions (training data)
 vcs=(c04 c05 c06)
 
 # fitted models to copy, if sync_fits (rsync pattern)
@@ -49,10 +49,10 @@ files=()
 
 # fitting inputs ----------------------------------------------------------
 if $sync_fit_data; then
-  files+=(Data_processed/scale_params/scale_params_climate_soils.csv)
+  files+=(Data_processed/scale_params/scale_params_climate_soils.csv
+          Data_processed/scale_params/scale_params_anomalies.csv)
   for vc in "${vcs[@]}"; do
-    files+=("Data_processed/cover_combined/cover_clim_soils_${vc}.csv"
-            "Data_processed/scale_params/scale_params_anomalies_${vc}.csv")
+    files+=("Data_processed/cover_combined/cover_clim_soils_${vc}.csv")
   done
 fi
 
@@ -70,7 +70,8 @@ fi
 # needed for creating evaluation htmls
 
 if $sync_eval_data; then
-  files+=(Data_processed/CoverData/rap/RAP_v3_fracZeroTree_lt3_2021-2021_1000m.tif
+  files+=(Data_processed/CoverData/rap/RAP_v3_annualFracZeroTree_lt3_2010-2024_1000m.tif # read_zero_tree_raster()
+          Data_processed/CoverData/rap/RAP_v3_annualZeroTree_lt3_2010-2024_1000m.tif
           # read_rap_cover_raster(): LCMAP and fire masks, RAP cover
           Data_processed/CoverData/rap/RAP_v3_cover-tree_2000-2024_1000m.tif # add other pfts if needed
           Data_processed/masks/LCMAP_fracKeep_gte90_1000m.tif

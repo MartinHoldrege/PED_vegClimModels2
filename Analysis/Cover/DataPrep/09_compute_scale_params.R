@@ -10,24 +10,32 @@
 # or fire-masked. Written once and not overwritten unless rerun = TRUE, because
 # changing them changes the scale of every fitted model.
 #
-# Anomalies (_3yrAnom): sd across the training pixel-years of c04 and c05
-# combined (c06's are a subset of those two), each cell-year counted once, so
-# models fit to any of c04-c06 are on the same scale. mean is set to 0, so
-# normalizing only divides by the sd and 0 stays "normal". The observed mean
-# is stored as mean_obs, for reference.
+# Anomalies (_3yrAnom): sd across a fixed CONUS-wide random sample of
+# cell-years (06_anomaly_scale_sample.R: 20k cells x 2010-2024, not LCMAP- or
+# fire-masked), so, like the normals, the constants don't depend on the
+# training data or how they are sampled. One file for all cover versions.
+# mean is set to 0, so normalizing only divides by the sd and 0 stays
+# "normal". The observed mean is stored as mean_obs, for reference.
+# (Before November 4, 2026 the anomaly sds came from the training pixel-years of
+# each cover version, scale_params_anomalies_<vc>.csv.)
 #
 # Inputs:
-#   DaymetClimateData_1991-2020_CLIM.tif - 01b_summarise_daymet_climate_data.R
+#   DaymetClimateData_1991-2020_CLIM.tif - 01_summarise_daymet_climate_data.R
 #                                          (read_climate_raster())
 #   soil_covariates_solus100_1000m.tif   - 02_soils_calculate_variables.R
 #   daymet_conus_snap_1000m.tif          - 00_create_snap_raster.R
 #                                          (read_mask())
-#   cover_clim_soils_<vc>.csv, for c04 and c05
-#                                        - 08_combine_cover_and_covariates.R
+#   daymet_climate-at-points_anom-sample.csv
+#                                        - 07_summarise_daymet_climate_points.R
+#                                          (vc = "anom-sample"), from the
+#                                          cell-years made in
+#                                          06_anomaly_scale_sample.R
+#   cover_clim_soils_<check_vc>.csv      - 08_combine_cover_and_covariates.R
+#                                          (only to check variable names)
 #
 # Outputs (Data_processed/scale_params/):
 #   scale_params_climate_soils.csv
-#   scale_params_anomalies_<vc>.csv
+#   scale_params_anomalies.csv
 #
 # September, 2026
 
@@ -37,20 +45,23 @@
 source("Functions/init.R")
 source_functions()
 
-vc <- opt$vc  # cover data version
-
 # params ------------------------------------------------------------------
 
-rerun <- TRUE # FALSE  # recomputes the climate/soils constants
+rerun <- TRUE # FALSE  # recomputes the climate/soils and anomaly constants
 
 # a log1p version this correlated with the original is a near-duplicate, so
 # no parameters are stored for it
 log_cor_max <- 0.99
 
+# a current training version, read only to check that the anomaly variable
+# names match the ones models use
+check_vc <- "c04"
+
+cov_dir <- file.path(paths$large, "Data_processed/cover_combined")
 out_dir <- file.path(paths$large, "Data_processed/scale_params")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 p_global <- file.path(out_dir, "scale_params_climate_soils.csv")
-p_anom   <- file.path(out_dir, paste0("scale_params_anomalies_", vc, ".csv"))
+p_anom   <- file.path(out_dir, "scale_params_anomalies.csv")
 
 # climate normals and soils (CONUS) ---------------------------------------
 
@@ -124,28 +135,33 @@ if (!file.exists(p_global) || rerun) {
   write_csv(global, p_global)
 }
 
-# anomalies (training pixel-years) ----------------------------------------
+# anomalies (CONUS sample) ------------------------------------------------
 
-# c04-c06 share one set of anomaly sds, from the c04 and c05 pixel-years
-stopifnot(vc %in% c("c04", "c05", "c06"))
-vcs_anom <- c("c04", "c05")
+if (!file.exists(p_anom) || rerun) {
+  sample_clim <- read_csv(
+    file.path(cov_dir, "daymet_climate-at-points_anom-sample.csv"),
+    show_col_types = FALSE)
 
-# a cell-year in both c04 and c05 has the same climate, so it's counted once
-anom <- map(vcs_anom, \(v) {
-  read_cover_training(v) |>
-    select(cell, year, ends_with("_3yrAnom"))
-}) |>
-  bind_rows() |>
-  distinct(cell, year, .keep_all = TRUE) |>
-  select(ends_with("_3yrAnom"))
+  anom <- select(sample_clim, ends_with("_3yrAnom"))
+
+  # 07 writes long climate names; models use the short names
+  # (climate_name_lookup(), _3yrAnom suffix kept), as read_cover_training()
+  # returns them
+  names(anom) <- climate_name_lookup(names(anom))
+
+  # same names as the anomaly columns models are fit with
+  anom_names_training <- read_cover_training(check_vc) |>
+    select(ends_with("_3yrAnom")) |>
+    names()
+  stopifnot(setequal(names(anom), anom_names_training))
 
 anom_params <- tibble(variable = names(anom),
                       mean = 0,
                       sd = map_dbl(anom, \(z) sd(z, na.rm = TRUE)),
                       n = colSums(!is.na(anom)),
-                      source = paste("training pixel-years",
-                                     paste(vcs_anom, collapse = ", ")),
+                        source = "CONUS sample, 06_anomaly_scale_sample.R",
                       mean_obs = map_dbl(anom, \(z) mean(z, na.rm = TRUE)))
 
 stopifnot(ncol(anom) > 0, all(anom_params$sd > 0))
 write_csv(anom_params, p_anom)
+}

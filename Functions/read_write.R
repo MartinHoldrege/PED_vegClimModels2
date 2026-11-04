@@ -599,10 +599,9 @@ read_available_mask <- function(year = 2023, root = paths$large) {
 #'   herbaceous, bare_ground (cover, %); needle, broad (share of tree); forb,
 #'   c3_grass, c4_grass (share of herbaceous).
 #' @param normalize Logical; z-score the climate and soil columns with the
-#'   CONUS-wide means and sds, and divide the anomalies by their sd across
-#'   training pixel-years (see `read_scale_params()`). For versions without
-#'   anomalies (c02), only the climate and soils parameters are used, and
-#'   anomaly columns are an error.
+#'   CONUS-wide means and sds, and divide the anomalies by their sd across a
+#'   CONUS-wide sample of cell-years (see `read_scale_params()`). For versions
+#'   without anomalies (c02), anomaly columns are an error.
 #' @param as_sf Logical; return an sf data frame of cell-centre points in the
 #'   CRS of `read_mask()`. The x and y columns are kept.
 #' @param root Root path for large files.
@@ -636,17 +635,15 @@ read_cover_training <- function(vc, group = NULL, normalize = FALSE,
   
   if (normalize) {
     # versions without anomalies (c02: 2021 RAP-only sample, 05_rap2021_*.R)
-    # have no anomaly scale params; use the shared climate and soils ones
+    # (c02 left in here for legacy reasons)
     if (vc %in% c("c02")) {
       anom_cols <- stringr::str_subset(names(out), "_3yrAnom$")
       if (length(anom_cols) > 0) {
         stop(vc, " is not expected to have anomaly columns, but has: ",
              paste(anom_cols, collapse = ", "))
       }
-      sp <- read_scale_params(root = root)
-    } else {
-      sp <- read_scale_params(vc, root = root)
     }
+    sp <- read_scale_params(root = root)
     soil_vars <- c("soilDepth", "clay_surface", "clay", "sand", "coarse",
                    "carbon", "awc")
     vars <- c(new, soil_vars)
@@ -668,25 +665,27 @@ read_cover_training <- function(vc, group = NULL, normalize = FALSE,
 
 #' Read the predictor scaling parameters
 #'
-#' Written by Cover/DataPrep/09_compute_scale_params.R. Climate normals and
-#' soils: mean and sd across CONUS cells (shared by all models). Anomalies
-#' (if `vc` is given): mean 0 and the sd across training pixel-years, so
-#' scaling divides by the sd and keeps 0 as the normal.
+#' Written by Cover/DataPrep/09_compute_scale_params.R, and shared by all
+#' models and cover data versions. Climate normals and soils: mean and sd
+#' across CONUS cells. Anomalies (_3yrAnom): mean 0 and the sd across a fixed
+#' CONUS-wide sample of cell-years, so scaling divides by the sd and keeps 0
+#' as the normal.
 #'
-#' @param vc Cover data version for the anomaly parameters, or NULL for the
-#'   climate and soils parameters only.
 #' @param root Root path for large files.
 #' @return Tibble with columns `variable`, `mean`, `sd` only (the `scale_df`
 #'   format of `standardize()`, `standardize_raster()`, `unstandardize()` and
 #'   `unstandardize_long()`). The CSVs also hold `n`, `source` and, for
 #'   anomalies, `mean_obs`.
-read_scale_params <- function(vc = NULL, root = paths$large) {
+#' @examples
+#' scale_df <- read_scale_params()
+read_scale_params <- function(root = paths$large) {
   dir <- file.path(root, "Data_processed/scale_params")
-  p <- file.path(dir, "scale_params_climate_soils.csv")
-  if (!is.null(vc)) {
-    p <- c(p, file.path(dir, paste0("scale_params_anomalies_", vc, ".csv")))
+  p <- file.path(dir, c("scale_params_climate_soils.csv",
+                        "scale_params_anomalies.csv"))
+  if (!all(file.exists(p))) {
+    stop("missing: ", paste(p[!file.exists(p)], collapse = ", "),
+         "; run Analysis/Cover/DataPrep/09_compute_scale_params.R")
   }
-  stopifnot(file.exists(p))
   
   out <- purrr::map(p, readr::read_csv, show_col_types = FALSE) |>
     dplyr::bind_rows() |>

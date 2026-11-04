@@ -32,9 +32,11 @@ source_functions()
 rerun <-  TRUE # recreate intermediate files, needed if input data locations have change
 test_run <- FALSE 
 # cover versions the cell-years cover (one climate file for all), the suffix
-# set in 06_build_cover_datasets.R: "c04-c06" or "c04-c07-c08"
-vc <- "c04-c07-c08"
-stopifnot(vc %in% c("c04-c06", "c04-c07-c08"))
+# set in 06_build_cover_datasets.R: "c04-c06" or "c04-c07-c08"; or
+# "anom-sample", the CONUS sample for the anomaly scaling constants
+# (06_anomaly_scale_sample.R)
+vc <- "anom-sample" # c04-c07-c08"
+stopifnot(vc %in% c("c04-c06", "c04-c07-c08", "anom-sample"))
 # Daymet years available on disk. Windows are truncated to this range.
 daymet_years <- 1980:2023
 
