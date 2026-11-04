@@ -140,8 +140,12 @@ if (step === 2) {
   for (var y = yearStart; y <= yearEnd; y++) {
     var a = ee.Image(assetId(y));
     var keepFrac = a.select('keep');
+    // 1 km masks applied here too (as in 03), so masked cells are NA even if
+    // the step 1 assets were made without them
+    var cellKeep = fg.lcmapMaskBinary().and(fg.fireMaskYear(y));
     var frac = a.select('notTreeKeep').divide(keepFrac)
       .updateMask(keepFrac.gt(0))
+      .updateMask(cellKeep)
       .rename('year_' + y);
     fracBands.push(frac);
     zeroBands.push(frac.gt(zeroTreeFracCutoff).rename('year_' + y));
