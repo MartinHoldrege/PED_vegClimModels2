@@ -47,12 +47,12 @@ var scale = 60;               // m; 30 is the 2021 layer's resolution
 var tileScale = 4;
 var yearStart = 2000;
 var yearEnd = 2024;
-var vcLabel = 'c04-c06';
+var vcLabel = 'c04-c07-c08';
 var driveFolder = 'PED_vegClimModels2';
 
 // > 0: only this many randomly chosen cell-years, exported to a _test file,
 // to check compute (EECU-seconds in the task details) before the full run
-var nTest = 2000;
+var nTest = 1000;
 
 // dependencies -------------------------------------
 var fg = require('users/MartinHoldrege/PED_vegClimModels2:Functions/gee/general.js');
