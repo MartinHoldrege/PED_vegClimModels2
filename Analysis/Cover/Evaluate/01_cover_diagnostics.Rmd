@@ -71,9 +71,8 @@ stopifnot(nrow(dat) == nrow(fit$predictions), !anyNA(dat$cover_obs))
 scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
 pred_dir <- file.path(paths$large, "Data_processed", "CoverData", "Predictions")
 
-# wall-to-wall comparison with the RAP raster: only for tree cover fit to c02,
-# which is a sample of that same raster (05_rap_training_sample.R)
-wall <- spec$response == "cov_tree" && vc == "c02"
+# wall-to-wall comparison with 2021 RAP tree cover (tree cover models)
+wall <- spec$response == "cov_tree"
 
 ```
 
@@ -358,20 +357,16 @@ plot_map_conus(pred$current, colorscale = cover_scale,
 
 ## Wall-to-wall comparison with RAP
 
-Tree cover models fit to c02 only. The observed layer is the 2021 RAP tree
+Tree cover models only. The observed layer is the 2021 RAP tree
 cover raster that c02 was sampled from, in the cells passing the LCMAP and
-fire masks, and restricted to the model's domain (`spec$rows`, e.g. tree
-cover > 10%) as in fitting. The predictions are those above (current climate,
+fire masks. The predictions are those above (current climate,
 model fit to all training data), so the training pixels are included, and
-neighbouring cells are not independent of them: this shows the spatial
-pattern of the errors rather than an out-of-sample test. Note--can'
-show areas not in the model's domain (e.g. if model fit to tree cover < 10%)
+neighboring cells are not independent of them: this shows the spatial
+pattern of the errors rather than an out-of-sample test.
 
 ```{r wall-data, eval = wall}
-rap_file <- file.path(paths$large, "Data_processed/CoverData/rap",
-                      "RAP_v3_cover_2021_1000m.tif")
-obs_r <- terra::rast(rap_file)[["tree"]] |>
-  align_raster(pred$current)  # GEE exports are one cell larger
+# 2021 (default target year), LCMAP- and fire-masked, on the snap grid
+obs_r <- read_rap_cover_raster("tree", years = 2021)
 names(obs_r) <- "cov_tree"
 stopifnot(terra::compareGeom(obs_r, pred$current))
 

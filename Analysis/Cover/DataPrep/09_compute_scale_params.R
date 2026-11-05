@@ -92,8 +92,6 @@ if (!file.exists(p_global) || rerun) {
   log_vars <- .possible_log_vars(return_possibles = TRUE) # defined in models/predictors.R
   stopifnot(length(log_vars) > 0, log_vars %in% names(r))
   
-  stopifnot(log_vars %in% names(r))
-
   # these are non-negative by construction; log1p needs values above -1
   mins <- terra::global(r[[log_vars]], "min", na.rm = TRUE)$min
   stopifnot(all(mins >= 0))
@@ -147,7 +145,12 @@ if (!file.exists(p_anom) || rerun) {
   # 07 writes long climate names; models use the short names
   # (climate_name_lookup(), _3yrAnom suffix kept), as read_cover_training()
   # returns them
-  names(anom) <- climate_name_lookup(names(anom))
+  # the lookup only knows _CLIM names, so swap the suffix for the lookup
+  # and add _3yrAnom back (same as read_cover_training())
+  names(anom) <- names(anom) |>
+    str_replace("_3yrAnom$", "_CLIM") |>
+    climate_name_lookup() |>
+    paste0("_3yrAnom")
 
   # same names as the anomaly columns models are fit with
   anom_names_training <- read_cover_training(check_vc) |>

@@ -208,10 +208,10 @@ to these data, so this shows the spatial pattern of the errors, not an
 independent test (and for random forests the training points are in-bag).
 See each model's own diagnostics report for out-of-fold predictions.
 
-- **Tree cover** fit to RAP data (c02): compared wall to wall with the 2021
-  RAP tree cover raster the training data were sampled from, with zero-tree
-  cells (RAP zero-tree layer, at the zero-tree model's threshold) set to 0,
-  as in `01_tree_combined_diagnostics.Rmd`.
+- **Tree cover**: compared wall to wall with 2021 RAP tree cover 
+  (cells passing the LCMAP and 2021 fire masks), with zero-tree cells 
+  (RAP zero-tree layer, at the zero-tree model’s threshold) set to 0, as in
+  01_tree_combined_diagnostics.Rmd.
 - **Everything else**: the predictions extracted at the training pixels of
   the data version of the model(s) the layer comes from (e.g. c01 for
   shrub, herbaceous, bare ground and the shares), mapped as the mean over
@@ -221,8 +221,8 @@ See each model's own diagnostics report for out-of-fold predictions.
   predictions are built, e.g. modelled `share_c3` is compared with
   `100 * frac_c3`, and `cover_c3` with `cov_herbaceous * frac_c3`. The
   exception is needleleaf and broadleaf cover, which are compared with
-  `c_needle` and `c_broad`: the field fractions times 2021 RAP tree cover at
-  the cell (0 where the RAP zero-tree layer is 1 or RAP tree cover is 0,
+  `c_needle` and `c_broad`: the field fractions times RAP tree cover at
+  the cell/year (0 where the RAP zero-tree layer is 1 or RAP tree cover is 0,
   even if the fraction is NA; see
   `08_combine_cover_and_covariates.R`), as the tree cover model is fit to
   RAP. These are NA where the cell has no 2021 RAP tree cover, so they have
@@ -314,11 +314,11 @@ train <- map(unique(vars$vc), \(v) {
 
 f5 <- .pred_vars$f5
 
-# wall-to-wall observed tree cover (c02 only)
-wall <- vc_tree == "c02"
+# wall-to-wall observed tree cover: 2021 RAP (default target year), LCMAP- and
+# fire-masked
+wall <- TRUE
 if (wall) {
-  rap_tree <- terra::rast(file.path(paths$large, "Data_processed/CoverData/rap",
-                                    "RAP_v3_cover_2021_1000m.tif"))[["tree"]]
+  rap_tree <- read_rap_cover_raster("tree", years = 2021)
   rap_zero <- 100 * read_zero_tree_raster("fracZeroTree") > zt_threshold
   # GEE exports are one cell larger than the snap grid
   rap_tree <- align_raster(rap_tree, pred$current)
@@ -365,28 +365,47 @@ plot_resid_quantiles <- function(df, label, ylab) {
 ## Fit metrics
 
 In sample, for every layer: at the training pixel-years (data version
-`vc`), and for tree cover also wall to wall against the RAP raster (all
-cells with RAP data). Units are % cover, or % share for shares. MSE is
+`vc`), and with each pixel's observations averaged over its years (pixel
+means). The predictions come from the current-climate raster, which gives
+the same value in every year of a pixel, so the pixel-year metrics also
+count year-to-year variation the raster can't represent. The pixel means
+leave that out and are the fairer test of the climate relationships; the
+gap between the two shows how much of the error is year-to-year variation.
+For tree cover, also wall to wall against the RAP raster (all cells with
+RAP data). `n_rows` is the number of pixel-years, pixels or cells each row
+is computed on. Units are % cover, or % share for shares. MSE is
 RMSE^2; R^2 is 1 - SSE/SST (negative when the predictions do worse than the
 observed mean); bias is mean(predicted - observed). Needleleaf and
 broadleaf cover also get a row for observed cover > 0 only, as the many
 observed zeros (wherever RAP tree cover is 0) can inflate the fit.
 
 ```{r resid-metrics}
+#' Training data averaged over each pixel's years
+#'
+#' The prediction (current-climate raster) is the same in every year of a
+#' pixel, so this compares it with the pixel's mean observation, leaving out
+#' year-to-year variation the raster can't follow.
+#'
+#' @param df Output of resid_df().
+#' @return One row per pixel: cell, cover (mean observed), cover_pred.
+pixel_means <- function(df) {
+  summarise(df, cover = mean(cover), cover_pred = mean(cover_pred), .by = cell)
+}
+
 metrics <- pmap(vars, \(layer, label, vc, ...) {
   df <- resid_df(layer, vc)
-  out <- cover_metrics(df$cover, df$cover_pred) |>
-    mutate(layer = layer, label = label, compared_to = paste("training", vc),
-           .before = 1)
+  sets <- list("pixel-years" = df, "pixel means" = pixel_means(df))
   if (layer %in% c("cover_needle", "cover_broad")) {
-    nz <- filter(df, cover > 0)
-    nz_row <- cover_metrics(nz$cover, nz$cover_pred) |>
-      mutate(layer = layer, label = label,
-             compared_to = paste("training", vc, "(observed > 0)"),
-             .before = 1)
-    out <- bind_rows(out, nz_row)
+    sets[["pixel-years, observed > 0"]] <- filter(df, cover > 0)
+    sets[["pixel means, observed > 0"]] <- filter(pixel_means(df), cover > 0)
   }
-  out
+  imap(sets, \(d, what) {
+    cover_metrics(d$cover, d$cover_pred) |>
+      mutate(layer = layer, label = label,
+             compared_to = paste0("training ", vc, ", ", what),
+             n_rows = nrow(d), .before = 1)
+  }) |>
+    bind_rows()
 }) |>
   bind_rows()
 
@@ -395,7 +414,8 @@ if (wall) {
                      na.rm = TRUE)
   metrics <- cover_metrics(v[, 1], v[, 2]) |>
     mutate(layer = "cover_tree", label = "Tree cover",
-           compared_to = "RAP 2021 raster", .before = 1) |>
+           compared_to = "RAP 2021 raster (cells)", n_rows = nrow(v),
+           .before = 1) |>
     bind_rows(metrics)
   rm(v)
 }

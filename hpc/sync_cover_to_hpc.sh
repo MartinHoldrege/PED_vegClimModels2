@@ -33,7 +33,7 @@ sync_eval_data=true     # data used in evaluation (i.e. html reports)
 sync_fits=false         # models fit locally, to predict them on the HPC
 
 # cover data versions (training data)
-vcs=(c04 c05 c06)
+vcs=(c04 c07 c08)
 
 # fitted models to copy, if sync_fits (rsync pattern)
 fits_include='*.rds'

@@ -533,6 +533,12 @@ cover_specs <- list(
       m04.1 = .defaults_class_forest(engine = "ranger",
                                      pred_vars = .pred_vars$complex2,
                                      ranger = list(importance = "permutation")),
+      m04.2 = .defaults_class_forest(engine = "ranger",
+                                     pred_vars = .pred_vars$f5,
+                                     ranger = list(importance = "permutation")),
+      m04.3 = .defaults_class_forest(engine = "ranger",
+                                     pred_vars = .pred_vars$f5_anom,
+                                     ranger = list(importance = "permutation")),
       
       # hierarchical group lasso on continuous tree cover. x^2 only enters
       # with x, and an interaction only with both of its terms. Squares don't
@@ -546,6 +552,10 @@ cover_specs <- list(
                                    family = "gaussian",
                                    response_transform = "log1p",
                                    interact_log1p = TRUE),
+      # unrelated to m05: as m01.5 (binomial lasso), plus the anomalies of the
+      # climate variables (needs a data version with anomalies)
+      m05.5 = .defaults_class_forest(pred_vars = .pred_vars$f5_anom,
+                                     interact_log1p = TRUE),
       
       # as m01 (glmnet lasso, same predictors), but fit to cover / 100 with a
       # binomial likelihood (what quasibinomial estimates; the dispersion
@@ -589,7 +599,7 @@ cover_specs <- list(
     ),
     
     # zero tree: % of a cell's natural land with < 3% RAP tree cover; above
-    # 90% = zero tree. Data: c02 only (05_rap_training_sample.R)
+    # 90% = zero tree (added in 08_combine_cover_and_covariates.R)
     zero_tree = list(
       # binomial GLM
       m01.0 = .defaults_zero_tree(),
@@ -605,7 +615,15 @@ cover_specs <- list(
                                   ranger = list(importance = "permutation")),
       m04.1 = .defaults_zero_tree(engine = "ranger",
                                   pred_vars = .pred_vars$complex2,
-                                  ranger = list(importance = "permutation"))
+                                  ranger = list(importance = "permutation")),
+      m04.2 = .defaults_zero_tree(engine = "ranger",
+                                  pred_vars = .pred_vars$f5,
+                                  ranger = list(importance = "permutation")),
+      m04.3 = .defaults_zero_tree(engine = "ranger",
+                                  pred_vars = .pred_vars$f5_anom,
+                                  ranger = list(importance = "permutation")),
+      # as m01.5, plus the anomalies (needs a data version with anomalies)
+      m05.5 = .defaults_zero_tree(pred_vars = .pred_vars$f5_anom)
     )
 
   ),
@@ -636,7 +654,17 @@ cover_specs <- list(
       m04.1 = .defaults_cover(rows = quote(cov_tree > 10),
                               engine = "ranger", family = "gaussian",
                               pred_vars = .pred_vars$complex2,
-                              ranger = list(importance = "permutation"))
+                              ranger = list(importance = "permutation")),
+      m04.2 = .defaults_cover(rows = quote(cov_tree > 10),
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$f5,
+                              ranger = list(importance = "permutation")),
+      m04.3 = .defaults_cover(rows = quote(cov_tree > 10),
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$f5_anom,
+                              ranger = list(importance = "permutation")),
+      m05.5 = .defaults_cover(rows = quote(cov_tree > 10),
+                              pred_vars = .pred_vars$f5_anom)
     ),
     tree_nonforest = list(
       m01.0 = .defaults_cover(rows = quote(cov_tree <= 10)),
@@ -656,7 +684,17 @@ cover_specs <- list(
       m04.1 = .defaults_cover(rows = quote(cov_tree <= 10),
                               engine = "ranger", family = "gaussian",
                               pred_vars = .pred_vars$complex2,
-                              ranger = list(importance = "permutation"))
+                              ranger = list(importance = "permutation")),
+      m04.2 = .defaults_cover(rows = quote(cov_tree <= 10),
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$f5,
+                              ranger = list(importance = "permutation")),
+      m04.3 = .defaults_cover(rows = quote(cov_tree <= 10),
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$f5_anom,
+                              ranger = list(importance = "permutation")),
+      m05.5 = .defaults_cover(rows = quote(cov_tree <= 10),
+                              pred_vars = .pred_vars$f5_anom)
     ),
     shrub = list(
       m01.5 = .defaults_cover(response = 'cov_shrub',
@@ -669,7 +707,17 @@ cover_specs <- list(
       m04.1 = .defaults_cover(response = 'cov_shrub',
                               engine = "ranger", family = "gaussian",
                               pred_vars = .pred_vars$complex2,
-                              ranger = list(importance = "permutation"))
+                              ranger = list(importance = "permutation")),
+      m04.2 = .defaults_cover(response = 'cov_shrub',
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$f5,
+                              ranger = list(importance = "permutation")),
+      m04.3 = .defaults_cover(response = 'cov_shrub',
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$f5_anom,
+                              ranger = list(importance = "permutation")),
+      m05.5 = .defaults_cover(response = 'cov_shrub',
+                              pred_vars = .pred_vars$f5_anom)
       ),
     herbaceous = list(
       # as m01.5, plus the anomalies of the climate variables
@@ -686,6 +734,14 @@ cover_specs <- list(
       m04.1 = .defaults_cover(response = 'cov_herbaceous',
                               engine = "ranger", family = "gaussian",
                               pred_vars = .pred_vars$complex2,
+                              ranger = list(importance = "permutation")),
+      m04.2 = .defaults_cover(response = 'cov_herbaceous',
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$f5,
+                              ranger = list(importance = "permutation")),
+      m04.3 = .defaults_cover(response = 'cov_herbaceous',
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$f5_anom,
                               ranger = list(importance = "permutation"))
     ),
     # bare ground: LDC only in c01 and c03 (left as in c01); RAP in c02
@@ -698,7 +754,17 @@ cover_specs <- list(
       m04.1 = .defaults_cover(response = 'cov_bare_ground',
                               engine = "ranger", family = "gaussian",
                               pred_vars = .pred_vars$complex2,
-                              ranger = list(importance = "permutation"))
+                              ranger = list(importance = "permutation")),
+      m04.2 = .defaults_cover(response = 'cov_bare_ground',
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$f5,
+                              ranger = list(importance = "permutation")),
+      m04.3 = .defaults_cover(response = 'cov_bare_ground',
+                              engine = "ranger", family = "gaussian",
+                              pred_vars = .pred_vars$f5_anom,
+                              ranger = list(importance = "permutation")),
+      m05.5 = .defaults_cover(response = 'cov_bare_ground',
+                              pred_vars = .pred_vars$f5_anom)
     )
   ),
   # shares: needleleaf (of tree), forb / C3 / C4 (of herbaceous, rescaled to
@@ -713,7 +779,17 @@ cover_specs <- list(
       m04.1 = .defaults_proportion(response = 'frac_needle',
                            engine = "ranger", family = "gaussian",
                            pred_vars = .pred_vars$complex2,
-                           ranger = list(importance = "permutation"))
+                           ranger = list(importance = "permutation")),
+      m04.2 = .defaults_proportion(response = 'frac_needle',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$f5,
+                                   ranger = list(importance = "permutation")),
+      m04.3 = .defaults_proportion(response = 'frac_needle',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$f5_anom,
+                                   ranger = list(importance = "permutation")),
+      m05.5 = .defaults_proportion(response = 'frac_needle',
+                                   pred_vars = .pred_vars$f5_anom)
     ),
     c3 = list(
       m05.5 = .defaults_proportion(response = 'frac_c3',
@@ -729,6 +805,14 @@ cover_specs <- list(
       m04.1 = .defaults_proportion(response = 'frac_c3',
                                    engine = "ranger", family = "gaussian",
                                    pred_vars = .pred_vars$complex2,
+                                   ranger = list(importance = "permutation")),
+      m04.2 = .defaults_proportion(response = 'frac_c3',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$f5,
+                                   ranger = list(importance = "permutation")),
+      m04.3 = .defaults_proportion(response = 'frac_c3',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$f5_anom,
                                    ranger = list(importance = "permutation"))
     ),
     c4 = list(
@@ -745,6 +829,14 @@ cover_specs <- list(
       m04.1 = .defaults_proportion(response = 'frac_c4',
                                    engine = "ranger", family = "gaussian",
                                    pred_vars = .pred_vars$complex2,
+                                   ranger = list(importance = "permutation")),
+      m04.2 = .defaults_proportion(response = 'frac_c4',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$f5,
+                                   ranger = list(importance = "permutation")),
+      m04.3 = .defaults_proportion(response = 'frac_c4',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$f5_anom,
                                    ranger = list(importance = "permutation"))
     ),
     forb = list(
@@ -761,6 +853,14 @@ cover_specs <- list(
       m04.1 = .defaults_proportion(response = 'frac_forb',
                                    engine = "ranger", family = "gaussian",
                                    pred_vars = .pred_vars$complex2,
+                                   ranger = list(importance = "permutation")),
+      m04.2 = .defaults_proportion(response = 'frac_forb',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$f5,
+                                   ranger = list(importance = "permutation")),
+      m04.3 = .defaults_proportion(response = 'frac_forb',
+                                   engine = "ranger", family = "gaussian",
+                                   pred_vars = .pred_vars$f5_anom,
                                    ranger = list(importance = "permutation"))
     )
   ),
@@ -778,7 +878,12 @@ cover_specs <- list(
       m04.1 = .defaults_combined_tree(.all_vc = "c02", .all_vmc = "m04.1"),
       m11.5 = .defaults_combined_tree(.all_vc = "c05", .all_vmc = "m01.5"),
       m11.51 = .defaults_combined_tree(.all_vc = "c05", .all_vmc = "m01.51"),
-      m14.1 = .defaults_combined_tree(.all_vc = "c05", .all_vmc = "m04.1")
+      m14.1 = .defaults_combined_tree(.all_vc = "c05", .all_vmc = "m04.1"),
+      # m2x.x: made of the m0x.x component models
+      m21.5 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m01.5"),
+      m25.5 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m05.5"),
+      m24.2 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m04.2"),
+      m24.3 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m04.3")
     ),
     # tree cover by leaf type: combined tree cover x needleleaf share
     # (tree_leaf_cover(); not written to disk)
@@ -794,7 +899,15 @@ cover_specs <- list(
       m11.51 = .defaults_combined_tree_prop(tree_vmc = 'm11.51',
                                            needle = c(vc = 'c04', vmc = 'm01.51')),
       m14.1 = .defaults_combined_tree_prop(tree_vmc = 'm14.1',
-                                            needle = c(vc = 'c04', vmc = 'm04.1'))
+                                            needle = c(vc = 'c04', vmc = 'm04.1')),
+      m21.5 = .defaults_combined_tree_prop(tree_vmc = 'm21.5',
+                                           needle = c(vc = 'c04', vmc = 'm01.5')),
+      m25.5 = .defaults_combined_tree_prop(tree_vmc = 'm25.5',
+                                           needle = c(vc = 'c04', vmc = 'm05.5')),
+      m24.2 = .defaults_combined_tree_prop(tree_vmc = 'm24.2',
+                                           needle = c(vc = 'c04', vmc = 'm04.2')),
+      m24.3 = .defaults_combined_tree_prop(tree_vmc = 'm24.3',
+                                           needle = c(vc = 'c04', vmc = 'm04.3'))
     ),
     # herbaceous cover by functional type (04_combine_herb.R)
     herbaceous = list(
@@ -821,7 +934,15 @@ cover_specs <- list(
       m15.51 =  .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m05.51",
                                        herbaceous = c(vc = 'c06', vmc = 'm05.51')),
       m14.1 =  .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m04.1",
-                                       herbaceous = c(vc = 'c06', vmc = 'm04.1'))
+                                       herbaceous = c(vc = 'c06', vmc = 'm04.1')),
+      m21.5 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m01.5",
+                                      herbaceous = c(vc = 'c08', vmc = 'm01.5')),
+      m25.5 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m05.5",
+                                      herbaceous = c(vc = 'c08', vmc = 'm05.5')),
+      m24.2 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m04.2",
+                                      herbaceous = c(vc = 'c08', vmc = 'm04.2')),
+      m24.3 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m04.3",
+                                      herbaceous = c(vc = 'c08', vmc = 'm04.3'))
     ),
     # all final layers: tree_all, shrub, herbaceous and (if .bare_vc is
     # given) bare ground (read_combined_all(),
@@ -868,7 +989,20 @@ cover_specs <- list(
         tree_all_vmc = 'm11.51',  herbaceous_vmc = 'm15.51'),
       m14.1  = .defaults_combined_all(
         .all_vmc = 'm04.1', .shrub_vc = 'c06', .bare_vc = 'c05',
-        tree_all_vmc = 'm14.1',  herbaceous_vmc = 'm14.1')
+        tree_all_vmc = 'm14.1',  herbaceous_vmc = 'm14.1'),
+      # m2x.x: every component made of the m0x.x models
+      m21.5 = .defaults_combined_all(
+        .all_vmc = 'm01.5', .shrub_vc = 'c08', .bare_vc = 'c07',
+        tree_all_vmc = 'm21.5', herbaceous_vmc = 'm21.5'),
+      m25.5 = .defaults_combined_all(
+        .all_vmc = 'm05.5', .shrub_vc = 'c08', .bare_vc = 'c07',
+        tree_all_vmc = 'm25.5', herbaceous_vmc = 'm25.5'),
+      m24.2 = .defaults_combined_all(
+        .all_vmc = 'm04.2', .shrub_vc = 'c08', .bare_vc = 'c07',
+        tree_all_vmc = 'm24.2', herbaceous_vmc = 'm24.2'),
+      m24.3 = .defaults_combined_all(
+        .all_vmc = 'm04.3', .shrub_vc = 'c08', .bare_vc = 'c07',
+        tree_all_vmc = 'm24.3', herbaceous_vmc = 'm24.3')
     )
   )
 )

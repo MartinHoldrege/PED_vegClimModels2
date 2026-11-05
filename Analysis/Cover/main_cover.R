@@ -30,8 +30,8 @@ wait_hours <- 0
 
 
 run_fit      <- FALSE
-run_predict  <- TRUE
-run_evaluate <- TRUE
+run_predict  <- FALSE
+run_evaluate <- FALSE
 
 # command-line overrides (params.R; NULL unless passed, e.g. on the HPC)
 run_fit      <- opt$run_fit %||% run_fit
@@ -41,11 +41,11 @@ run_evaluate <- opt$run_evaluate %||% run_evaluate
 # cover data version(s): vc_default, unless the model is listed in vc_model
 # (several versions = each vmc is run on each; not
 # used by combined runs)
-vc_default <- "c05"
+vc_default <- "c07"
 vc_model <- list(
-  bare_ground = "c05", 
-  shrub = "c06", 
-  herbaceous = "c06", 
+  bare_ground = "c07", 
+  shrub = "c08", 
+  herbaceous = "c08", 
   needle = "c04", c3 = "c04", c4 = "c04", forb = "c04")
 
 fit_scripts <- c(
@@ -57,30 +57,31 @@ fit_scripts <- c(
 # model versions to run, by family and model
 # m01.51: every component of combined all m01.51 (grplasso)
 
-mods1 <- c('m01.5', 'm01.51', 'm04.1')
+mods1 <- c('m01.5', 'm05.5', 'm04.2', 'm04.3')
+mods_comb <- c('m21.5', 'm25.5', 'm24.2', 'm24.3')
 cover_runs <- list(
   classification = list(
-    # forest    = mods1,
-    # zero_tree = mods1
+    forest    = mods1,
+    zero_tree = mods1
     ),
   cover          = list(
-    # tree_forest    = mods1,
-    # tree_nonforest = mods1,
-    # shrub          = mods1,
-    # herbaceous     = c(mods1, 'm05.5', 'm05.51'), # m05.51 required >64gb mem
-    # bare_ground    = mods1
+    tree_forest    = mods1,
+    tree_nonforest = mods1,
+    shrub          = mods1,
+    herbaceous     = mods1,
+    bare_ground    = mods1
   ),
   proportion = list(
-    # needle = mods1,
-    # c3     = c(mods1, 'm05.5', 'm05.51'),
-    # c4     = c(mods1, 'm05.5', 'm05.51'),
-    # forb   = c(mods1, 'm05.5', 'm05.51')
+    needle = mods1[-1],
+    c3     = mods1[c(3,4)],
+    c4     = mods1[c(3,4)],
+    forb   = mods1[c(3,4)]
     ),
   # versions of cover_specs$combined
   combined       = list(
-    tree       = c('m11.5', 'm11.51', 'm14.1'),
-    herbaceous = c('m11.5', 'm11.51', 'm14.1', 'm15.5')#, 'm15.51'),
-    #all        = c('m11.5', 'm11.51', 'm14.1', 'm15.5')#, 'm15.51')
+    tree       = mods_comb,
+    herbaceous = mods_comb,
+    all        = mods_comb
   )
 )
 
@@ -138,7 +139,8 @@ stopifnot(all(runs$cover_type %in% c(names(fit_scripts), "combined")),
           with(runs, all(cover_model[cover_type == "combined"] %in%
                            c(names(combine_scripts), names(combined_rmds)))))
 # run_index: the row number to pass as --run_index (SLURM array task id)
-print(mutate(runs, run_index = row_number(), .before = 1))
+print(mutate(runs, run_index = row_number(), .before = 1),
+      n = 60)
 
 # one row only (one SLURM array task; see hpc/run_cover.sh)
 if (!is.null(opt$run_index)) {
@@ -146,6 +148,7 @@ if (!is.null(opt$run_index)) {
   runs <- runs[opt$run_index, ]
   message('row run:\n')
   print(runs)
+  print('\n\n')
 }
 
 
@@ -159,15 +162,15 @@ start_time <- Sys.time()
 # misc other scripts to run (other scripts to run) ------------------------------------------
 
 # not in array tasks, which run one model each
-if(FALSE && is.null(opt$run_index)) {
+if(TRUE && is.null(opt$run_index)) {
 # temporary: build the c04-c06 training data
   dataprep <- c(
-    # "Analysis/Cover/DataPrep/08_combine_cover_and_covariates.R",
-    # "Analysis/Cover/DataPrep/09_compute_scale_params.R", 
-    'Analysis/Cover/Evaluate/cover_training_data_maps.R')
+     "Analysis/Cover/DataPrep/08_combine_cover_and_covariates.R"
+    #'Analysis/Cover/Evaluate/cover_training_data_maps.R'
+    )
   stopifnot(file.exists(dataprep))
   for (s in dataprep) {
-    for (vc in c('c04', 'c05', 'c06')) {
+    for (vc in c('c04', 'c07', 'c08')) {
       message('running: ', s, '\nvc: ', vc)
       callr::rscript(s, cmdargs = paste0("--vc=", vc))
     }
