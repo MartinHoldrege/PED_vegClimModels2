@@ -20,6 +20,7 @@ local_root="/d/USGS/large_files/PED_vegClimModels2"  # paths$large
 
 # which parts to run
 sync_maca_climate=true
+sync_gridmet_climate=true
 
 # MACA climate normals (01_summarise_projected_climate_data.R) ------------
 # final rasters only; the per-year intermediate folders are skipped
@@ -29,3 +30,13 @@ if $sync_maca_climate; then
   rsync -avP --include='*maca*_CLIM.tif' --exclude='*' \
     "$remote/$sub/" "$local_root/$sub/"
 fi
+
+# gridMET 1991-2020 normals (01_summarise_gridmet_climate_data.R) ---------
+# final raster only; the monthly/ subfolder is skipped
+if $sync_gridmet_climate; then
+  sub=Data_processed/WallToWallClimateData/gridmet
+  mkdir -p "$local_root/$sub"
+  rsync -avP --include='gridmet_*_CLIM.tif' --exclude='*' \
+    "$remote/$sub/" "$local_root/$sub/"
+fi
+
