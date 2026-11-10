@@ -87,11 +87,14 @@ daily_to_monthly <- function(var, yr) {
   # checks: same grid, expected units, one layer per day of the year
   terra::compareGeom(r, ref_grid, stopOnError = TRUE)
   stopifnot(all(terra::units(r) == spec$unit))
-  dates <- terra::time(r)
+  dates <- as.Date(terra::time(r))
   all_days <- seq(as.Date(paste0(yr, "-01-01")), as.Date(paste0(yr, "-12-31")),
                   by = "day")
-  if (!identical(as.Date(dates), all_days)) {
-    stop(var, " ", yr, ": layer dates (terra::time) are not one per day of the year")
+  # compare values (not identical(), which also compares storage type)
+  if (length(dates) != length(all_days) || !isTRUE(all(dates == all_days))) {
+    stop(var, " ", yr, ": layer dates (terra::time) are not one per day of ",
+         "the year; got ", length(dates), " layers, ", sum(is.na(dates)),
+         " NA dates, range ", paste(range(dates, na.rm = TRUE), collapse = " to "))
   }
 
   month <- as.integer(format(dates, "%m"))

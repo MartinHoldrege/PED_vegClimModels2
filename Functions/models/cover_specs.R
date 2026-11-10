@@ -664,7 +664,10 @@ cover_specs <- list(
                               pred_vars = .pred_vars$f5_anom,
                               ranger = list(importance = "permutation")),
       m05.5 = .defaults_cover(rows = quote(cov_tree > 10),
-                              pred_vars = .pred_vars$f5_anom)
+                              pred_vars = .pred_vars$f5_anom),
+      m05.51 = .defaults_cover(rows = quote(cov_tree > 10),
+                              pred_vars = .pred_vars$f5_anom,
+                              engine = "grplasso")
     ),
     tree_nonforest = list(
       m01.0 = .defaults_cover(rows = quote(cov_tree <= 10)),
@@ -694,7 +697,10 @@ cover_specs <- list(
                               pred_vars = .pred_vars$f5_anom,
                               ranger = list(importance = "permutation")),
       m05.5 = .defaults_cover(rows = quote(cov_tree <= 10),
-                              pred_vars = .pred_vars$f5_anom)
+                              pred_vars = .pred_vars$f5_anom),
+      m05.51 = .defaults_cover(rows = quote(cov_tree <= 10),
+                              pred_vars = .pred_vars$f5_anom,
+                              engine = "grplasso")
     ),
     shrub = list(
       m01.5 = .defaults_cover(response = 'cov_shrub',
@@ -717,7 +723,10 @@ cover_specs <- list(
                               pred_vars = .pred_vars$f5_anom,
                               ranger = list(importance = "permutation")),
       m05.5 = .defaults_cover(response = 'cov_shrub',
-                              pred_vars = .pred_vars$f5_anom)
+                              pred_vars = .pred_vars$f5_anom),
+      m05.51 = .defaults_cover(response = 'cov_shrub',
+                              pred_vars = .pred_vars$f5_anom,
+                              engine = "grplasso")
       ),
     herbaceous = list(
       # as m01.5, plus the anomalies of the climate variables
