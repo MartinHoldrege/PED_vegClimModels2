@@ -57,12 +57,12 @@ fit_scripts <- c(
 # model versions to run, by family and model
 # m01.51: every component of combined all m01.51 (grplasso)
 
-mods1 <- c('m01.5', 'm05.5', 'm04.2', 'm04.3')
+mods1 <- c('m01.51', 'm05.51')
 mods_comb <- c('m21.5', 'm25.5', 'm24.2', 'm24.3')
 cover_runs <- list(
   classification = list(
-    forest    = mods1,
-    zero_tree = mods1
+    forest    = mods1[1],
+    zero_tree = mods1[1]
     ),
   cover          = list(
     tree_forest    = mods1,
@@ -72,10 +72,10 @@ cover_runs <- list(
     bare_ground    = mods1
   ),
   proportion = list(
-    needle = mods1[-1],
-    c3     = mods1[c(3,4)],
-    c4     = mods1[c(3,4)],
-    forb   = mods1[c(3,4)]
+    needle = mods1[1],
+    c3     = mods1[1],
+    c4     = mods1[1],
+    forb   = mods1[1]
     ),
   # versions of cover_specs$combined
   combined       = list(
@@ -162,7 +162,7 @@ start_time <- Sys.time()
 # misc other scripts to run (other scripts to run) ------------------------------------------
 
 # not in array tasks, which run one model each
-if(TRUE && is.null(opt$run_index)) {
+if(FALSE && is.null(opt$run_index)) {
 # temporary: build the c04-c06 training data
   dataprep <- c(
      "Analysis/Cover/DataPrep/08_combine_cover_and_covariates.R"
