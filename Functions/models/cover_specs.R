@@ -773,7 +773,10 @@ cover_specs <- list(
                               pred_vars = .pred_vars$f5_anom,
                               ranger = list(importance = "permutation")),
       m05.5 = .defaults_cover(response = 'cov_bare_ground',
-                              pred_vars = .pred_vars$f5_anom)
+                              pred_vars = .pred_vars$f5_anom),
+      m05.51 = .defaults_cover(response = 'cov_bare_ground',
+                              pred_vars = .pred_vars$f5_anom,
+                              engine = 'grplasso')
     )
   ),
   # shares: needleleaf (of tree), forb / C3 / C4 (of herbaceous, rescaled to
@@ -890,7 +893,13 @@ cover_specs <- list(
       m14.1 = .defaults_combined_tree(.all_vc = "c05", .all_vmc = "m04.1"),
       # m2x.x: made of the m0x.x component models
       m21.5 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m01.5"),
-      m25.5 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m05.5"),
+      # as m21.5, but the two tree cover models also use the climate
+      # anomalies (m05.5); the classification models don't (m01.5)
+      m25.5 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m01.5",
+                                      tree_forest = c(vc = "c07",
+                                                      vmc = "m05.5"),
+                                      tree_nonforest = c(vc = "c07",
+                                                         vmc = "m05.5")),
       m24.2 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m04.2"),
       m24.3 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m04.3")
     ),
