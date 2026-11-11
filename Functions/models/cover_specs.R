@@ -773,7 +773,11 @@ cover_specs <- list(
                               pred_vars = .pred_vars$f5_anom,
                               ranger = list(importance = "permutation")),
       m05.5 = .defaults_cover(response = 'cov_bare_ground',
-                              pred_vars = .pred_vars$f5_anom)
+                              pred_vars = .pred_vars$f5_anom),
+      m05.51 = .defaults_cover(response = 'cov_bare_ground',
+                              pred_vars = .pred_vars$f5_anom,
+                              engine = "grplasso")
+                              
     )
   ),
   # shares: needleleaf (of tree), forb / C3 / C4 (of herbaceous, rescaled to
