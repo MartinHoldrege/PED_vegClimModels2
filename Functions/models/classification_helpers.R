@@ -411,6 +411,38 @@ pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
   predict_score(fit, x)
 }
 
+#' In-sample and out-of-fold predictions of one model at the rows of dat
+#'
+#' For combining models (04_combine_tree.R, 04_combine_herb.R,
+#' 05_combine_tree_all.R). Where the row was in the model's training data,
+#' the predictions saved with the model (pred_in: in-sample, out-of-bag for
+#' ranger; pred_oof: out-of-fold); elsewhere the full model's prediction, for
+#' both, so there pred_oof isn't out-of-fold.
+#'
+#' @param fit Fitted model (read_cover_model()).
+#' @param dat Data in original units, one row per cell-year, with every
+#'   predictor of the model.
+#' @return Tibble, one row per row of dat: cell, year, pred_in, pred_oof, and
+#'   saved (TRUE where from the model's saved predictions).
+component_predictions <- function(fit, dat) {
+  saved <- mutate(fit$predictions, saved = TRUE)
+  stopifnot(!anyDuplicated(saved[c("cell", "year")]))
+  
+  out <- select(dat, cell, year) |>
+    left_join(saved, by = c("cell", "year")) |>
+    mutate(saved = replace_na(saved, FALSE))
+  
+  new <- which(!out$saved)
+  if (length(new) > 0) {
+    p <- .predict_newdata(fit, dat[new, ])
+    out$pred_in[new] <- p
+    out$pred_oof[new] <- p
+  }
+  
+  stopifnot(!anyNA(out$pred_in), !anyNA(out$pred_oof))
+  out
+}
+
 
 # internal: ALE for one predictor over the rows of dat (see
 # ale_classification()). Returns NULL if the predictor has too few distinct

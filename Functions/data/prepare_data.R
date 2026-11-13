@@ -431,12 +431,15 @@ climate_name_lookup <- function(x, to_short = TRUE) {
 #' its rescaled share of the total cover.
 #'
 #' @param shares SpatRaster, one layer per type, named by type (e.g. c3, c4,
-#'   forb): predicted share of the total (%).
+#'   forb): predicted share of the total (%). Or a data frame, one column per
+#'   type, e.g. for pixel-years.
 #' @param total SpatRaster, one layer: total cover (%), e.g. herbaceous cover.
-#' @return SpatRaster with layers `share_<type>` (rescaled shares, %, summing
-#'   to 100), `cover_<type>` (% cover) and `share_sum` (sum of the shares
-#'   before rescaling, %; how far the models were from summing to 100). Cells
-#'   where the shares sum to 0 are NaN.
+#'   Or a numeric vector, one value per row of `shares`.
+#' @return SpatRaster (or tibble, if `shares` is a data frame) with layers
+#'   (columns) `share_<type>` (rescaled shares, %, summing to 100),
+#'   `cover_<type>` (% cover) and `share_sum` (sum of the shares before
+#'   rescaling, %; how far the models were from summing to 100). Cells where
+#'   the shares sum to 0 are NaN.
 #' @examples
 #' total <- terra::rast(nrows = 2, ncols = 2, vals = c(0, 10, 50, 80))
 #' shares <- c(terra::rast(total, vals = c(50, 60, 20, 10)),
@@ -444,19 +447,29 @@ climate_name_lookup <- function(x, to_short = TRUE) {
 #'             terra::rast(total, vals = c(10, 30, 40, 70)))
 #' names(shares) <- c("c3", "c4", "forb")
 #' split_cover(shares = shares, total = total)
+#' split_cover(shares = as.data.frame(shares), total = c(0, 10, 50, 80))
 split_cover <- function(shares, total) {
-  stopifnot(inherits(shares, "SpatRaster"), inherits(total, "SpatRaster"),
-            terra::nlyr(total) == 1,
-            !anyDuplicated(names(shares)),
-            terra::compareGeom(shares, total))
+  is_rast <- inherits(shares, "SpatRaster")
+  if (is_rast) {
+    stopifnot(inherits(total, "SpatRaster"), terra::nlyr(total) == 1,
+              terra::compareGeom(shares, total))
+    share_sum <- sum(shares)
+  } else {
+    stopifnot(is.data.frame(shares), is.numeric(total),
+              length(total) == nrow(shares))
+    share_sum <- rowSums(shares)
+  }
+  stopifnot(!anyDuplicated(names(shares)))
   
-  share_sum <- sum(shares)
   share <- 100 * shares / share_sum
   cover <- share / 100 * total
   
   types <- names(shares)
   names(share) <- paste0("share_", types)
   names(cover) <- paste0("cover_", types)
+  if (!is_rast) {
+    return(tibble::as_tibble(cbind(share, cover, share_sum = share_sum)))
+  }
   names(share_sum) <- "share_sum"
   c(share, cover, share_sum)
 }

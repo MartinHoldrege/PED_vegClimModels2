@@ -743,9 +743,12 @@ read_cover_model <- function(cover_type, cover_model, vc, vmc,
 #' In-sample and out-of-fold predictions at training pixel-years
 #'
 #' For a fitted model, the predictions saved with it (at the rows it was fit
-#' to). For a combined model (cover_type "combined"; so far only tree), the
-#' table written by its combining script (04_combine_tree.R), at every row of
-#' data version `vc`, with a `fallback` column (see that script).
+#' to). For a combined model (cover_type "combined": tree, tree_all or
+#' herbaceous), the table written by its combining script (04_combine_tree.R,
+#' 05_combine_tree_all.R, 04_combine_herb.R), at every row of data version
+#' `vc`, with a `fallback` column (see those scripts); for tree_all and
+#' herbaceous, one row per pixel-year and `layer` (e.g. cover_needle,
+#' share_c3; as the raster layers).
 #'
 #' @inheritParams cover_model_path
 #' @return Tibble with cell, year, pred_in and pred_oof (% cover, or the

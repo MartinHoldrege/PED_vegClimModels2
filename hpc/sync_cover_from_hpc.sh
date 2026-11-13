@@ -27,6 +27,7 @@ sync_reports=true
 
 # files to copy (rsync patterns), e.g. '*_c05-m01.51*' for one version
 fits_include='*.rds'
+fit_csv_include='*.csv'  # combined csvs: blend, components, pixel_predictions
 predictions_include='*.tif'
 reports_include='*.html'
 
@@ -36,11 +37,13 @@ if [ "$1" = "--dry-run" ]; then
 fi
 
 # fitted models (02_fit_*.R) ----------------------------------------------
-# <cover_type>_<cover_model>_<vc>-<vmc>.rds (cover_model_path())
+# <cover_type>_<cover_model>_<vc>-<vmc>.rds (cover_model_path()), and the
+# combined csvs (04_combine_*.R, 05_combine_tree_all.R; combined_path())
 if $sync_fits; then
   sub=Data_processed/CoverData/Fit
   mkdir -p "$local_root/$sub"
-  rsync -avPu $dry_run --include="$fits_include" --exclude='*' \
+  rsync -avPu $dry_run --include="$fits_include" \
+    --include="$fit_csv_include" --exclude='*' \
     "$remote/$sub/" "$local_root/$sub/"
 fi
 

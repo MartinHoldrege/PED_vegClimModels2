@@ -44,6 +44,8 @@
 # different folds, but each comes from a fit that didn't use that row. The
 # pixel-years use their observed climate anomalies; the rasters are normals
 # (anomalies 0).
+# The same is done at the rows of the field data (c04), all of them outside
+# the components' data, for tree cover by leaf type (05_combine_tree_all.R).
 #
 # Inputs:
 #   Data_processed/CoverData/Predictions/ (from 03_predict_raster.R):
@@ -59,7 +61,8 @@
 #   Data_processed/CoverData/Fit/combined_tree_<vmc>_blend.csv
 #     the component models and the blending parameters
 #   Data_processed/CoverData/Fit/combined_tree_<vmc>_<vc>_pixel_predictions.csv
-#     cell, year, pred_in, pred_oof (combined tree cover, %), fallback
+#     one per data version (e.g. c07 and c04): cell, year, pred_in, pred_oof
+#     (combined tree cover, %), fallback
 #   (paths from combined_path())
 #
 # October, 2026
@@ -73,7 +76,7 @@ source("Functions/models/cover_specs.R")
 
 # spec --------------------------------------------------------------------
 
-if(TRUE) {
+if(FALSE) {
   # parameters for testing/development
   opt <- list(cover_type = 'combined',
               cover_model = 'tree',
@@ -198,51 +201,28 @@ walk(scenarios, \(scenario) {
 
 # predictions at the pixel-years --------------------------------------------
 
-#' In-sample and out-of-fold predictions of one component at the rows of dat
-#'
-#' Where the row was in the model's training data, the predictions saved with
-#' the model; elsewhere the full model's prediction, for both (see header).
-#'
-#' @param fit Fitted model (read_cover_model()).
-#' @param dat Data in original units, one row per cell-year, with every
-#'   predictor of the model.
-#' @return Tibble, one row per row of dat: cell, year, pred_in, pred_oof, and
-#'   saved (TRUE where from the model's saved predictions).
-component_predictions <- function(fit, dat) {
-  saved <- mutate(fit$predictions, saved = TRUE)
-  stopifnot(!anyDuplicated(saved[c("cell", "year")]))
+# the components' data version (see header), and the field data (c04), for
+# tree cover by leaf type (05_combine_tree_all.R)
+stopifnot(n_distinct(comp$vc) == 1)
+pixel_vcs <- unique(c(comp$vc, "c04"))
 
-  out <- select(dat, cell, year) |>
-    left_join(saved, by = c("cell", "year")) |>
-    mutate(saved = replace_na(saved, FALSE))
-
-  new <- which(!out$saved)
-  if (length(new) > 0) {
-    p <- .predict_newdata(fit, dat[new, ])
-    out$pred_in[new] <- p
-    out$pred_oof[new] <- p
-  }
-
-  stopifnot(!anyNA(out$pred_in), !anyNA(out$pred_oof))
-  out
-}
-
-# the components' data version (see header)
-pred_vc <- unique(comp$vc)
-stopifnot(length(pred_vc) == 1)
-
-# rows with every predictor of every component
-dat <- read_cover_training(pred_vc)
 source_vars <- map(fits, \(f) f$config$spec$pred_vars) |>
   unlist() |>
   str_remove("^log1p_") |>
   unique()
+
+walk(pixel_vcs, \(pred_vc) {
+
+  # rows with every predictor of every component
+  dat <- read_cover_training(pred_vc)
 dat <- dat[complete.cases(dat[source_vars]), ]
 stopifnot(!anyDuplicated(dat[c("cell", "year")]))
 
+  # component_predictions(): Functions/models/classification_helpers.R
 preds <- map(fits, \(f) component_predictions(f, dat))
 
-# combined tree cover from the in-sample and from the out-of-fold predictions
+  # combined tree cover from the in-sample and from the out-of-fold
+  # predictions
 comb <- map(c(pred_in = "pred_in", pred_oof = "pred_oof"), \(col) {
   combine_tree(forest_score = preds$forest[[col]],
                zero_score = preds$zero_tree[[col]],
@@ -250,8 +230,8 @@ comb <- map(c(pred_in = "pred_in", pred_oof = "pred_oof"), \(col) {
                tree_nonforest = preds$tree_nonforest[[col]])
 })
 
-# rows where a full-model (not out-of-fold) prediction gets weight in pred_oof
-# (the cover models get none where step 2 set cover to 0)
+  # rows where a full-model (not out-of-fold) prediction gets weight in
+  # pred_oof (the cover models get none where step 2 set cover to 0)
 w <- comb$pred_oof$weight
 used <- !comb$pred_oof$zeroed
 fallback <- !preds$forest$saved | !preds$zero_tree$saved |
@@ -263,9 +243,10 @@ pixel_pred <- tibble(cell = dat$cell, year = dat$year,
                      pred_oof = comb$pred_oof$cover,
                      fallback = fallback)
 
-message(nrow(pixel_pred), " pixel-years of ", pred_vc, "; fallback (pred_oof ",
-        "partly from a full-model prediction) at ",
+  message(nrow(pixel_pred), " pixel-years of ", pred_vc, "; fallback ",
+          "(pred_oof partly from a full-model prediction) at ",
         round(100 * mean(fallback), 1), "%")
 
 write_csv(pixel_pred, combined_path("tree", opt$vmc, "pixel_predictions",
                                     vc = pred_vc))
+})

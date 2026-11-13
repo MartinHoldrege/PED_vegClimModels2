@@ -12,11 +12,12 @@
 # --run_index picks one row of the runs table below, and --run_fit,
 # --run_predict and --run_evaluate (params.R) override the settings below.
 #
-# Combined predictions (cover_type 'combined': combined tree cover, herbaceous
-# cover by functional type) are not fit or predicted: they combine the
-# prediction rasters of their component models (04_combine_tree.R,
-# 04_combine_herb.R), so those must already exist. Combined runs are done
-# after all other runs.
+# Combined predictions (cover_type 'combined': combined tree cover, tree cover
+# by leaf type, herbaceous cover by functional type) are not fit or
+# predicted: they combine the predictions of their component models
+# (04_combine_tree.R, 05_combine_tree_all.R, 04_combine_herb.R), so those
+# must already exist; tree_all uses the output of combined tree. Combined
+# runs are done after all other runs.
 #
 # September, 2026
 
@@ -80,6 +81,7 @@ cover_runs <- list(
   # versions of cover_specs$combined
   combined       = list(
     tree       = mods_comb,
+    tree_all   = mods_comb, # uses the combined tree output (run after it),
     herbaceous = mods_comb,
     all        = mods_comb
   )
@@ -100,6 +102,7 @@ predict_script <- "Analysis/Cover/Fit/03_predict_raster.R"
 # written to disk, so has no script)
 combine_scripts <- c(
   tree       = "Analysis/Cover/Fit/04_combine_tree.R",
+  tree_all   = "Analysis/Cover/Fit/05_combine_tree_all.R",
   herbaceous = "Analysis/Cover/Fit/04_combine_herb.R"
 )
 

@@ -364,8 +364,9 @@ source('Functions/models/predictors.R')
 #' Spec for tree cover by leaf type (tree_leaf_cover())
 #'
 #' Which combined tree cover (04_combine_tree.R) and which needleleaf share
-#' model to combine. Nothing is written to disk; `tree_leaf_cover()` computes
-#' the layers when called. No data version for the result: the two models can
+#' model to combine. The rasters aren't written; `tree_leaf_cover()` computes
+#' them when called. The predictions at the pixel-years are written by
+#' 05_combine_tree_all.R. No data version for the result: the two models can
 #' be fit to different data.
 #'
 #' @param .all_vmc Version used for both models unless given explicitly.
