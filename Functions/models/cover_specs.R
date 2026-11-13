@@ -709,6 +709,7 @@ cover_specs <- list(
       m01.51 = .defaults_cover(response = 'cov_shrub',
                                pred_vars = .pred_vars$f5,
                                engine = "grplasso"),
+
       m01.8 = .defaults_cover(response = 'cov_shrub',
                               pred_vars = .pred_vars$f8),
       m04.1 = .defaults_cover(response = 'cov_shrub',
@@ -727,7 +728,17 @@ cover_specs <- list(
                               pred_vars = .pred_vars$f5_anom),
       m05.51 = .defaults_cover(response = 'cov_shrub',
                               pred_vars = .pred_vars$f5_anom,
-                              engine = "grplasso")
+                              engine = "grplasso"),
+      m08.15 = .defaults_cover(response = 'cov_shrub',
+                               engine = 'gam',
+                               pred_vars = .pred_vars$f5),
+      m08.55 = .defaults_cover(response = 'cov_shrub',
+                              engine = 'gam',
+                              pred_vars = .pred_vars$f5_anom),
+      m08.56 = .defaults_cover(response = 'cov_shrub',
+                               engine = 'gam',
+                               pred_vars = .pred_vars$f5_anom,
+                               gam = list(interactions = FALSE)),
       ),
     herbaceous = list(
       # as m01.5, plus the anomalies of the climate variables

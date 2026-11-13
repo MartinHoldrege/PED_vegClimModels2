@@ -69,7 +69,7 @@ cover_runs <- list(
   cover          = list(
     tree_forest    = mods1,
     tree_nonforest = mods1,
-    shrub          = mods1,
+    shrub          = c(mods1, 'm08.15', 'm08.55', 'm08.56'),
     herbaceous     = mods1,
     bare_ground    = mods1
   ),
