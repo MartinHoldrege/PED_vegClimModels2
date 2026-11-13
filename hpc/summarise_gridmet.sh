@@ -7,7 +7,7 @@
 #SBATCH --job-name=gridmet_summarise
 #SBATCH --account=swbsc
 #SBATCH --partition=cpu
-#SBATCH --time=24:00:00
+#SBATCH --time=6:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
