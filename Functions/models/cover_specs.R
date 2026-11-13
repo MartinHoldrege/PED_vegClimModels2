@@ -901,7 +901,11 @@ cover_specs <- list(
                                       tree_nonforest = c(vc = "c07",
                                                          vmc = "m05.5")),
       m24.2 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m04.2"),
-      m24.3 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m04.3")
+      m24.3 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m04.2",
+                              tree_forest = c(vc = "c07",
+                                              vmc = "m04.3"),
+                              tree_nonforest = c(vc = "c07",
+                                                 vmc = "m04.3"))
     ),
     # tree cover by leaf type: combined tree cover x needleleaf share
     # (tree_leaf_cover(); not written to disk)
@@ -921,11 +925,11 @@ cover_specs <- list(
       m21.5 = .defaults_combined_tree_prop(tree_vmc = 'm21.5',
                                            needle = c(vc = 'c04', vmc = 'm01.5')),
       m25.5 = .defaults_combined_tree_prop(tree_vmc = 'm25.5',
-                                           needle = c(vc = 'c04', vmc = 'm05.5')),
+                                           needle = c(vc = 'c04', vmc = 'm01.5')),
       m24.2 = .defaults_combined_tree_prop(tree_vmc = 'm24.2',
                                            needle = c(vc = 'c04', vmc = 'm04.2')),
       m24.3 = .defaults_combined_tree_prop(tree_vmc = 'm24.3',
-                                           needle = c(vc = 'c04', vmc = 'm04.3'))
+                                           needle = c(vc = 'c04', vmc = 'm04.2'))
     ),
     # herbaceous cover by functional type (04_combine_herb.R)
     herbaceous = list(

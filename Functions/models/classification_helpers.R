@@ -406,6 +406,8 @@ pdp_classification <- function(fit, dat, n_grid = 50, n_background = 2000,
                           squares = spec$squares,
                           interactions = spec$interactions,
                           interact_log1p = isTRUE(spec$interact_log1p))
+  # same columns, in the same order, as the fitted design matrix
+  stopifnot(identical(colnames(x), fit$config$x_colnames))
   predict_score(fit, x)
 }
 

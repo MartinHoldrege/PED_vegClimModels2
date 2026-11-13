@@ -695,6 +695,31 @@ read_scale_params <- function(root = paths$large) {
 }
 
 
+#' Path to a fitted cover model file
+#'
+#' The file name is defined only here, so the fitting, prediction and
+#' diagnostics scripts can't drift apart.
+#'
+#' @param cover_type Model family: "classification", "cover" or "proportion".
+#' @param cover_model Model within the family, e.g. "forest".
+#' @param vc Cover data version, e.g. "c01".
+#' @param vmc Cover model version, e.g. "m01".
+#' @param root Root path for large files.
+#' @return File path (character).
+#' @examples
+#' cover_type <- "classification"
+#' cover_model <- "forest"
+#' vc <- "c01"
+#' vmc <- "m01"
+#' root <- paths$large
+#' cover_model_path(cover_type = cover_type, cover_model = cover_model,
+#'                  vc = vc, vmc = vmc, root = root)
+cover_model_path <- function(cover_type, cover_model, vc, vmc,
+                             root = paths$large) {
+  file.path(root, "Data_processed", "CoverData", "Fit",
+            paste0(cover_type, "_", cover_model, "_", vc, "-", vmc, ".rds"))
+}
+
 #' Read a fitted cover model
 #'
 #' @inheritParams cover_model_path
@@ -713,6 +738,36 @@ read_cover_model <- function(cover_type, cover_model, vc, vmc,
   p <- cover_model_path(cover_type, cover_model, vc, vmc, root = root)
   if (!file.exists(p)) stop("fitted model not found: ", p)
   readRDS(p)
+}
+
+#' In-sample and out-of-fold predictions at training pixel-years
+#'
+#' For a fitted model, the predictions saved with it (at the rows it was fit
+#' to). For a combined model (cover_type "combined"; so far only tree), the
+#' table written by its combining script (04_combine_tree.R), at every row of
+#' data version `vc`, with a `fallback` column (see that script).
+#'
+#' @inheritParams cover_model_path
+#' @return Tibble with cell, year, pred_in and pred_oof (% cover, or the
+#'   score for classification models).
+#' @examples
+#' cover_type <- "combined"
+#' cover_model <- "tree"
+#' vc <- "c07"
+#' vmc <- "m21.5"
+#' root <- paths$large
+#' read_cover_predictions(cover_type = cover_type, cover_model = cover_model,
+#'                        vc = vc, vmc = vmc, root = root)
+read_cover_predictions <- function(cover_type, cover_model, vc, vmc,
+                                   root = paths$large) {
+  if (cover_type != "combined") {
+    return(read_cover_model(cover_type, cover_model, vc, vmc,
+                            root = root)$predictions)
+  }
+  p <- combined_path(cover_model, vmc, "pixel_predictions", root = root,
+                     vc = vc)
+  if (!file.exists(p)) stop("combined predictions not found: ", p)
+  readr::read_csv(p, show_col_types = FALSE)
 }
 
 #' Prediction raster of one component of a combined model
@@ -834,34 +889,6 @@ read_combined_all <- function(vmc, scenario, specs = cover_specs) {
 
 
 
-#' Paths for a combined tree cover prediction (04_combine_tree.R)
-#'
-#' No data version in the name: the component models can come from different
-#' versions (see `cover_specs$combined$tree`).
-#'
-#' @param vmc Combination version, e.g. "m01".
-#' @param what "prediction" (raster, one per scenario) or "blend" (csv of the
-#'   component models and blending parameters).
-#' @param scenario Climate scenario, for `what = "prediction"`.
-#' @param root Root path for large files.
-#' @return File path (character).
-#' @examples
-#' vmc <- "m01"
-#' what <- "prediction"
-#' scenario <- "current"
-#' root <- paths$large
-#' combined_tree_path(vmc = vmc, what = what, scenario = scenario, root = root)
-combined_tree_path <- function(vmc, what = c("prediction", "blend"),
-                               scenario = NULL, root = paths$large) {
-  what <- match.arg(what)
-  dir <- file.path(root, "Data_processed", "CoverData")
-  if (what == "blend") {
-    return(file.path(dir, "Fit", paste0("combined_tree_", vmc, "_blend.csv")))
-  }
-  stopifnot(!is.null(scenario))
-  file.path(dir, "Predictions",
-            paste0("combined_tree_", vmc, "_", scenario, ".tif"))
-}
 
 #' Path to a fitted cover model file
 #'
@@ -912,21 +939,21 @@ cover_pred_path <- function(cover_type, cover_model, vc, vmc, scenario,
                    scenario, ".tif"))
 }
 
-# Replaces combined_tree_path() in read_write.R. File names for tree are
-# unchanged, so existing callers and outputs still work.
-
 #' Paths for combined predictions (04_combine_*.R)
 #'
-#' No data version in the name: the component models can come from different
-#' versions (see `cover_specs$combined`).
+#' No data version in the name, except for the pixel-year predictions: the
+#' component models can come from different versions (see
+#' `cover_specs$combined`).
 #'
 #' @param cover_model Combined model, e.g. "tree" or "herbaceous".
 #' @param vmc Combination version, e.g. "m01.5".
 #' @param what "prediction" (raster, one per scenario), "blend" (tree: csv of
-#'   the component models and blending parameters) or "components" (csv of
-#'   the component models).
+#'   the component models and blending parameters), "components" (csv of
+#'   the component models) or "pixel_predictions" (csv of the combined
+#'   predictions at the pixel-years of data version `vc`).
 #' @param scenario Climate scenario, for `what = "prediction"`.
 #' @param root Root path for large files.
+#' @param vc Data version predicted on, for `what = "pixel_predictions"`.
 #' @return File path (character).
 #' @examples
 #' cover_model <- "herbaceous"
@@ -937,11 +964,16 @@ cover_pred_path <- function(cover_type, cover_model, vc, vmc, scenario,
 #' combined_path(cover_model = cover_model, vmc = vmc, what = what,
 #'               scenario = scenario, root = root)
 combined_path <- function(cover_model, vmc,
-                          what = c("prediction", "blend", "components"),
-                          scenario = NULL, root = paths$large) {
+                          what = c("prediction", "blend", "components",
+                                   "pixel_predictions"),
+                          scenario = NULL, root = paths$large, vc = NULL) {
   what <- match.arg(what)
   dir <- file.path(root, "Data_processed", "CoverData")
   stem <- paste0("combined_", cover_model, "_", vmc)
+  if (what == "pixel_predictions") {
+    stopifnot(!is.null(vc))
+    return(file.path(dir, "Fit", paste0(stem, "_", vc, "_", what, ".csv")))
+  }
   if (what != "prediction") {
     return(file.path(dir, "Fit", paste0(stem, "_", what, ".csv")))
   }
@@ -980,50 +1012,7 @@ download_if_newer <- function(drive_row, local_dir) {
 }
 
 
-#' Path to a fitted cover model file
-#'
-#' The file name is defined only here, so the fitting, prediction and
-#' diagnostics scripts can't drift apart.
-#'
-#' @param cover_type Model family: "classification", "cover" or "proportion".
-#' @param cover_model Model within the family, e.g. "forest".
-#' @param vc Cover data version, e.g. "c01".
-#' @param vmc Cover model version, e.g. "m01".
-#' @param root Root path for large files.
-#' @return File path (character).
-#' @examples
-#' cover_type <- "classification"
-#' cover_model <- "forest"
-#' vc <- "c01"
-#' vmc <- "m01"
-#' root <- paths$large
-#' cover_model_path(cover_type = cover_type, cover_model = cover_model,
-#'                  vc = vc, vmc = vmc, root = root)
-cover_model_path <- function(cover_type, cover_model, vc, vmc,
-                             root = paths$large) {
-  file.path(root, "Data_processed", "CoverData", "Fit",
-            paste0(cover_type, "_", cover_model, "_", vc, "-", vmc, ".rds"))
-}
 
-#' Read a fitted cover model
-#'
-#' @inheritParams cover_model_path
-#' @return The list saved by the fitting script (e.g. fit, lambda, threshold,
-#'   clusters, config, data).
-#' @examples
-#' cover_type <- "classification"
-#' cover_model <- "forest"
-#' vc <- "c01"
-#' vmc <- "m01"
-#' root <- paths$large
-#' mod <- read_cover_model(cover_type = cover_type, cover_model = cover_model,
-#'                         vc = vc, vmc = vmc, root = root)
-read_cover_model <- function(cover_type, cover_model, vc, vmc,
-                             root = paths$large) {
-  p <- cover_model_path(cover_type, cover_model, vc, vmc, root = root)
-  if (!file.exists(p)) stop("fitted model not found: ", p)
-  readRDS(p)
-}
 
 # observed biomass datasets -----------------------------------------------
 

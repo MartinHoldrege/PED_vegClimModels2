@@ -20,10 +20,12 @@
 #                    cell-years)
 #   anom_sd_ratio    sd(predicted anomalies) / sd(observed anomalies)
 #
-# Inputs: training data (read_cover_training()) and fitted models
-#   (read_cover_model()) for each model version in vmcs
+# Inputs: training data (read_cover_training()) and the predictions at the
+#   pixel-years (read_cover_predictions()) of each model version in vmcs: saved
+#   with the fitted model, or, for combined tree cover, written by
+#   04_combine_tree.R
 # Outputs (out_dir), <label> = <cover model>_<vc>_<vmcs>:
-#   trend_<label>.pdf, trend_maps_<label>.pdf, trend_summary_<label>.csv
+#   trend_<label>.pdf, trend_maps_<label>.png, trend_summary_<label>.csv
 #
 # November 2026
 
@@ -36,18 +38,36 @@ theme_set(theme_custom1())
 
 # params ------------------------------------------------------------------
 
-vc <-  "c07" # "c08" #                          # data version the models were fit to
-cover_models <- "bare_ground" # c("shrub", "herbaceous") # 
-# model versions to compare
-# e.g. 1.5 doesn't use climate anomalies as predictors, 5.5 does
-vmcs <-    c("m04.2", "m04.3") #  c("m01.5", "m05.5") #  
+prms <- list(
+  list(
+    vc = 'c07',
+    # "cover", or "combined" (combined tree cover, cover_models = "tree")
+    cover_type = 'combined',
+    cover_models = 'tree', # can be a vector, 
+    # model versions to compare (for each of cover_models)
+    vmc_l = list(c('m21.5', "m25.5"), c('m24.2', 'm24.3'))
+  )# ,
+  # list(
+  #   vc = 'c07',
+  #   cover_type = 'cover',
+  #   cover_models = 'bare_ground',
+  #   vmc_l = list(c("m01.5", "m05.5"), c("m04.2", "m04.3"))
+  # ),
+  # list(
+  #   vc = 'c08',
+  #   cover_type = 'cover',
+  #   cover_models = c("shrub", "herbaceous"),
+  #   vmc_l = list(c("m01.5", "m05.5"), c("m04.2", "m04.3"))
+  # )
+)
+
 years <- 2010:2024                        # cells need cover in every year
-pred_cols <- c("pred_in", "pred_oof")     # columns of fit$predictions
+pred_cols <- c("pred_in", "pred_oof")     # columns of the predictions
 n_example_cells <- 12
 out_dir <- "Figures/Cover/trend_check"
 
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-set.seed(42)
+
 
 # functions ---------------------------------------------------------------
 
@@ -117,141 +137,167 @@ plot_cell_map <- function(d, col, lim, title) {
 }
 
 # by cover model ----------------------------------------------------------
+vc <- NULL
 
-train <- read_cover_training(vc)
-stopifnot(c("cell", "year", "x", "y", "sources") %in% names(train))
-
-for (cover_model in cover_models) {
-
-  label <- paste(cover_model, vc, paste(vmcs, collapse = "-"), sep = "_")
-  fits <- map(vmcs, \(v) read_cover_model("cover", cover_model, vc, v)) |>
-    set_names(vmcs)
-  # same response, so the observed cover below applies to every model
-  stopifnot(n_distinct(map_chr(fits, \(f) f$config$spec$response)) == 1)
-
-  # * observed and predicted cover ----------------------------------------
-
-  # observed cover (%) at RAP cell-years
-  rap <- filter(train, sources == "rap", year %in% years)
-  rap$obs <- response_pct(rap, fits[[1]]$config$spec)
-
-  # one row per cell, year, model and prediction type
-  d <- imap(fits, \(f, v) {
-    select(f$predictions, cell, year, all_of(pred_cols)) |>
-      mutate(model = v)
-  }) |>
-    bind_rows() |>
-    pivot_longer(all_of(pred_cols), names_to = "pred_type",
-                 values_to = "pred") |>
-    inner_join(select(rap, cell, year, x, y, obs), by = c("cell", "year")) |>
-    filter(!is.na(obs), !is.na(pred))
-  stopifnot(!anyDuplicated(d[c("cell", "year", "model", "pred_type")]))
-
-  # keep cells with every year for every model and prediction type
-  d <- filter(d, n() == length(years) * length(vmcs) * length(pred_cols),
-              .by = cell)
-  message(cover_model, ": ", n_distinct(d$cell), " of ",
-          n_distinct(rap$cell), " RAP cells have all years")
-  stopifnot(n_distinct(d$cell) > n_example_cells)
-
-  # * trends and anomalies ------------------------------------------------
-
-  d <- mutate(d,
-              obs_anom = detrend(year, obs),
-              pred_anom = detrend(year, pred),
-              .by = c(cell, model, pred_type))
-
-  by_cell <- summarise(d,
-                       obs_trend = slope(year, obs),
-                       pred_trend = slope(year, pred),
-                       anom_cor = cor_obs_pred(obs_anom, pred_anom),
-                       .by = c(cell, x, y, model, pred_type))
-
-  summary_tbl <- left_join(
-    summarise(by_cell,
-              n_cells = n(),
-              trend_cor = cor(obs_trend, pred_trend),
-              anom_cor_median = median(anom_cor, na.rm = TRUE),
-              n_cells_no_cor = sum(is.na(anom_cor)),  # constant observed
-              .by = c(model, pred_type)),
-    summarise(d,
-              anom_cor_pooled = cor(obs_anom, pred_anom),
-              anom_sd_ratio = sd(pred_anom) / sd(obs_anom),
-              .by = c(model, pred_type)),
-    by = c("model", "pred_type"))
-
-  print(summary_tbl)
-  write_csv(summary_tbl,
-            file.path(out_dir, paste0("trend_summary_", label, ".csv")))
-
-  # * figures -------------------------------------------------------------
-
-  pdf(file.path(out_dir, paste0("trend_", label, ".pdf")), width = 10,
-      height = 7)
-
-  ex_cells <- sample(unique(d$cell), n_example_cells)
-  g_ex <- filter(d, cell %in% ex_cells, pred_type == "pred_oof") |>
-    ggplot(aes(x = year)) +
-    geom_line(aes(y = pred, colour = model)) +
-    geom_line(aes(y = obs)) +
-    facet_wrap(~cell, scales = "free_y") +
-    labs(y = "Cover (%)",
-         title = paste(cover_model, "- example cells: observed (black) and",
-                       "out-of-fold predicted cover"))
-  print(g_ex)
-
-  print(plot_obs_pred(by_cell, "obs_trend", "pred_trend",
-                      paste(cover_model, "- temporal trend (% cover per year)")))
-
-  print(plot_obs_pred(d, "obs_anom", "pred_anom",
-                      paste(cover_model, "- temporal anomaly (% cover)")))
-
-  g_cor <- ggplot(by_cell, aes(anom_cor)) +
-    geom_histogram(bins = 50) +
-    geom_text(data = summary_tbl,
-              aes(x = -Inf, y = Inf,
-                  label = paste("median =", round(anom_cor_median, 2))),
-              hjust = -0.1, vjust = 1.5, inherit.aes = FALSE) +
-    facet_grid(pred_type ~ model) +
-    labs(x = "Per-cell correlation of observed and predicted anomalies",
-         y = "Cells", title = cover_model) +
-    geom_vline(xintercept = 0, color = 'black', linetype = 2) +
-    geom_vline(data = summary_tbl, aes(xintercept = anom_cor_median),
-               color = 'red', linetype = 2)
-  print(g_cor)
-
-  dev.off()
-
-  # * maps ----------------------------------------------------------------
+for(prm in prms) {
+  vc_old <-  vc
+  vc <- prm$vc
+  cover_type <- prm$cover_type
+  if(!isTRUE(vc_old == vc)) {
+    train <- read_cover_training(vc)
+  }
+  mod_vmc <- expand_grid(cover_model = prm$cover_models,
+                         vmcs = prm$vmc_l)
 
 
-  by_cell$diff <- by_cell$pred_trend - by_cell$obs_trend
-  lim <- max(abs(quantile(by_cell$obs_trend, c(0.01, 0.99))))
-  lim_diff <- max(abs(quantile(by_cell$diff, c(0.01, 0.99))))
+ stopifnot(c("cell", "year", "x", "y", "sources") %in% names(train))
+
+  for (row_i in 1:nrow(mod_vmc)) {
+    set.seed(42)
+    cover_model <- mod_vmc$cover_model[[row_i]]
+    vmcs <- mod_vmc$vmcs[[row_i]]
+    
+    label <- paste(cover_model, vc, paste(vmcs, collapse = "-"), sep = "_")
+    preds <- map(vmcs, \(v) {
+      read_cover_predictions(cover_type, cover_model, vc, v)
+    }) |>
+      set_names(vmcs)
   
-  obs_map <- distinct(by_cell, cell, x, y, obs_trend)
-  stopifnot(!anyDuplicated(obs_map$cell))
+    # * observed and predicted cover ----------------------------------------
   
-  # top row: observed trend, then each model's predicted trend (one colour
-  # scale); bottom row: each model's trend residual, below its predicted trend
-  by_series <- split(by_cell, paste(by_cell$model, by_cell$pred_type))
-  top <- c(list(plot_cell_map(obs_map, "obs_trend", lim, "Observed trend")),
-           unname(imap(by_series, \(d, s) {
-             plot_cell_map(d, "pred_trend", lim, paste("Predicted trend,", s))
-           })))
+    # observed cover (%) at RAP cell-years: the models' response (for combined
+    # tree, total tree cover)
+    obs_col <- paste0("cov_", cover_model)
+    stopifnot(obs_col %in% names(train))
+    
+    # check
+    if (cover_type != "combined") {
+      responses <- map_chr(vmcs, \(v) {
+        cover_specs[[cover_type]][[cover_model]][[v]]$response
+      })
+      stopifnot(responses == obs_col)
+    }
+    rap <- filter(train, sources == "rap", year %in% years)
+    rap$obs <- rap[[obs_col]]
   
-  bottom <- c(list(patchwork::plot_spacer()),
-              unname(imap(by_series, \(d, s) {
-                plot_cell_map(d, "diff", lim_diff,
-                              paste("Trend residual (predicted - observed),",
-                                    s))
-              })))
+    # one row per cell, year, model and prediction type
+    d <- imap(preds, \(p, v) {
+      select(p, cell, year, all_of(pred_cols)) |>
+        mutate(model = v)
+    }) |>
+      bind_rows() |>
+      pivot_longer(all_of(pred_cols), names_to = "pred_type",
+                   values_to = "pred") |>
+      inner_join(select(rap, cell, year, x, y, obs), by = c("cell", "year")) |>
+      filter(!is.na(obs), !is.na(pred))
+    stopifnot(!anyDuplicated(d[c("cell", "year", "model", "pred_type")]))
   
-  g_maps <- patchwork::wrap_plots(c(top, bottom), nrow = 2) +
-    patchwork::plot_annotation(
-      title = paste0(cover_model, " - per-cell trends, ", min(years), "-",
-                     max(years)))
+    # keep cells with every year for every model and prediction type
+    d <- filter(d, n() == length(years) * length(vmcs) * length(pred_cols),
+                .by = cell)
+    message(cover_model, ": ", n_distinct(d$cell), " of ",
+            n_distinct(rap$cell), " RAP cells have all years")
+    stopifnot(n_distinct(d$cell) > n_example_cells)
   
-  ggsave(file.path(out_dir, paste0("trend_maps_", label, ".png")), g_maps,
-         width = 6 * length(top), height = 9, dpi = 200)
+    # * trends and anomalies ------------------------------------------------
+  
+    d <- mutate(d,
+                obs_anom = detrend(year, obs),
+                pred_anom = detrend(year, pred),
+                .by = c(cell, model, pred_type))
+  
+    by_cell <- summarise(d,
+                         obs_trend = slope(year, obs),
+                         pred_trend = slope(year, pred),
+                         anom_cor = cor_obs_pred(obs_anom, pred_anom),
+                         .by = c(cell, x, y, model, pred_type))
+  
+    summary_tbl <- left_join(
+      summarise(by_cell,
+                n_cells = n(),
+                trend_cor = cor(obs_trend, pred_trend),
+                anom_cor_median = median(anom_cor, na.rm = TRUE),
+                n_cells_no_cor = sum(is.na(anom_cor)),  # constant observed
+                .by = c(model, pred_type)),
+      summarise(d,
+                anom_cor_pooled = cor(obs_anom, pred_anom),
+                anom_sd_ratio = sd(pred_anom) / sd(obs_anom),
+                .by = c(model, pred_type)),
+      by = c("model", "pred_type"))
+  
+    print(summary_tbl)
+    write_csv(summary_tbl,
+              file.path(out_dir, paste0("trend_summary_", label, ".csv")))
+  
+    # * figures -------------------------------------------------------------
+  
+    pdf(file.path(out_dir, paste0("trend_", label, ".pdf")), width = 10,
+        height = 7)
+  
+    ex_cells <- sample(unique(d$cell), n_example_cells)
+    g_ex <- filter(d, cell %in% ex_cells, pred_type == "pred_oof") |>
+      ggplot(aes(x = year)) +
+      geom_line(aes(y = pred, colour = model)) +
+      geom_line(aes(y = obs)) +
+      facet_wrap(~cell, scales = "free_y") +
+      labs(y = "Cover (%)",
+           title = paste(cover_model, "- example cells: observed (black) and",
+                         "out-of-fold predicted cover"))
+    print(g_ex)
+  
+    print(plot_obs_pred(by_cell, "obs_trend", "pred_trend",
+                        paste(cover_model, "- temporal trend (% cover per year)")))
+  
+    print(plot_obs_pred(d, "obs_anom", "pred_anom",
+                        paste(cover_model, "- temporal anomaly (% cover)")))
+  
+    g_cor <- ggplot(by_cell, aes(anom_cor)) +
+      geom_histogram(bins = 50) +
+      geom_text(data = summary_tbl,
+                aes(x = -Inf, y = Inf,
+                    label = paste("median =", round(anom_cor_median, 2))),
+                hjust = -0.1, vjust = 1.5, inherit.aes = FALSE) +
+      facet_grid(pred_type ~ model) +
+      labs(x = "Per-cell correlation of observed and predicted anomalies",
+           y = "Cells", title = cover_model) +
+      geom_vline(xintercept = 0, color = 'black', linetype = 2) +
+      geom_vline(data = summary_tbl, aes(xintercept = anom_cor_median),
+                 color = 'red', linetype = 2)
+    print(g_cor)
+  
+    dev.off()
+  
+    # * maps ----------------------------------------------------------------
+  
+  
+    by_cell$diff <- by_cell$pred_trend - by_cell$obs_trend
+    lim <- max(abs(quantile(by_cell$obs_trend, c(0.01, 0.99))))
+    lim_diff <- max(abs(quantile(by_cell$diff, c(0.01, 0.99))))
+    
+    obs_map <- distinct(by_cell, cell, x, y, obs_trend)
+    stopifnot(!anyDuplicated(obs_map$cell))
+    
+    # top row: observed trend, then each model's predicted trend (one colour
+    # scale); bottom row: each model's trend residual, below its predicted trend
+    by_series <- split(by_cell, paste(by_cell$model, by_cell$pred_type))
+    top <- c(list(plot_cell_map(obs_map, "obs_trend", lim, "Observed trend")),
+             unname(imap(by_series, \(d, s) {
+               plot_cell_map(d, "pred_trend", lim, paste("Predicted trend,", s))
+             })))
+    
+    bottom <- c(list(patchwork::plot_spacer()),
+                unname(imap(by_series, \(d, s) {
+                  plot_cell_map(d, "diff", lim_diff,
+                                paste("Trend residual (predicted - observed),",
+                                      s))
+                })))
+    
+    g_maps <- patchwork::wrap_plots(c(top, bottom), nrow = 2) +
+      patchwork::plot_annotation(
+        title = paste0(cover_model, " - per-cell trends, ", min(years), "-",
+                       max(years)))
+    
+    ggsave(file.path(out_dir, paste0("trend_maps_", label, ".png")), g_maps,
+           width = 6 * length(top), height = 9, dpi = 200)
+  }
 }

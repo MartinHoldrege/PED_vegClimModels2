@@ -1,7 +1,8 @@
 # 04_combine_tree.R
 #
 # Combines the tree cover predictions of four models into one tree cover
-# prediction, for current and future climate:
+# prediction, for current and future climate, and at the pixel-years of the
+# component models' data version:
 #   forest classification (classification/forest): where to use which model
 #   tree cover in forest (cover/tree_forest)
 #   tree cover in non-forest (cover/tree_nonforest)
@@ -9,7 +10,8 @@
 # The combination (which version of each model, and the blending width) is
 # cover_specs$combined$tree[[--vmc]].
 #
-# Rule, per cell:
+# Rule, per cell (combine_tree(), used for both the rasters and the
+# pixel-years):
 #   1. tree = w * forest prediction + (1 - w) * non-forest prediction, where
 #      the weight w comes from the forest model's continuous score (probability
 #      of forest, or predicted cover for continuous forest models): 0 below
@@ -20,16 +22,35 @@
 #   score_low and score_high are set from the current-climate predictions: the
 #   scores below and above the threshold that take in spec$blend_prop of the
 #   CONUS cells on each side of it (e.g. 5% of cells on each side). They are
-#   saved and reused for the future scenarios.
+#   saved and reused for the future scenarios and the pixel-years.
 #   2. tree = 0 where the cell is classified non-forest and zero tree (no
 #      "tree drizzle" in treeless areas). Applied after blending, as in
 #      05_FinalSyntheticModelPreds.Rmd, so zero-tree cells just below the
 #      forest threshold are 0 while their neighbours just above it are blended
-#      values.
+#      values. A cell is in a class where its score is above the model's
+#      threshold, as in the class layers from 03_predict_raster.R.
 #
-# Inputs (Data_processed/CoverData/Predictions/, from 03_predict_raster.R):
-#   <cover_type>_<cover_model>_<vc>-<vmc>_<scenario>.tif for the four models
-#   fitted forest model (threshold) - 02_fit_classification.R
+# Pixel-years: every row of the components' data version (all four must share
+# one, e.g. c07) that has every predictor, for comparing with observed tree
+# cover (read_cover_predictions()). Each component's prediction at a row is
+# the one saved with the fitted model (pred_in: in-sample, out-of-bag for
+# ranger; pred_oof: out-of-fold) where the row was in that model's training
+# data. Elsewhere (e.g. tree_forest, fit only where tree cover is > 10%, at the
+# rows <= 10%) it is the full model's prediction, for both pred_in and
+# pred_oof, because the fold models aren't saved; so there pred_oof isn't
+# out-of-fold. fallback marks the rows where such a prediction gets weight in
+# the combined pred_oof. Each model makes its own CV folds, so the
+# out-of-fold predictions of different components at a row come from
+# different folds, but each comes from a fit that didn't use that row. The
+# pixel-years use their observed climate anomalies; the rasters are normals
+# (anomalies 0).
+#
+# Inputs:
+#   Data_processed/CoverData/Predictions/ (from 03_predict_raster.R):
+#     <cover_type>_<cover_model>_<vc>-<vmc>_<scenario>.tif for the four models
+#   fitted models (thresholds, saved predictions) - 02_fit_classification.R,
+#     02_fit_cover.R
+#   cover_clim_soils_<vc>.csv - 08_combine_cover_and_covariates.R
 #
 # Outputs:
 #   Data_processed/CoverData/Predictions/combined_tree_<vmc>_<scenario>.tif
@@ -37,7 +58,9 @@
 #     model)
 #   Data_processed/CoverData/Fit/combined_tree_<vmc>_blend.csv
 #     the component models and the blending parameters
-#   (paths from combined_tree_path())
+#   Data_processed/CoverData/Fit/combined_tree_<vmc>_<vc>_pixel_predictions.csv
+#     cell, year, pred_in, pred_oof (combined tree cover, %), fallback
+#   (paths from combined_path())
 #
 # October, 2026
 
@@ -50,11 +73,11 @@ source("Functions/models/cover_specs.R")
 
 # spec --------------------------------------------------------------------
 
-if(FALSE) {
+if(TRUE) {
   # parameters for testing/development
-  opt <- list(cover_type == 'combined', 
-              cover_model == 'tree',
-              vmc = 'm01.0')
+  opt <- list(cover_type = 'combined',
+              cover_model = 'tree',
+              vmc = 'm24.3')
 }
 
 stopifnot(opt$cover_type == "combined", opt$cover_model == "tree")
@@ -75,10 +98,17 @@ read_component <- function(component, scenario) {
                               scenario))
 }
 
-f <- comp[comp$component == "forest", ]
-forest_fit <- read_cover_model(f$cover_type, f$cover_model, f$vc, f$vmc)
-threshold <- forest_fit$threshold
-score_lyr <- score_name(forest_fit)  # "prob", or "cover" for continuous models
+# fitted component models (thresholds, and the predictions at pixel-years)
+fits <- map(set_names(comp$component), \(k) {
+  m <- comp[comp$component == k, ]
+  read_cover_model(m$cover_type, m$cover_model, m$vc, m$vmc)
+})
+threshold <- fits$forest$threshold
+zero_threshold <- fits$zero_tree$threshold
+stopifnot(!is.null(threshold), !is.null(zero_threshold))
+# "prob", or "cover" for continuous models
+score_lyr <- score_name(fits$forest)
+zero_score_lyr <- score_name(fits$zero_tree)
 
 # blending parameters, from current climate ------------------------------------
 
@@ -114,6 +144,34 @@ blend_weight <- function(score) {
                 y = c(0, 0.5, 1), xout = score, rule = 2)$y
 }
 
+#' Combined tree cover from the four component predictions
+#'
+#' The rule in the header, for vectors (raster values or pixel-years). Uses
+#' threshold, zero_threshold and blend_weight() from above.
+#'
+#' @param forest_score,zero_score Scores of the forest and zero-tree models
+#'   (probability, or % cover for continuous models).
+#' @param tree_forest,tree_nonforest Tree cover (%) predicted by the forest
+#'   and non-forest cover models.
+#' @return List: cover (combined tree cover, %), weight (w, weight on the
+#'   forest model) and zeroed (TRUE where step 2 set cover to 0).
+combine_tree <- function(forest_score, zero_score, tree_forest,
+                         tree_nonforest) {
+  stopifnot(length(forest_score) == length(zero_score),
+            length(forest_score) == length(tree_forest),
+            length(forest_score) == length(tree_nonforest))
+
+  # 1. blend
+  w <- blend_weight(forest_score)
+  cover <- w * tree_forest + (1 - w) * tree_nonforest
+
+  # 2. no trees in non-forest, zero-tree cells
+  zeroed <- forest_score <= threshold & zero_score > zero_threshold
+  cover[which(zeroed)] <- 0
+
+  list(cover = cover, weight = w, zeroed = zeroed)
+}
+
 # combine and write, one scenario at a time --------------------------------
 
 walk(scenarios, \(scenario) {
@@ -124,16 +182,90 @@ walk(scenarios, \(scenario) {
   tree_nf  <- read_component("tree_nonforest", scenario)[["cover"]]
   stopifnot(terra::compareGeom(forest_r, zero_r, tree_f, tree_nf))
 
-  # 1. blend
-  w <- terra::app(forest_r[[score_lyr]], blend_weight)
-  tree <- w * tree_f + (1 - w) * tree_nf
+  res <- combine_tree(
+    forest_score = terra::values(forest_r[[score_lyr]], mat = FALSE),
+    zero_score = terra::values(zero_r[[zero_score_lyr]], mat = FALSE),
+    tree_forest = terra::values(tree_f, mat = FALSE),
+    tree_nonforest = terra::values(tree_nf, mat = FALSE))
 
-  # 2. no trees in non-forest, zero-tree cells
-  tree <- terra::ifel(forest_r$class == 0 & zero_r$class == 1, 0, tree)
-
-  out <- c(tree, w)
+  out <- terra::rast(tree_f, nlyrs = 2)
+  terra::values(out) <- cbind(res$cover, res$weight)
   names(out) <- c("cover", "weight")
   terra::writeRaster(out, combined_tree_path(opt$vmc, "prediction", scenario),
                      overwrite = TRUE, datatype = "FLT4S")
   message("Wrote ", scenario)
 })
+
+# predictions at the pixel-years --------------------------------------------
+
+#' In-sample and out-of-fold predictions of one component at the rows of dat
+#'
+#' Where the row was in the model's training data, the predictions saved with
+#' the model; elsewhere the full model's prediction, for both (see header).
+#'
+#' @param fit Fitted model (read_cover_model()).
+#' @param dat Data in original units, one row per cell-year, with every
+#'   predictor of the model.
+#' @return Tibble, one row per row of dat: cell, year, pred_in, pred_oof, and
+#'   saved (TRUE where from the model's saved predictions).
+component_predictions <- function(fit, dat) {
+  saved <- mutate(fit$predictions, saved = TRUE)
+  stopifnot(!anyDuplicated(saved[c("cell", "year")]))
+
+  out <- select(dat, cell, year) |>
+    left_join(saved, by = c("cell", "year")) |>
+    mutate(saved = replace_na(saved, FALSE))
+
+  new <- which(!out$saved)
+  if (length(new) > 0) {
+    p <- .predict_newdata(fit, dat[new, ])
+    out$pred_in[new] <- p
+    out$pred_oof[new] <- p
+  }
+
+  stopifnot(!anyNA(out$pred_in), !anyNA(out$pred_oof))
+  out
+}
+
+# the components' data version (see header)
+pred_vc <- unique(comp$vc)
+stopifnot(length(pred_vc) == 1)
+
+# rows with every predictor of every component
+dat <- read_cover_training(pred_vc)
+source_vars <- map(fits, \(f) f$config$spec$pred_vars) |>
+  unlist() |>
+  str_remove("^log1p_") |>
+  unique()
+dat <- dat[complete.cases(dat[source_vars]), ]
+stopifnot(!anyDuplicated(dat[c("cell", "year")]))
+
+preds <- map(fits, \(f) component_predictions(f, dat))
+
+# combined tree cover from the in-sample and from the out-of-fold predictions
+comb <- map(c(pred_in = "pred_in", pred_oof = "pred_oof"), \(col) {
+  combine_tree(forest_score = preds$forest[[col]],
+               zero_score = preds$zero_tree[[col]],
+               tree_forest = preds$tree_forest[[col]],
+               tree_nonforest = preds$tree_nonforest[[col]])
+})
+
+# rows where a full-model (not out-of-fold) prediction gets weight in pred_oof
+# (the cover models get none where step 2 set cover to 0)
+w <- comb$pred_oof$weight
+used <- !comb$pred_oof$zeroed
+fallback <- !preds$forest$saved | !preds$zero_tree$saved |
+  (!preds$tree_forest$saved & w > 0 & used) |
+  (!preds$tree_nonforest$saved & w < 1 & used)
+
+pixel_pred <- tibble(cell = dat$cell, year = dat$year,
+                     pred_in = comb$pred_in$cover,
+                     pred_oof = comb$pred_oof$cover,
+                     fallback = fallback)
+
+message(nrow(pixel_pred), " pixel-years of ", pred_vc, "; fallback (pred_oof ",
+        "partly from a full-model prediction) at ",
+        round(100 * mean(fallback), 1), "%")
+
+write_csv(pixel_pred, combined_path("tree", opt$vmc, "pixel_predictions",
+                                    vc = pred_vc))

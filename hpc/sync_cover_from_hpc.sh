@@ -22,7 +22,7 @@ local_root="/d/USGS/large_files/PED_vegClimModels2"  # paths$large
 
 # which parts to run
 sync_fits=true
-sync_predictions=false
+sync_predictions=true
 sync_reports=true
 
 # files to copy (rsync patterns), e.g. '*_c05-m01.51*' for one version
