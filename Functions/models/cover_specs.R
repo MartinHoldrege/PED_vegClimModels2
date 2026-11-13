@@ -894,6 +894,7 @@ cover_specs <- list(
       m14.1 = .defaults_combined_tree(.all_vc = "c05", .all_vmc = "m04.1"),
       # m2x.x: made of the m0x.x component models
       m21.5 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m01.5"),
+      m21.51 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m01.51"),
       # as m21.5, but the two tree cover models also use the climate
       # anomalies (m05.5); the classification models don't (m01.5)
       m25.5 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m01.5",
@@ -901,6 +902,11 @@ cover_specs <- list(
                                                       vmc = "m05.5"),
                                       tree_nonforest = c(vc = "c07",
                                                          vmc = "m05.5")),
+      m25.51 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m01.51",
+                                      tree_forest = c(vc = "c07",
+                                                      vmc = "m05.51"),
+                                      tree_nonforest = c(vc = "c07",
+                                                         vmc = "m05.51")),
       m24.2 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m04.2"),
       m24.3 = .defaults_combined_tree(.all_vc = "c07", .all_vmc = "m04.2",
                               tree_forest = c(vc = "c07",

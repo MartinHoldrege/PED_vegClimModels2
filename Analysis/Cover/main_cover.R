@@ -59,7 +59,8 @@ fit_scripts <- c(
 # m01.51: every component of combined all m01.51 (grplasso)
 
 mods1 <- c('m01.51', 'm05.51')
-mods_comb <- c('m21.5', 'm25.5', 'm24.2', 'm24.3')
+mods_comb <- c('m21.51', 'm25.51',
+               'm24.2', 'm24.3')
 cover_runs <- list(
   classification = list(
     forest    = mods1[1],
