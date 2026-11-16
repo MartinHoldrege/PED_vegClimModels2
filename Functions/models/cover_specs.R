@@ -738,7 +738,7 @@ cover_specs <- list(
       m08.56 = .defaults_cover(response = 'cov_shrub',
                                engine = 'gam',
                                pred_vars = .pred_vars$f5_anom,
-                               gam = list(interactions = FALSE)),
+                               gam = list(interactions = FALSE))
       ),
     herbaceous = list(
       # as m01.5, plus the anomalies of the climate variables

@@ -29,6 +29,10 @@
 # Combined rows: the combining scripts need the component predictions, which
 # the other tasks of the same array may not have written yet, so submit them
 # in a later array (or run them locally).
+# 
+# Example of how run one task after another: 
+# tree=$(sbatch --parsable --array=17-20 --cpus-per-task=1 --mem=32G --time=01:00:00 hpc/run_cover.sh --run_predict=TRUE)
+# sbatch --array=21-24 --cpus-per-task=1 --mem=32G --time=01:00:00 --dependency=afterok:$tree hpc/run_cover.sh --run_predict=TRUE
 
 #SBATCH --job-name=run_cover
 #SBATCH --account=swbsc
