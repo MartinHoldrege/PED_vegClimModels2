@@ -211,7 +211,7 @@ source('Functions/models/predictors.R')
             # for proportions
             family != "quasibinomial" ||
               engine %in% c("glmnet", "gam", "grplasso"),
-            # binomial: use grpreg, which fits the same model much faster
+            # binomial: grpreg is faster, but grplasso's CV folds run in parallel
             engine != "grplasso" ||
               family %in% c("quasibinomial", "gaussian", "binomial"),
             !family %in% c("binomial", "quasibinomial") ||
@@ -506,11 +506,11 @@ cover_specs <- list(
       # as m01.5, but a hierarchical group lasso: x and log1p_x enter alone,
       # x^2 needs x, and an interaction needs the same forms of its variables
       # as main effects, e.g. log1p_x:z needs log1p_x and z (hier_groups(),
-      # rule "strict"). Same for every m01.51 below. Binomial m01.51 models
-      # use grpreg (much faster); the cover and proportion ones grplasso
+      # rule "strict"). Same for every m01.51 below. All m01.51 models use
+      # grplasso (slower than grpreg for binomial, but CV folds run in parallel)
       m01.51 = .defaults_class_forest(pred_vars = .pred_vars$f5,
                                       interact_log1p = TRUE,
-                                      engine = "grpreg"),
+                                      engine = "grplasso"),
       m01.6 = .defaults_class_forest(
         # also based on VIP from m04.1
         pred_vars = .pred_vars$f6,
@@ -608,7 +608,7 @@ cover_specs <- list(
       m01.4 = .defaults_zero_tree(pred_vars = .pred_vars$f4),
       m01.5 = .defaults_zero_tree(pred_vars = .pred_vars$f5),
       m01.51 = .defaults_zero_tree(pred_vars = .pred_vars$f5,
-                                   engine = "grpreg"),
+                                   engine = "grplasso"),
       m01.6 = .defaults_zero_tree(pred_vars = .pred_vars$f6),
       m01.7 = .defaults_zero_tree(pred_vars = .pred_vars$f7),
       # random forest
