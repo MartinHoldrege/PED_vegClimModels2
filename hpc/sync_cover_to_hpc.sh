@@ -73,9 +73,14 @@ if $sync_eval_data; then
   files+=(Data_processed/CoverData/rap/RAP_v3_annualFracZeroTree_lt3_2010-2024_1000m.tif # read_zero_tree_raster()
           Data_processed/CoverData/rap/RAP_v3_annualZeroTree_lt3_2010-2024_1000m.tif
           # read_rap_cover_raster(): LCMAP and fire masks, RAP cover
-          Data_processed/CoverData/rap/RAP_v3_cover-tree_2000-2024_1000m.tif # add other pfts if needed
+          Data_processed/CoverData/rap/RAP_v3_cover-tree_2000-2024_1000m.tif
+          Data_processed/CoverData/rap/RAP_v3_cover-shrub_2000-2024_1000m.tif
+          Data_processed/CoverData/rap/RAP_v3_cover-herbaceous_2000-2024_1000m.tif
+          Data_processed/CoverData/rap/RAP_v3_cover-bare_ground_2000-2024_1000m.tif
           Data_processed/masks/LCMAP_fracKeep_gte90_1000m.tif
-          Data_processed/masks/MTBS_fracUnburned_gte90_20yr_2000-2024_1000m.tif)
+          Data_processed/masks/MTBS_fracUnburned_gte90_20yr_2000-2024_1000m.tif
+          # load_sagebrush_mask() uses its cached copy (the source isn't on the HPC)
+          Data_processed/cache/sagebrush_mask_daymet.tif)
 fi
 
 if [ ${#files[@]} -gt 0 ]; then
