@@ -503,8 +503,11 @@ load_ecoregion_lookup <- function(epa_lev = NULL, root = paths$large) {
 #' Load sagebrush biome mask raster
 #'
 #' Returns a SpatRaster with 1 inside the sagebrush biome, NA outside,
-#' on the daymet 1km grid. Caches the reprojected result; recomputes
-#' if the source file changes. Input file is from the holdrege et al 2024
+#' on the daymet 1km grid (trimmed to the biome, so its cell numbers differ
+#' from the snap grid's). Caches the reprojected result; recomputes
+#' if the source file changes. If the source file isn't there (e.g. on the
+#' HPC), uses the cached raster (an error if force = TRUE). Input file is
+#' from the holdrege et al 2024
 #' data release (associated w/ fire ecology pub)
 #'
 #' @param path Path to the source raster.
@@ -517,7 +520,14 @@ load_sagebrush_mask <- function(
     cache_dir = file.path(paths$large, "Data_processed/cache"),
     force = FALSE) {
   
+  cache_tif <- file.path(cache_dir, "sagebrush_mask_daymet.tif")
+  cache_meta <- file.path(cache_dir, "sagebrush_mask_daymet.rds")
+  
   if (!file.exists(path)) {
+    if (!force && file.exists(cache_tif)) {
+      message("Sagebrush mask source not found; using the cached ", cache_tif)
+      return(terra::rast(cache_tif))
+    }
     stop("Source file not found: ", path,
          "\n  See load_sagebrush_mask() for details.")
   }
@@ -526,9 +536,6 @@ load_sagebrush_mask <- function(
   
   file_info <- file.info(path)
   fingerprint <- paste(file_info$size, file_info$mtime)
-  
-  cache_tif <- file.path(cache_dir, "sagebrush_mask_daymet.tif")
-  cache_meta <- file.path(cache_dir, "sagebrush_mask_daymet.rds")
   
   if (!force && file.exists(cache_tif) && file.exists(cache_meta)) {
     cached <- readRDS(cache_meta)
@@ -548,6 +555,25 @@ load_sagebrush_mask <- function(
   saveRDS(list(fingerprint = fingerprint), cache_meta)
   
   r_mask
+}
+
+#' Whether rows of the training data are in the sagebrush region
+#'
+#' Looks up the sagebrush biome mask (load_sagebrush_mask()) at each row's
+#' coordinates. By coordinates rather than cell number, because the mask is
+#' trimmed, so its cell numbers differ from the snap grid's.
+#'
+#' @param dat Data frame with x and y (crs_daymet), e.g. from
+#'   read_cover_training().
+#' @return Logical vector, one value per row of dat (TRUE inside the region).
+#' @examples
+#' dat <- read_cover_training("c08")
+#' in_sagebrush(dat = dat)
+in_sagebrush <- function(dat) {
+  stopifnot(c("x", "y") %in% names(dat))
+  mask_r <- load_sagebrush_mask()
+  values <- terra::extract(mask_r, as.matrix(dat[c("x", "y")]))
+  !is.na(values$sagebrush_mask)
 }
 
 read_mask <- function() {

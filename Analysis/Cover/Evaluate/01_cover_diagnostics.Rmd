@@ -68,11 +68,18 @@ dat <- read_cover_training(vc) |>
 dat$cover_obs <- response_pct(dat, spec)
 stopifnot(nrow(dat) == nrow(fit$predictions), !anyNA(dat$cover_obs))
 
+# TRUE for pixel-years in the sagebrush region (sagebrush biome mask,
+# load_sagebrush_mask())
+dat$sagebrush <- in_sagebrush(dat)
+
 scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
 pred_dir <- file.path(paths$large, "Data_processed", "CoverData", "Predictions")
 
 # wall-to-wall comparison with 2021 RAP tree cover (tree cover models)
 wall <- spec$response == "cov_tree"
+
+# comparison with the field data, for models fit (mostly) to RAP
+field_check <- "rap" %in% dat$sources && !is_prop
 
 ```
 
@@ -171,26 +178,103 @@ predictions come from the environmental folds; for glmnet, grpreg, grplasso and 
 those are the same folds that chose the penalty, so they are mildly
 optimistic. The other set is in-sample for glmnet, grpreg, grplasso and gam, and
 out-of-bag for ranger. R^2 is 1 - SSE/SST (negative when the model does worse
-than the mean); bias is mean(predicted - observed).
+than the mean); bias is mean(predicted - observed). Region: all training
+pixel-years, or only those in the sagebrush region (sagebrush biome mask).
 
 ```{r performance}
+dat_sage <- filter(dat, sagebrush)
+stopifnot(nrow(dat_sage) > 0)
+
 bind_rows(cover_metrics(dat$cover_obs, dat$pred_in),
-          cover_metrics(dat$cover_obs, dat$pred_oof)) |>
-  mutate(predictions = c(in_label, "out_of_fold"), .before = 1) |>
+          cover_metrics(dat$cover_obs, dat$pred_oof),
+          cover_metrics(dat_sage$cover_obs, dat_sage$pred_in),
+          cover_metrics(dat_sage$cover_obs, dat_sage$pred_oof)) |>
+  mutate(region = c("all", "all", "sagebrush", "sagebrush"),
+         predictions = c(in_label, "out_of_fold", in_label, "out_of_fold"),
+         .before = 1) |>
   knitr::kable(digits = 3)
 ```
 
 ## Predicted vs observed
 
-Out-of-fold predictions. Grey line: 1:1.
+Out-of-fold predictions, at all training pixel-years and at those in the
+sagebrush region. Grey line: 1:1.
 
-```{r obs-pred, fig.width = 7, fig.height = 5}
-ggplot(dat, aes(x = cover_obs, y = pred_oof)) +
+```{r obs-pred, fig.width = 11, fig.height = 5}
+obs_pred <- bind_rows(
+  mutate(select(dat, cover_obs, pred_oof), region = "All"),
+  mutate(select(dat_sage, cover_obs, pred_oof), region = "Sagebrush region")
+)
+
+ggplot(obs_pred, aes(x = cover_obs, y = pred_oof)) +
   geom_bin2d(bins = 60) +
   geom_abline(colour = "grey40") +
+  facet_wrap(~region) +
   scale_fill_viridis_c(trans = "log10", name = "Pixel-years") +
   labs(x = paste("Observed", str_to_lower(cover_label)),
        y = paste("Out-of-fold predicted", str_to_lower(cover_label)))
+```
+
+## Predicted vs field data
+
+Models fit (mostly) to RAP only. Field cover from the c04 field data, against
+the model's predictions (model fit to all training data) and against RAP
+cover in the same year, at the same field pixel-years. If RAP differs from the
+field data the same way the model does, the model's error comes from RAP.
+Field pixel-years the model was fit to (e.g. c08's field rows in forest) are
+left out, so every prediction is at a pixel-year the model didn't see. The
+model's own rows filter is applied (e.g. field tree cover > 10% for a
+tree-cover-in-forest model). Only
+pixel-years with RAP cover (RAP's LCMAP and fire masks; 2000-2024) and every
+predictor are used. Grey line: 1:1; bias = mean(predicted or RAP - field).
+
+```{r field-data, eval = field_check}
+field_vc <- "c04"
+
+field <- read_cover_training(field_vc) |>
+  filter(!is.na(.data[[spec$response]]), year %in% 2000:2024) |>
+  # the same rows filter as the model (e.g. tree cover > 10% for tree_forest)
+  select_rows(spec$rows) |>
+  # leave out the pixel-years the model was fit to
+  anti_join(fit$predictions, by = c("cell", "year"))
+field <- field[complete.cases(field[source_vars]), ]
+
+field$cover_field <- response_pct(field, spec)
+field$pred <- .predict_newdata(fit, field)  # model fit to all training data
+
+# RAP cover in the same year, e.g. "shrub" for cov_shrub
+rap_r <- read_rap_cover_raster(str_remove(spec$response, "^cov_"), years = NULL)
+field$rap <- rap_at(rap_r, field)
+field <- filter(field, !is.na(rap))
+
+field$sagebrush <- in_sagebrush(field)
+field_sage <- filter(field, sagebrush)
+stopifnot(nrow(field_sage) > 0)
+```
+
+```{r field-plots, eval = field_check, fig.width = 11, fig.height = 10}
+# predicted (or RAP) against field cover; r, bias and n in the subtitle
+plot_vs_field <- function(d, col, y_name, title) {
+  bias <- mean(d[[col]] - d$cover_field)
+  ggplot(d, aes(x = cover_field, y = .data[[col]])) +
+    geom_bin2d(bins = 50) +
+    geom_abline(colour = "grey40") +
+    scale_fill_viridis_c(trans = "log10", name = "Pixel-years") +
+    labs(x = paste("Field", str_to_lower(cover_label)),
+         y = paste(y_name, str_to_lower(cover_label)),
+         title = title,
+         subtitle = paste0("r = ", round(cor(d$cover_field, d[[col]]), 2),
+                           ", bias = ", round(bias, 2),
+                           ", n = ", nrow(d), " pixel-years"))
+}
+
+wrap_plots(
+  plot_vs_field(field, "pred", "Predicted", "All field pixel-years"),
+  plot_vs_field(field, "rap", "RAP", "All field pixel-years"),
+  plot_vs_field(field_sage, "pred", "Predicted", "Sagebrush region"),
+  plot_vs_field(field_sage, "rap", "RAP", "Sagebrush region"),
+  ncol = 2
+)
 ```
 
 # Quantile plots
