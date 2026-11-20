@@ -129,3 +129,45 @@ rap_at <- function(r, cell_years) {
   stopifnot(!anyNA(col))
   vals[cbind(seq_len(nrow(cell_years)), col)]
 }
+
+#' Change of each GCM's prediction from the historical prediction
+#'
+#' CONUS (whole-raster) means, area-weighted (cells of a lon/lat grid differ
+#' in area), over the cells where both the GCM and the historical predictions
+#' have a value. GCMs are ranked by delta and the lowest, median (rank
+#' ceiling(n / 2)) and highest are labelled. As in 03_predict_raster.R.
+#'
+#' @param preds SpatRaster, one layer per GCM, named by GCM.
+#' @param hist SpatRaster, one layer: the historical prediction (e.g.
+#'   gridMET), on the same grid.
+#' @return Tibble, one row per GCM: gcm, mean_gcm, delta (mean of GCM -
+#'   historical), rank (1 = lowest delta) and role ("lowest", "median",
+#'   "highest", else NA).
+#' @examples
+#' hist <- terra::rast(nrows = 2, ncols = 2, vals = c(10, 20, NA, 40))
+#' preds <- c(hist + 1, hist - 2, hist + 5)
+#' names(preds) <- c("a", "b", "c")
+#' gcm_deltas(preds = preds, hist = hist)
+gcm_deltas <- function(preds, hist) {
+  stopifnot(terra::nlyr(hist) == 1, terra::compareGeom(preds, hist),
+            !anyDuplicated(names(preds)))
+  area <- terra::cellSize(hist, unit = "km")
+  area_mean <- function(r) {
+    a <- terra::mask(area, r)
+    terra::global(r * a, "sum", na.rm = TRUE)[[1]] /
+      terra::global(a, "sum", na.rm = TRUE)[[1]]
+  }
+  
+  purrr::map(names(preds), \(g) {
+    delta_r <- preds[[g]] - hist
+    tibble::tibble(gcm = g,
+                   mean_gcm = area_mean(terra::mask(preds[[g]], delta_r)),
+                   delta = area_mean(delta_r))
+  }) |>
+    dplyr::bind_rows() |>
+    dplyr::mutate(rank = rank(delta, ties.method = "first"),
+                  role = dplyr::case_when(
+                    rank == 1 ~ "lowest",
+                    rank == ceiling(dplyr::n() / 2) ~ "median",
+                    rank == dplyr::n() ~ "highest"))
+}

@@ -47,6 +47,16 @@
 # The same is done at the rows of the field data (c04), all of them outside
 # the components' data, for tree cover by leaf type (05_combine_tree_all.R).
 #
+# --climate_set (params.R; "minimal" unless passed) chooses the climates, as
+# in 03_predict_raster.R (whose outputs for the four models are read here):
+#   minimal  current, BNU-ESM and IPSL-CM5A-MR (1 km)
+#   full     current (1 km), gridMET (4 km), and every MACA GCM for each RCP
+#            and period in `rcps` and `periods` below (4 km)
+# For the GCMs, as 03_predict_raster.R does for single models: combined tree
+# cover per GCM, the per-cell min, median and max across GCMs, and each GCM's
+# change from gridMET (gcm_deltas()). The blending parameters are the ones
+# from current climate (1 km), as for the other scenarios.
+#
 # Inputs:
 #   Data_processed/CoverData/Predictions/ (from 03_predict_raster.R):
 #     <cover_type>_<cover_model>_<vc>-<vmc>_<scenario>.tif for the four models
@@ -56,8 +66,16 @@
 #
 # Outputs:
 #   Data_processed/CoverData/Predictions/combined_tree_<vmc>_<scenario>.tif
-#     layers: cover (combined tree cover, %), weight (w, weight on the forest
-#     model)
+#     scenario current, BNU-ESM and IPSL-CM5A-MR (minimal set), or current and
+#     gridmet (full set): layers cover (combined tree cover, %), weight (w,
+#     weight on the forest model)
+#   full set, for each RCP and period (same folder and stem):
+#     ..._<rcp>_<period>.tif          one layer per GCM (named by GCM):
+#                                     combined tree cover (%)
+#     ..._<rcp>_<period>_summary.tif  layers min, median, max across GCMs,
+#                                     per cell
+#   Data_processed/CoverData/Fit/combined_tree_<vmc>_gcm_deltas.csv (full set)
+#     per RCP, period and GCM: as <stem>_gcm_deltas.csv of 03_predict_raster.R
 #   Data_processed/CoverData/Fit/combined_tree_<vmc>_blend.csv
 #     the component models and the blending parameters
 #   Data_processed/CoverData/Fit/combined_tree_<vmc>_<vc>_pixel_predictions.csv
@@ -65,7 +83,7 @@
 #     (combined tree cover, %), fallback
 #   (paths from combined_path())
 #
-# October, 2026
+# October, 2026 (GCMs added November 2026)
 
 
 # dependencies ------------------------------------------------------------
@@ -80,7 +98,8 @@ if(FALSE) {
   # parameters for testing/development
   opt <- list(cover_type = 'combined',
               cover_model = 'tree',
-              vmc = 'm24.3')
+              vmc = 'm21.51',
+              climate_set = 'full')
 }
 
 stopifnot(opt$cover_type == "combined", opt$cover_model == "tree")
@@ -90,15 +109,37 @@ if (is.null(spec)) stop("no spec for cover_specs$combined$tree$", opt$vmc)
 comp <- spec$components  # one row per component model
 print(comp)
 
+# params ------------------------------------------------------------------
+
+climate_set <- opt$climate_set %||% "minimal"
+stopifnot(climate_set %in% c("minimal", "full"))
+
+# climates with both layers (cover, weight)
+if (climate_set == "minimal") {
 scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
+} else {
+  scenarios <- c("current", "gridmet")
+}
+
+# full set: MACA futures, as in 03_predict_raster.R
+rcps <- c("rcp45", "rcp85")
+periods <- "2070-2099"
+n_gcms <- 20
 
 # read --------------------------------------------------------------------
 
-#' Prediction raster of one component model for one scenario
+#' Prediction raster of one component model for one scenario (for
+#' "<rcp>_<period>": one layer per GCM, named by GCM)
 read_component <- function(component, scenario) {
   m <- comp[comp$component == component, ]
   terra::rast(cover_pred_path(m$cover_type, m$cover_model, m$vc, m$vmc,
                               scenario))
+}
+
+write_combined <- function(r, scenario) {
+  terra::writeRaster(r, combined_tree_path(opt$vmc, "prediction", scenario),
+                     overwrite = TRUE, datatype = "FLT4S")
+  message("Wrote ", scenario)
 }
 
 # fitted component models (thresholds, and the predictions at pixel-years)
@@ -194,10 +235,62 @@ walk(scenarios, \(scenario) {
   out <- terra::rast(tree_f, nlyrs = 2)
   terra::values(out) <- cbind(res$cover, res$weight)
   names(out) <- c("cover", "weight")
-  terra::writeRaster(out, combined_tree_path(opt$vmc, "prediction", scenario),
-                     overwrite = TRUE, datatype = "FLT4S")
-  message("Wrote ", scenario)
+  write_combined(out, scenario)
 })
+
+# GCMs (full set) -------------------------------------------------------------
+
+if (climate_set == "full") {
+
+  # the historical, for the changes
+  gridmet <- terra::rast(combined_tree_path(opt$vmc, "prediction", "gridmet"))
+
+  rcp_periods <- expand_grid(rcp = rcps, period = periods)
+
+  deltas <- pmap(rcp_periods, \(rcp, period) {
+    scenario <- paste0(rcp, "_", period)
+
+    # one layer per GCM: the scores of the classification models, and the
+    # cover of the cover models
+    forest_r <- read_component("forest", scenario)
+    zero_r   <- read_component("zero_tree", scenario)
+    tree_f   <- read_component("tree_forest", scenario)
+    tree_nf  <- read_component("tree_nonforest", scenario)
+    gcms <- names(forest_r)
+    stopifnot(length(gcms) == n_gcms,
+              terra::compareGeom(forest_r, zero_r, tree_f, tree_nf),
+              identical(names(zero_r), gcms),
+              identical(names(tree_f), gcms),
+              identical(names(tree_nf), gcms))
+    message(rcp, " ", period, ": ", length(gcms), " GCMs")
+
+    # combined tree cover, one layer per GCM
+    gcm_r <- map(gcms, \(g) {
+      res <- combine_tree(
+        forest_score = terra::values(forest_r[[g]], mat = FALSE),
+        zero_score = terra::values(zero_r[[g]], mat = FALSE),
+        tree_forest = terra::values(tree_f[[g]], mat = FALSE),
+        tree_nonforest = terra::values(tree_nf[[g]], mat = FALSE))
+      terra::rast(tree_f[[g]], vals = res$cover)
+    }) |>
+      terra::rast()
+    names(gcm_r) <- gcms
+    write_combined(gcm_r, scenario)
+
+    # across GCMs, per cell
+    summary_r <- c(min(gcm_r), median(gcm_r), max(gcm_r))
+    names(summary_r) <- c("min", "median", "max")
+    write_combined(summary_r, paste0(scenario, "_summary"))
+
+    # change from gridMET (Functions/spatial.R)
+    gcm_deltas(gcm_r, gridmet[["cover"]]) |>
+      mutate(rcp = rcp, period = period, .before = 1)
+})
+
+  deltas <- bind_rows(deltas)
+  print(filter(deltas, !is.na(role)))
+  write_csv(deltas, combined_path("tree", opt$vmc, "gcm_deltas"))
+}
 
 # predictions at the pixel-years --------------------------------------------
 

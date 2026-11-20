@@ -14,6 +14,16 @@
 # pixel-years). The share_sum layer keeps their sum before rescaling, to show
 # how much rescaling did.
 #
+# --climate_set (params.R; "minimal" unless passed) chooses the climates, as
+# in 03_predict_raster.R (whose outputs for the four models are read here):
+#   minimal  current, BNU-ESM and IPSL-CM5A-MR (1 km)
+#   full     current (1 km), gridMET (4 km), and every MACA GCM for each RCP
+#            and period in `rcps` and `periods` below (4 km)
+# For the GCMs only the cover of each type is written (the shares follow from
+# the covers), with what 03_predict_raster.R makes for single models: the
+# per-cell min, median and max across GCMs, and each GCM's change from gridMET
+# (gcm_deltas()), with the GCMs ranked separately for each type.
+#
 # Pixel-years: every row of the share models' data version (all three must
 # share one, e.g. c04, the only data with observed cover by type) that has
 # every predictor, for comparing with the observations
@@ -36,14 +46,25 @@
 #
 # Outputs (paths from combined_path()):
 #   Data_processed/CoverData/Predictions/combined_herbaceous_<vmc>_<scenario>.tif
-#     layers: share_c3, share_c4, share_forb (% of herbaceous cover, sum to
-#     100), cover_c3, cover_c4, cover_forb (% cover), share_sum (%)
+#     scenario current, BNU-ESM and IPSL-CM5A-MR (minimal set), or current and
+#     gridmet (full set): layers share_c3, share_c4, share_forb (% of
+#     herbaceous cover, sum to 100), cover_c3, cover_c4, cover_forb (% cover),
+#     share_sum (%)
+#   full set, for each RCP and period (same folder and stem):
+#     ..._<rcp>_<period>.tif          layers cover_<type>_<gcm> (% cover), e.g.
+#                                     cover_c3_CCSM4
+#     ..._<rcp>_<period>_summary.tif  layers cover_<type>_min, _median, _max:
+#                                     across GCMs, per cell
+#     combined_herbaceous_<vmc>_gcm_deltas.csv
+#       per RCP, period, layer (cover_<type>) and GCM: CONUS mean of the GCM
+#       prediction, delta (from gridMET), rank (1 = lowest delta, within the
+#       layer) and role (lowest, median, highest), as in 03_predict_raster.R
 #   Data_processed/CoverData/Fit/combined_herbaceous_<vmc>_components.csv
 #     the component models
 #   Data_processed/CoverData/Fit/combined_herbaceous_<vmc>_<vc>_pixel_predictions.csv
 #     cell, year, layer (as the raster layers), pred_in, pred_oof, fallback
 #
-# October, 2026
+# October, 2026 (GCMs added November 2026)
 
 
 # dependencies ------------------------------------------------------------
@@ -54,9 +75,11 @@ source("Functions/models/cover_specs.R")
 
 # spec --------------------------------------------------------------------
 if(FALSE) {
+  # forest testing
   opt <- list(cover_type = 'combined',
               cover_model = 'herbaceous',
-              vmc = 'm21.5')
+              vmc = 'm21.51',
+              climate_set = 'full')
 }
 stopifnot(opt$cover_type == "combined", opt$cover_model == "herbaceous")
 spec <- cover_specs$combined$herbaceous[[opt$vmc]]
@@ -69,13 +92,47 @@ components_file <- combined_path("herbaceous", opt$vmc, "components")
 dir.create(dirname(components_file), recursive = TRUE, showWarnings = FALSE)
 write_csv(comp, components_file)
 
+# params ------------------------------------------------------------------
+
+climate_set <- opt$climate_set %||% "minimal"
+stopifnot(climate_set %in% c("minimal", "full"))
+
+# climates with every layer (shares, covers, share_sum)
+if (climate_set == "minimal") {
 scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
+} else {
+  scenarios <- c("current", "gridmet")
+}
+
+# full set: MACA futures, as in 03_predict_raster.R
+rcps <- c("rcp45", "rcp85")
+periods <- "2070-2099"
+n_gcms <- 20
+
 types <- c("c3", "c4", "forb")
+cover_lyrs <- paste0("cover_", types)  # the layers written for the GCMs
+
+# functions ---------------------------------------------------------------
 
 # prediction of one component for one scenario: % cover, or % of
 # herbaceous cover for the shares
 read_component <- function(component, scenario) {
   read_component_pred(comp[comp$component == component, ], scenario)
+}
+
+# predictions of one component for one RCP and period (scenario
+# "<rcp>_<period>"): one layer per GCM, named by GCM
+read_component_gcms <- function(component, scenario) {
+  m <- comp[comp$component == component, ]
+  terra::rast(cover_pred_path(m$cover_type, m$cover_model, m$vc, m$vmc,
+                              scenario))
+}
+
+write_combined <- function(r, scenario) {
+  terra::writeRaster(r, combined_path("herbaceous", opt$vmc, "prediction",
+                                      scenario),
+                     overwrite = TRUE, datatype = "FLT4S")
+  message("Wrote ", scenario)
 }
 
 # combine and write, one scenario at a time --------------------------------
@@ -86,12 +143,74 @@ walk(scenarios, \(scenario) {
   names(shares) <- types
   herb <- read_component("herbaceous", scenario)
 
-  out <- split_cover(shares, herb)
-  terra::writeRaster(out, combined_path("herbaceous", opt$vmc, "prediction",
-                                        scenario),
-                     overwrite = TRUE, datatype = "FLT4S")
-  message("Wrote ", scenario)
+  write_combined(split_cover(shares, herb), scenario)
 })
+
+# GCMs (full set) -------------------------------------------------------------
+
+if (climate_set == "full") {
+
+  # the historical, for the changes
+  gridmet <- terra::rast(combined_path("herbaceous", opt$vmc, "prediction",
+                                       "gridmet"))
+
+  rcp_periods <- expand_grid(rcp = rcps, period = periods)
+
+  deltas <- pmap(rcp_periods, \(rcp, period) {
+    scenario <- paste0(rcp, "_", period)
+
+    herb <- read_component_gcms("herbaceous", scenario)
+    shares <- map(set_names(types), \(type) {
+      read_component_gcms(type, scenario)
+    })
+    gcms <- names(herb)
+    stopifnot(length(gcms) == n_gcms,
+              map_lgl(shares, \(r) identical(names(r), gcms)))
+    message(rcp, " ", period, ": ", length(gcms), " GCMs")
+
+    # cover of each type, one raster per GCM
+    cover <- map(set_names(gcms), \(g) {
+      shares_g <- terra::rast(map(shares, \(r) r[[g]]))
+      names(shares_g) <- types
+      split_cover(shares_g, herb[[g]])[[cover_lyrs]]
+    })
+
+    # one raster per type, one layer per GCM
+    by_type <- map(set_names(cover_lyrs), \(lyr) {
+      r <- terra::rast(map(cover, \(x) x[[lyr]]))
+      names(r) <- gcms
+      r
+    })
+
+    # every type in one file, layers cover_<type>_<gcm>
+    gcm_r <- terra::rast(unname(by_type))
+    names(gcm_r) <- paste0(rep(cover_lyrs, each = length(gcms)), "_", gcms)
+    write_combined(gcm_r, scenario)
+
+    # across GCMs, per cell: layers cover_<type>_min, _median, _max
+    summary_r <- map(cover_lyrs, \(lyr) {
+      r <- by_type[[lyr]]
+      s <- c(min(r), terra::median(r), max(r))
+      names(s) <- paste0(lyr, c("_min", "_median", "_max"))
+      s
+    }) |>
+      terra::rast()
+    write_combined(summary_r, paste0(scenario, "_summary"))
+
+    # change from gridMET, with the GCMs ranked separately for each type
+    # (Functions/spatial.R)
+    map(cover_lyrs, \(lyr) {
+      gcm_deltas(by_type[[lyr]], gridmet[[lyr]]) |>
+        mutate(layer = lyr, .before = 1)
+    }) |>
+      bind_rows() |>
+      mutate(rcp = rcp, period = period, .before = 1)
+  })
+
+  deltas <- bind_rows(deltas)
+  print(filter(deltas, !is.na(role)), n = Inf)
+  write_csv(deltas, combined_path("herbaceous", opt$vmc, "gcm_deltas"))
+}
 
 # predictions at the pixel-years --------------------------------------------
 

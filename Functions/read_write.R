@@ -1195,7 +1195,8 @@ cover_pred_path <- function(cover_type, cover_model, vc, vmc, scenario,
 #' @param vmc Combination version, e.g. "m01.5".
 #' @param what "prediction" (raster, one per scenario), "blend" (tree: csv of
 #'   the component models and blending parameters), "components" (csv of
-#'   the component models) or "pixel_predictions" (csv of the combined
+#'   the component models), "gcm_deltas" (csv, gcm_deltas()) or
+#'   "pixel_predictions" (csv of the combined
 #'   predictions at the pixel-years of data version `vc`).
 #' @param scenario Climate scenario, for `what = "prediction"`.
 #' @param root Root path for large files.
@@ -1211,7 +1212,7 @@ cover_pred_path <- function(cover_type, cover_model, vc, vmc, scenario,
 #'               scenario = scenario, root = root)
 combined_path <- function(cover_model, vmc,
                           what = c("prediction", "blend", "components",
-                                   "pixel_predictions"),
+                                   "pixel_predictions", "gcm_deltas"),
                           scenario = NULL, root = paths$large, vc = NULL) {
   what <- match.arg(what)
   dir <- file.path(root, "Data_processed", "CoverData")

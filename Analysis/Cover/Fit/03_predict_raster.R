@@ -56,7 +56,7 @@
 #                                       median, max across GCMs, per cell
 #                                       (not for combined-model components)
 #     <stem>_gcm_deltas.csv             per RCP, period and GCM: CONUS means
-#                                       of the GCM and gridMET predictions,
+#                                       of the GCM predictions (gcm_deltas()),
 #                                       delta, rank (1 = lowest delta) and
 #                                       role (lowest, median = rank n/2,
 #                                       i.e. 10th of 20, highest) (not for
@@ -125,17 +125,6 @@ write_pred <- function(r, scenario) {
   terra::writeRaster(r, p_out, overwrite = TRUE, datatype = "FLT4S")
 }
 
-#' Area-weighted mean of a raster over its non-NA cells
-#' @param r Single-layer SpatRaster.
-#' @param area SpatRaster of cell areas, on the same grid.
-#' @return Numeric.
-area_mean <- function(r, area) {
-  area <- terra::mask(area, r)
-  sum_r_area <- terra::global(r * area, "sum", na.rm = TRUE)[[1]]
-  sum_area <- terra::global(area, "sum", na.rm = TRUE)[[1]]
-  sum_r_area / sum_area
-}
-
 # 1 km Daymet grid ----------------------------------------------------------
 
 scenarios_1km <- "current"
@@ -160,9 +149,6 @@ if (climate_set == "full") {
   pred_gridmet <- predict_raster(fit, read_climate_raster("gridmet"))
   write_pred(pred_gridmet, "gridmet")
   score_gridmet <- pred_gridmet[[score_name(fit)]]
-
-  # cell areas, for CONUS means (cells of a lon/lat grid differ in area)
-  area <- terra::cellSize(score_gridmet, unit = "km")
 
   rcp_periods <- expand_grid(rcp = rcps, period = periods)
 
@@ -193,19 +179,9 @@ if (climate_set == "full") {
     names(summary_r) <- c("min", "median", "max")
     write_pred(summary_r, paste0(scenario, "_summary"))
 
-    # CONUS means over the cells where both the GCM and gridMET predictions
-    # have a value
-    map(gcms, \(g) {
-      delta_r <- preds[[g]] - score_gridmet
-      tibble(rcp = rcp, period = period, gcm = g,
-             mean_gcm = area_mean(terra::mask(preds[[g]], delta_r), area),
-             delta = area_mean(delta_r, area))
-    }) |>
-      bind_rows() |>
-      mutate(rank = rank(delta, ties.method = "first"),
-             role = case_when(rank == 1 ~ "lowest",
-                              rank == ceiling(n() / 2) ~ "median",
-                              rank == n() ~ "highest"))
+    # change from gridMET, area-weighted CONUS means (Functions/spatial.R)
+    gcm_deltas(preds, score_gridmet) |>
+      mutate(rcp = rcp, period = period, .before = 1)
   })
 
   if (gcm_summaries) {

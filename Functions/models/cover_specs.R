@@ -977,6 +977,8 @@ cover_specs <- list(
                                        herbaceous = c(vc = 'c06', vmc = 'm04.1')),
       m21.5 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m01.5",
                                       herbaceous = c(vc = 'c08', vmc = 'm01.5')),
+      m21.51 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m01.51",
+                                      herbaceous = c(vc = 'c08', vmc = 'm01.51')),
       m25.5 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m05.5",
                                       herbaceous = c(vc = 'c08', vmc = 'm05.5')),
       m24.2 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m04.2",
