@@ -33,11 +33,15 @@ wait_hours <- 0
 run_fit      <- FALSE
 run_predict  <- FALSE
 run_evaluate <- FALSE
+# climates for 03_predict_raster.R: "minimal" (Daymet current and 2 futures)
+# or "full" (also gridMET and every MACA GCM)
+climate_set  <- "full"
 
 # command-line overrides (params.R; NULL unless passed, e.g. on the HPC)
 run_fit      <- opt$run_fit %||% run_fit
 run_predict  <- opt$run_predict %||% run_predict
 run_evaluate <- opt$run_evaluate %||% run_evaluate
+climate_set  <- opt$climate_set %||% climate_set
 
 # cover data version(s): vc_default, unless the model is listed in vc_model
 # (several versions = each vmc is run on each; not
@@ -190,7 +194,8 @@ pwalk(runs, \(cover_type, cover_model, vmc, vc) {
   cmdargs <- c(paste0("--vc=", vc),
                paste0("--cover_type=", cover_type),
                paste0("--cover_model=", cover_model),
-               paste0("--vmc=", vmc))
+               paste0("--vmc=", vmc),
+               paste0("--climate_set=", climate_set))
   
   if (run_fit && !is_combined) {
     callr::rscript(fit_scripts[[cover_type]], cmdargs = cmdargs)

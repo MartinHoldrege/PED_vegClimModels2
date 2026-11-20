@@ -80,39 +80,253 @@ read_prepare_d01 <- function(root = paths$large,
 
 #' Read a climate raster (current or projected) and rename layers
 #'
-#' @param scenario One of "current" (Daymet), "BNU-ESM", or "IPSL-CM5A-MR".
+#' 1 km Daymet grid: "current" (Daymet 1991-2020 normals), "BNU-ESM" and
+#' "IPSL-CM5A-MR" (the minimal climate set's futures: that GCM's MACA RCP 8.5,
+#' 2070-2099 file, projected onto the Daymet grid; read_maca_daymet(),
+#' cached). 4 km gridMET grid: "gridmet" (gridMET 1991-2020 normals) and
+#' "maca" (a MACAv2-METDATA future, chosen by `gcm`, `rcp` and `period`;
+#' read onto the gridMET grid by read_maca_file()).
+#'
+#' To recreate the files made before November 2026 from the old 1 km futures,
+#' pass their path: file.path(clim_dir, paste0("ForecastedClimateData_",
+#' scenario, "_rcp85_CLIM.tif")).
+#'
+#' @param scenario "current", "BNU-ESM", "IPSL-CM5A-MR", "gridmet" or "maca".
+#' @param gcm,rcp,period For scenario "maca", e.g. "CNRM-CM5", "rcp45",
+#'   "2070-2099".
 #' @param path Optional explicit path; overrides `scenario` for the climate file.
-#' @param path_soil Path to soil AWC raster, or NULL to skip.
+#' @param path_soil Path to the 1 km soil raster, or NULL to skip. For the
+#'   4 km scenarios the soils are averaged onto the gridMET grid
+#'   (read_soil_gridmet(), cached).
 #' @return SpatRaster with short-named climate layers (and soil if provided).
+#' @examples
+#' scenario <- "maca"
+#' gcm <- "CNRM-CM5"
+#' rcp <- "rcp45"
+#' period <- "2070-2099"
+#' path <- NULL
+#' path_soil <- file.path(paths$large, "Data_processed/soils",
+#'                        "soil_covariates_solus100_1000m.tif")
+#' read_climate_raster(scenario = scenario, gcm = gcm, rcp = rcp,
+#'                     period = period, path = path, path_soil = path_soil)
 read_climate_raster <- function(
-    scenario = c("current", "BNU-ESM", "IPSL-CM5A-MR"),
+    scenario = c("current", "BNU-ESM", "IPSL-CM5A-MR", "gridmet", "maca"),
+    gcm = NULL, rcp = NULL, period = NULL,
     path = NULL,
-    path_soil = file.path(paths$large, 
-              "./Data_processed/soils/", 
-              "soil_covariates_solus100_1000m.tif")
-    ) {
+    path_soil = file.path(paths$large,
+                          "./Data_processed/soils/",
+                          "soil_covariates_solus100_1000m.tif")
+) {
   scenario <- match.arg(scenario)
   
+  clim_dir <- file.path(paths$large, "Data_processed/WallToWallClimateData")
+  path_gridmet <- file.path(clim_dir, "gridmet", "gridmet_1991-2020_CLIM.tif")
+  
   if (is.null(path)) {
-    path <- if (scenario == "current") {
-      file.path(paths$large, "Data_processed/WallToWallClimateData", 
-                "DaymetClimateData_1991-2020_CLIM.tif")
-    } else {
-      file.path(paths$large, "Data_processed/WallToWallClimateData",
-                paste0("ForecastedClimateData_", scenario, "_rcp85_CLIM.tif"))
+    if (scenario == "current") {
+      path <- file.path(clim_dir, "DaymetClimateData_1991-2020_CLIM.tif")
+    } else if (scenario == "gridmet") {
+      path <- path_gridmet
+    } else if (scenario == "maca") {
+      stopifnot(!is.null(gcm), !is.null(rcp), !is.null(period))
+      path <- file.path(clim_dir, "maca", paste0("maca_", gcm, "_", rcp, "_",
+                                                 period, "_CLIM.tif"))
     }
   }
   
-  r <- terra::rast(path)
+  if (scenario == "maca") {
+    r <- read_maca_file(path, path_gridmet = path_gridmet)
+  } else if (is.null(path)) {
+    # BNU-ESM or IPSL-CM5A-MR: MACA RCP 8.5, 2070-2099, on the Daymet grid
+    r <- read_maca_daymet(gcm = scenario)
+  } else {
+    r <- terra::rast(path)
+  }
+  
   names(r) <- climate_name_lookup(names(r))
   
   if(!is.null(path_soil)) {
-    r_soil <- terra::rast(path_soil)
-    names(r_soil) <- stringr::str_replace(names(r_soil), '_cm', '')
-    names(r_soil)[names(r_soil) == "AWHC"] <- climate_name_lookup("AWHC")
-    r <- c(r, r_soil)
+    if (scenario %in% c("gridmet", "maca")) {
+      soil <- read_soil_gridmet(template = r, path = path_soil)
+    } else {
+      soil <- read_soil_raster(path_soil)
+    }
+    r <- c(r, soil)
   }
   r
+}
+
+#' Read the soil covariates raster, with the layer names models use
+#'
+#' On the 1 km Daymet grid. For another grid (e.g. gridMET), average it onto
+#' that grid, e.g. terra::project(read_soil_raster(), template, method =
+#' "average").
+#'
+#' @param path Path to the soil covariates raster.
+#' @return SpatRaster, one layer per soil variable.
+#' @examples
+#' path <- file.path(paths$large, "Data_processed/soils",
+#'                   "soil_covariates_solus100_1000m.tif")
+#' read_soil_raster(path = path)
+read_soil_raster <- function(
+    path = file.path(paths$large, "Data_processed/soils",
+                     "soil_covariates_solus100_1000m.tif")) {
+  r_soil <- terra::rast(path)
+  names(r_soil) <- stringr::str_replace(names(r_soil), '_cm', '')
+  names(r_soil)[names(r_soil) == "AWHC"] <- climate_name_lookup("AWHC")
+  r_soil
+}
+
+#' Soil covariates averaged onto the gridMET (4 km) grid, cached
+#'
+#' Averages read_soil_raster() (1 km) onto the grid of `template`
+#' (terra::project(method = "average")) and caches the result, because every
+#' model's 4 km predictions (03_predict_raster.R) need it. Recomputes if the
+#' 1 km soils file changes (its size or modification time) or `template`'s
+#' grid differs from the cached one.
+#'
+#' @param template SpatRaster on the gridMET grid, e.g. the gridMET climate
+#'   normals.
+#' @param path Path to the 1 km soil covariates raster.
+#' @param cache_tif Path of the cached 4 km raster (its fingerprint is saved
+#'   next to it, as .rds).
+#' @param force Logical; if TRUE, recompute even if the cache is current.
+#' @return SpatRaster, one layer per soil variable, on the grid of `template`.
+#' @examples
+#' template <- read_climate_raster("gridmet", path_soil = NULL)
+#' path <- file.path(paths$large, "Data_processed/soils",
+#'                   "soil_covariates_solus100_1000m.tif")
+#' cache_tif <- file.path(paths$large, "Data_processed/cache",
+#'                        "soil_covariates_solus100_gridmet.tif")
+#' force <- FALSE
+#' read_soil_gridmet(template = template, path = path, cache_tif = cache_tif,
+#'                   force = force)
+read_soil_gridmet <- function(
+    template,
+    path = file.path(paths$large, "Data_processed/soils",
+                     "soil_covariates_solus100_1000m.tif"),
+    cache_tif = file.path(paths$large, "Data_processed/cache",
+                          "soil_covariates_solus100_gridmet.tif"),
+    force = FALSE) {
+  
+  cache_meta <- sub("\\.tif$", ".rds", cache_tif)
+  file_info <- file.info(path)
+  fingerprint <- paste(file_info$size, file_info$mtime)
+  
+  if (!force && file.exists(cache_tif) && file.exists(cache_meta)) {
+    cached <- terra::rast(cache_tif)
+    same_source <- identical(readRDS(cache_meta)$fingerprint, fingerprint)
+    same_grid <- terra::compareGeom(cached, template, stopOnError = FALSE)
+    if (same_source && same_grid) return(cached)
+  }
+  
+  message("Averaging the 1 km soils onto the gridMET grid (cached in ",
+          cache_tif, ")")
+  soil <- terra::project(read_soil_raster(path), template, method = "average")
+  .write_cached_raster(soil, cache_tif, cache_meta, fingerprint)
+}
+
+#' A MACA future projected onto the 1 km Daymet grid, cached
+#'
+#' The minimal climate set's futures ("BNU-ESM" and "IPSL-CM5A-MR" in
+#' read_climate_raster()): the GCM's MACAv2-METDATA file (4 km gridMET grid),
+#' projected by bilinear interpolation onto the grid of the Daymet current
+#' climate raster (the same grid as the 1 km soils), so the predictions from
+#' it are on the same grid as current. 1 km cells next to an NA 4 km cell
+#' (e.g. on coasts) are NA. Cached; recomputed if the MACA file changes (its
+#' size or modification time) or the Daymet grid differs from the cached one.
+#'
+#' @param gcm GCM, e.g. "BNU-ESM".
+#' @param rcp,period MACA RCP and period.
+#' @param cache_dir Directory of the cached raster.
+#' @param force Logical; if TRUE, recompute even if the cache is current.
+#' @return SpatRaster on the 1 km Daymet grid, with the MACA file's layer
+#'   names.
+#' @examples
+#' gcm <- "BNU-ESM"
+#' rcp <- "rcp85"
+#' period <- "2070-2099"
+#' cache_dir <- file.path(paths$large, "Data_processed/cache")
+#' force <- FALSE
+#' read_maca_daymet(gcm = gcm, rcp = rcp, period = period,
+#'                  cache_dir = cache_dir, force = force)
+read_maca_daymet <- function(
+    gcm, rcp = "rcp85", period = "2070-2099",
+    cache_dir = file.path(paths$large, "Data_processed/cache"),
+    force = FALSE) {
+  
+  clim_dir <- file.path(paths$large, "Data_processed/WallToWallClimateData")
+  path <- file.path(clim_dir, "maca",
+                    paste0("maca_", gcm, "_", rcp, "_", period, "_CLIM.tif"))
+  if (!file.exists(path)) stop("MACA file not found: ", path)
+  template <- terra::rast(file.path(clim_dir,
+                                    "DaymetClimateData_1991-2020_CLIM.tif"))
+  
+  cache_name <- paste0("maca_", gcm, "_", rcp, "_", period, "_daymet1km")
+  cache_tif <- file.path(cache_dir, paste0(cache_name, ".tif"))
+  cache_meta <- file.path(cache_dir, paste0(cache_name, ".rds"))
+  file_info <- file.info(path)
+  fingerprint <- paste(file_info$size, file_info$mtime)
+  
+  if (!force && file.exists(cache_tif) && file.exists(cache_meta)) {
+    cached <- terra::rast(cache_tif)
+    same_source <- identical(readRDS(cache_meta)$fingerprint, fingerprint)
+    same_grid <- terra::compareGeom(cached, template, stopOnError = FALSE)
+    if (same_source && same_grid) return(cached)
+  }
+  
+  message("Projecting ", basename(path), " onto the 1 km Daymet grid ",
+          "(cached in ", cache_tif, ")")
+  r <- terra::project(read_maca_file(path), template, method = "bilinear")
+  .write_cached_raster(r, cache_tif, cache_meta, fingerprint)
+}
+
+#' Read a MACA climate file onto the gridMET grid
+#'
+#' The MACA files have no CRS and use longitudes 0 to 360 (e.g. 235 for
+#' 125 W), and their grid is the gridMET grid to within a fraction of a cell
+#' (about 1/8 of a cell). So they get gridMET's CRS, longitudes shifted to
+#' -180 to 180, and each gridMET cell takes the value of the nearest MACA
+#' cell.
+#'
+#' @param path Path to a MACA climate file (maca_<gcm>_<rcp>_<period>_CLIM.tif).
+#' @param path_gridmet Path to the gridMET climate normals (the grid).
+#' @return SpatRaster on the gridMET grid, with the MACA file's layer names.
+#' @examples
+#' path <- file.path(paths$large, "Data_processed/WallToWallClimateData",
+#'                   "maca", "maca_CCSM4_rcp45_2070-2099_CLIM.tif")
+#' path_gridmet <- file.path(paths$large,
+#'                           "Data_processed/WallToWallClimateData",
+#'                           "gridmet", "gridmet_1991-2020_CLIM.tif")
+#' read_maca_file(path = path, path_gridmet = path_gridmet)
+read_maca_file <- function(
+    path,
+    path_gridmet = file.path(paths$large,
+                             "Data_processed/WallToWallClimateData",
+                             "gridmet", "gridmet_1991-2020_CLIM.tif")) {
+  r <- terra::rast(path)
+  gridmet_grid <- terra::rast(path_gridmet)
+
+  terra::crs(r) <- terra::crs(gridmet_grid)
+  if (terra::xmin(r) > 180) r <- terra::shift(r, dx = -360)
+
+  # an offset of half a cell or more would mean a different grid
+  offset <- abs(as.vector(terra::ext(r)) - as.vector(terra::ext(gridmet_grid)))
+  stopifnot(max(offset) < terra::res(gridmet_grid)[1] / 2)
+
+  terra::resample(r, gridmet_grid, method = "near")
+}
+
+# internal: write a cached raster and its fingerprint, and return the raster.
+# Written to a temporary file and then renamed, so another job (e.g. a
+# parallel HPC array task) never reads a half-written cache
+.write_cached_raster <- function(r, cache_tif, cache_meta, fingerprint) {
+  dir.create(dirname(cache_tif), recursive = TRUE, showWarnings = FALSE)
+  tmp <- paste0(cache_tif, ".tmp", Sys.getpid(), ".tif")
+  terra::writeRaster(r, tmp, overwrite = TRUE)
+  file.rename(tmp, cache_tif)
+  saveRDS(list(fingerprint = fingerprint), cache_meta)
+  terra::rast(cache_tif)
 }
 
 #' Load and align CONUS rasters for biomass modeling
@@ -950,7 +1164,10 @@ cover_model_path <- function(cover_type, cover_model, vc, vmc,
 #' in that script.
 #'
 #' @inheritParams cover_model_path
-#' @param scenario Climate scenario: "current", "BNU-ESM" or "IPSL-CM5A-MR".
+#' @param scenario Climate scenario: "current", "BNU-ESM" or "IPSL-CM5A-MR"
+#'   (1 km); or "gridmet", "<rcp>_<period>" (one layer per GCM) or
+#'   "<rcp>_<period>_summary" (min, median, max across GCMs) (4 km), e.g.
+#'   "rcp45_2070-2099".
 #' @return File path (character).
 #' @examples
 #' cover_type <- "classification"

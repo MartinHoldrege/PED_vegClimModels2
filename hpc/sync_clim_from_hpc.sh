@@ -2,7 +2,7 @@
 # Copy outputs from Hovenweep to the local large-file drive with rsync.
 # Only new or changed files are transferred.
 #
-# Run locally from Git Bash:  bash hpc/sync_from_hpc.sh
+# Run locally from Git Bash:  bash hpc/sync_clim_from_hpc.sh
 # Turn sections on/off with the true/false switches below.
 #
 # Requires rsync, the `hwdtn` alias in ~/.ssh/config, and calderaProject

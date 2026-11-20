@@ -65,6 +65,11 @@ option_list <- list(
   # e.g. "1971-2000", "2040-2069", "2070-2099"
   optparse::make_option("--period", type = "character", default = NULL),
   
+  # climates to predict for in 03_predict_raster.R: "minimal" (Daymet
+  # current and 2 futures) or "full" (also gridMET and every MACA GCM); NULL
+  # unless passed, then main_cover.R's value 
+  optparse::make_option("--climate_set", type = "character", default = NULL),
+  
   # main_cover.R ------------------------------------------------------------
   # NULL unless passed; if passed, they replace run_fit, run_predict and
   # run_evaluate as set in main_cover.R
