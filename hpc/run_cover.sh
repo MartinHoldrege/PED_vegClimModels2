@@ -17,6 +17,11 @@
 #                                    sbatch --array=1-6 --cpus-per-task=1 hpc/run_cover.sh --run_predict=TRUE
 #    Predict and report:             sbatch --array=1-6 --cpus-per-task=1 hpc/run_cover.sh --run_predict=TRUE --run_evaluate=TRUE
 #    Test one row first:             sbatch --array=1 hpc/run_cover.sh --run_fit=TRUE
+#       to run dependent jobs, e.g.:
+#        tree=$(sbatch --parsable --array=20 --cpus-per-task=1 --mem=32G --time=1:00:00  hpc/run_cover.sh --run_predict=TRUE)
+#
+#        sbatch --dependency=afterok:$tree --cpus-per-task=1 --mem=32G --time=1:00:00 hpc/next_script.sh
+#        
 # 4. Copy the outputs back (locally): bash hpc/sync_cover_from_hpc.sh
 # logs/ must exist (mkdir -p logs).
 #
