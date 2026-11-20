@@ -942,6 +942,8 @@ cover_specs <- list(
                                             needle = c(vc = 'c04', vmc = 'm04.1')),
       m21.5 = .defaults_combined_tree_prop(tree_vmc = 'm21.5',
                                            needle = c(vc = 'c04', vmc = 'm01.5')),
+      m21.51 = .defaults_combined_tree_prop(tree_vmc = 'm21.51',
+                                           needle = c(vc = 'c04', vmc = 'm01.51')),
       m25.5 = .defaults_combined_tree_prop(tree_vmc = 'm25.5',
                                            needle = c(vc = 'c04', vmc = 'm01.5')),
       m24.2 = .defaults_combined_tree_prop(tree_vmc = 'm24.2',
@@ -981,6 +983,8 @@ cover_specs <- list(
                                       herbaceous = c(vc = 'c08', vmc = 'm01.51')),
       m25.5 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m05.5",
                                       herbaceous = c(vc = 'c08', vmc = 'm05.5')),
+      m25.51 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m01.51",
+                                      herbaceous = c(vc = 'c08', vmc = 'm05.51')),
       m24.2 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m04.2",
                                       herbaceous = c(vc = 'c08', vmc = 'm04.2')),
       m24.3 = .defaults_combined_herb(.all_vc = "c04", .all_vmc = "m04.3",
@@ -1036,9 +1040,18 @@ cover_specs <- list(
       m21.5 = .defaults_combined_all(
         .all_vmc = 'm01.5', .shrub_vc = 'c08', .bare_vc = 'c07',
         tree_all_vmc = 'm21.5', herbaceous_vmc = 'm21.5'),
+      m21.51 = .defaults_combined_all(
+        .all_vmc = 'm01.51', .shrub_vc = 'c08', .bare_vc = 'c07',
+        tree_all_vmc = 'm21.51', herbaceous_vmc = 'm21.51'),
       m25.5 = .defaults_combined_all(
         .all_vmc = 'm05.5', .shrub_vc = 'c08', .bare_vc = 'c07',
         tree_all_vmc = 'm25.5', herbaceous_vmc = 'm25.5'),
+      # shrubs, herbaceous, and bareground use climate anomolies, nothing
+      # else does
+      m25.51 = .defaults_combined_all(
+        shrub = c(vc = 'c08', vmc = 'm05.51'), 
+        bare_ground = c(vc = 'c08', vmc = 'm05.51',
+        tree_all_vmc = 'm21.51', herbaceous_vmc = 'm25.51'),
       m24.2 = .defaults_combined_all(
         .all_vmc = 'm04.2', .shrub_vc = 'c08', .bare_vc = 'c07',
         tree_all_vmc = 'm24.2', herbaceous_vmc = 'm24.2'),
