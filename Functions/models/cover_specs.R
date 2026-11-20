@@ -1050,7 +1050,7 @@ cover_specs <- list(
       # else does
       m25.51 = .defaults_combined_all(
         shrub = c(vc = 'c08', vmc = 'm05.51'), 
-        bare_ground = c(vc = 'c08', vmc = 'm05.51',
+        bare_ground = c(vc = 'c07', vmc = 'm05.51'),
         tree_all_vmc = 'm21.51', herbaceous_vmc = 'm25.51'),
       m24.2 = .defaults_combined_all(
         .all_vmc = 'm04.2', .shrub_vc = 'c08', .bare_vc = 'c07',
