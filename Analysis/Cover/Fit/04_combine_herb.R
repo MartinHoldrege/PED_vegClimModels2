@@ -32,10 +32,13 @@
 # in that model's training data (pred_in: in-sample, out-of-bag for ranger;
 # pred_oof: out-of-fold), and elsewhere the full model's prediction, for both,
 # so there pred_oof isn't out-of-fold (e.g. the herbaceous model, fit to c08,
-# at c04 rows not in c08). fallback marks the rows where a share model's
-# prediction isn't out-of-fold; the herbaceous model is ignored (fit to other
-# data, so at most rows its prediction is a full-model one). The pixel-years
-# use their observed climate anomalies; the rasters are normals (anomalies 0).
+# at c04 rows not in c08). fallback marks, for each layer, the rows where its
+# own share model's prediction isn't out-of-fold (share_sum: any of the
+# three). The other two shares only rescale it, so they don't count, e.g.
+# forb at FIA-only rows (no C3/C4 split, so the C3 and C4 models weren't fit
+# there) isn't fallback. The herbaceous model is ignored (fit to other data,
+# so at most rows its prediction is a full-model one). The pixel-years use
+# their observed climate anomalies; the rasters are normals (anomalies 0).
 #
 #
 # Inputs:
@@ -246,17 +249,33 @@ pixel_pred <- map(c("pred_in", "pred_oof"), \(col) {
 }) |>
   reduce(left_join, by = c("cell", "year", "layer"))
 
-# pixel-years where a share model's prediction is a full-model (not
-# out-of-fold) prediction. The herbaceous model is ignored: it's fit to other
-# data (c08), so at most rows it only has a full-model prediction.
-# TRUE where any of the share models' predictions isn't out-of-fold
-fb <- tibble(cell = dat$cell, year = dat$year,
-             fallback = !preds$c3$saved | !preds$c4$saved | !preds$forb$saved)
+# pixel-years where a layer's prediction isn't out-of-fold: TRUE where its
+# own share model's prediction is a full-model one (the row wasn't in that
+# model's data, e.g. C3 and C4 at FIA-only rows). The other two shares only
+# rescale it, so they don't count. The herbaceous model is ignored: it's fit
+# to other data (c08), so at most rows it only has a full-model prediction.
+# share_sum uses all three shares.
+fb <- bind_rows(
+  tibble(cell = dat$cell, year = dat$year, type = "c3",
+         fallback = !preds$c3$saved),
+  tibble(cell = dat$cell, year = dat$year, type = "c4",
+         fallback = !preds$c4$saved),
+  tibble(cell = dat$cell, year = dat$year, type = "forb",
+         fallback = !preds$forb$saved),
+  tibble(cell = dat$cell, year = dat$year, type = "sum",
+         fallback = !preds$c3$saved | !preds$c4$saved | !preds$forb$saved)
+)
 
-pixel_pred <- left_join(pixel_pred, fb, by = c("cell", "year"))
+# type from the layer name, e.g. "forb" from cover_forb, "sum" from share_sum
+pixel_pred <- pixel_pred |>
+  mutate(type = str_remove(layer, "^(share|cover)_")) |>
+  left_join(fb, by = c("cell", "year", "type")) |>
+  select(-type)
+stopifnot(!anyNA(pixel_pred$fallback))
 
-message(nrow(dat), " pixel-years of ", pred_vc, "; fallback at ",
-        round(100 * mean(fb$fallback), 1), "%")
+message(nrow(dat), " pixel-years of ", pred_vc, "; % fallback by type:")
+print(summarise(fb, pct_fallback = round(100 * mean(fallback), 1),
+                .by = type))
 
 write_csv(pixel_pred, combined_path("herbaceous", opt$vmc,
                                     "pixel_predictions", vc = pred_vc))

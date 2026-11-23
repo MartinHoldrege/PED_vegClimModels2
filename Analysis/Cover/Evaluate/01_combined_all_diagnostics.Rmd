@@ -4,6 +4,7 @@ author: "Martin Holdrege"
 date: "`r Sys.Date()`"
 params:
   vmc: null   # version of cover_specs$combined$all; null uses opt$vmc
+  climate_set: null   # "minimal" or "full"; null uses opt$climate_set
 output:
   html_document:
     toc: true
@@ -31,7 +32,17 @@ theme_set(theme_custom1())
 
 vmc <- if (is.null(params$vmc)) opt$vmc else params$vmc
 
-scenarios <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
+# the climates predicted by 03_predict_raster.R and the combine scripts:
+# "minimal": current and the two 1 km futures (BNU-ESM, IPSL-CM5A-MR);
+# "full": current, gridMET and the MACA GCMs (4 km)
+climate_set <- params$climate_set %||% opt$climate_set %||% "minimal"
+stopifnot(climate_set %in% c("minimal", "full"))
+
+scenarios <- if (climate_set == "minimal") {
+  c("current", "BNU-ESM", "IPSL-CM5A-MR")
+} else {
+  "current"  # gridMET and the GCMs are read in their own section
+}
 future <- setdiff(scenarios, "current")
 
 # all final layers (% cover, or % of the total for shares), per scenario
@@ -147,13 +158,18 @@ comp <- spec$components
 tree_vmc <- comp$vmc[comp$component == "tree_all"]
 herb_vmc <- comp$vmc[comp$component == "herbaceous"]
 
+# the models behind tree_all and herbaceous
+tree_all_comp <- cover_specs$combined$tree_all[[tree_vmc]]$components
+herb_comp <- cover_specs$combined$herbaceous[[herb_vmc]]$components
+# version of the combined tree cover (cover_specs$combined$tree) that
+# tree_all is built from
+combined_tree_vmc <- tree_all_comp$vmc[tree_all_comp$component == "tree"]
+
 # the models behind each component
 bind_rows(
   comp |> filter(component %in% c("shrub", "bare_ground")),
-  cover_specs$combined$tree_all[[tree_vmc]]$components |>
-    mutate(component = paste0("tree_all: ", component)),
-  cover_specs$combined$herbaceous[[herb_vmc]]$components |>
-    mutate(component = paste0("herbaceous: ", component))
+  tree_all_comp |> mutate(component = paste0("tree_all: ", component)),
+  herb_comp |> mutate(component = paste0("herbaceous: ", component))
 ) |>
   knitr::kable()
 ```
@@ -183,12 +199,14 @@ layout <- list(g_all$cover_tree, g_all$cover_needle, g_all$share_needle,
 wrap_plots(layout, ncol = 3) & legend_bottom
 ```
 
+```{asis, echo = climate_set == "minimal"}
 # Current and future, by type {.tabset}
 
 For each layer: current and future predictions (left), and the change from
 current (right).
+```
 
-```{r maps-by-group, results = "asis", fig.width = 10, fig.height = 11}
+```{r maps-by-group, eval = climate_set == "minimal", results = "asis", fig.width = 10, fig.height = 11}
 walk(unique(vars$group), \(g) {
   cat("\n\n## ", g, "\n\n", sep = "")
   filter(vars, group == g) |>
@@ -199,36 +217,302 @@ walk(unique(vars$group), \(g) {
 })
 ```
 
+```{asis, echo = climate_set == "full"}
+# gridMET, Daymet and GCMs, by type {.tabset}
+
+For each layer, on the gridMET grid (4 km):
+
+- **Top row**: the prediction under gridMET 1991-2020 normals, and the
+  Daymet (1 km, 1991-2020 normals) prediction averaged onto the gridMET grid
+  minus the gridMET prediction.
+- **Two rows per RCP** (2070-2099, the 20 MACAv2-METDATA GCMs), the change
+  from gridMET (GCM - gridMET): per cell, the minimum, median and maximum
+  across GCMs (so the GCM can differ from cell to cell); and the change under
+  the GCMs with the lowest, median and highest CONUS-mean change
+  (area-weighted, `gcm_deltas()`, as in 03_predict_raster.R; median = rank
+  10 of 20), ranked separately for each layer and RCP.
+
+All difference maps of a layer share one colour scale, symmetric, to the
+99th percentile of the absolute differences. Inset histograms are of all
+cells. The GCM shares are computed from the GCM predictions as for the other
+scenarios: needleleaf from its share model, broadleaf = 100% - needleleaf,
+and C3, C4 and forb as their cover (04_combine_herb.R) divided by herbaceous
+cover (the rescaled shares).
+```
+
+```{r gcm-data, eval = climate_set == "full"}
+# MACA futures, as in 03_predict_raster.R
+rcps <- c("rcp45", "rcp85")
+period <- "2070-2099"
+n_gcms <- 20
+rcp_labels <- c(rcp45 = "RCP 4.5", rcp85 = "RCP 8.5")
+
+# gridMET (4 km) predictions: the baseline for every difference
+gridmet <- read_combined_all(vmc, "gridmet")
+stopifnot(identical(names(gridmet), names(pred$current)))
+
+# Daymet (1 km) predictions averaged onto the gridMET grid, as the soils are
+# (read_soil_gridmet())
+daymet_4km <- terra::project(pred$current, gridmet, method = "average")
+
+#' All final layers for one RCP and period, one layer per GCM
+#'
+#' The GCM counterpart of read_combined_all(), on the gridMET grid: combined
+#' tree cover (04_combine_tree.R), C3, C4 and forb cover (04_combine_herb.R),
+#' and the needleleaf share, shrub, herbaceous and bare ground predictions
+#' (03_predict_raster.R). The other layers are computed from these, as
+#' read_combined_all() does for one scenario.
+#'
+#' @param rcp RCP, e.g. "rcp45".
+#' @param period Period, e.g. "2070-2099".
+#' @return Named list, one element per layer of vars$layer: SpatRaster with
+#'   one layer per GCM, named by GCM.
+#' @examples
+#' rcp <- "rcp45"
+#' period <- "2070-2099"
+#' read_all_gcms(rcp = rcp, period = period)
+read_all_gcms <- function(rcp, period) {
+  scenario <- paste0(rcp, "_", period)
+
+  tree <- terra::rast(combined_path("tree", combined_tree_vmc, "prediction",
+                                    scenario))
+  gcms <- names(tree)
+  stopifnot(length(gcms) == n_gcms)
+
+  # predictions of a single (not combined) model, with the GCMs in the same
+  # order as tree cover's
+  read_model <- function(m) {
+    r <- terra::rast(cover_pred_path(m$cover_type, m$cover_model, m$vc,
+                                     m$vmc, scenario))
+    stopifnot(identical(names(r), gcms))
+    r
+  }
+  needle <- read_model(tree_all_comp[tree_all_comp$component == "needle", ])
+  shrub <- read_model(comp[comp$component == "shrub", ])
+  herb <- read_model(herb_comp[herb_comp$component == "herbaceous", ])
+
+  # C3, C4 and forb cover: layers cover_<type>_<gcm>
+  herb_types <- terra::rast(combined_path("herbaceous", herb_vmc,
+                                          "prediction", scenario))
+  cover_c3 <- herb_types[[paste0("cover_c3_", gcms)]]
+  cover_c4 <- herb_types[[paste0("cover_c4_", gcms)]]
+  cover_forb <- herb_types[[paste0("cover_forb_", gcms)]]
+
+  out <- list(
+    cover_tree = tree,
+    # as tree_leaf_cover(): broadleaf share is 100 - needleleaf share
+    share_needle = needle,
+    cover_needle = tree * needle / 100,
+    share_broad = 100 - needle,
+    cover_broad = tree * (100 - needle) / 100,
+    cover_shrub = shrub,
+    cover_herbaceous = herb,
+    # each type's cover is its rescaled share times herbaceous cover
+    # (split_cover()), so the share is cover / herbaceous cover
+    share_c3 = 100 * cover_c3 / herb,
+    cover_c3 = cover_c3,
+    share_c4 = 100 * cover_c4 / herb,
+    cover_c4 = cover_c4,
+    share_forb = 100 * cover_forb / herb,
+    cover_forb = cover_forb
+  )
+  if (has_bare) {
+    out$cover_bare_ground <- read_model(comp[comp$component == "bare_ground", ])
+  }
+  stopifnot(all(vars$layer %in% names(out)))
+
+  # every raster's layers are in the order of gcms (checked above, and kept by
+  # the arithmetic), so they are named by GCM
+  map(out[vars$layer], \(r) {
+    names(r) <- gcms
+    r
+  })
+}
+
+#' Change from gridMET of one layer under one RCP
+#'
+#' @param preds SpatRaster, one layer per GCM, named by GCM: the layer's
+#'   predictions under one RCP (read_all_gcms()).
+#' @param base SpatRaster, one layer: the layer's gridMET prediction.
+#' @return List: `summary`, SpatRaster with layers min, median and max: per
+#'   cell, across GCMs, of GCM - gridMET; `by_role`, SpatRaster with layers
+#'   lowest, median and highest: GCM - gridMET for the GCMs with the lowest,
+#'   median and highest CONUS-mean change; `role_gcm`, the names of those
+#'   GCMs (named lowest, median, highest); `deltas`, the gcm_deltas() table.
+#' @examples
+#' preds <- read_all_gcms("rcp45", "2070-2099")$cover_c3
+#' base <- gridmet$cover_c3
+#' gcm_change(preds = preds, base = base)
+gcm_change <- function(preds, base) {
+  # one layer per GCM
+  change <- preds - base
+
+  summary_r <- c(min(change), terra::median(change), max(change))
+  names(summary_r) <- c("min", "median", "max")
+
+  # CONUS-mean change of each GCM, area-weighted (Functions/spatial.R)
+  deltas <- gcm_deltas(preds, base)
+  role_gcm <- c(lowest = deltas$gcm[which(deltas$role == "lowest")],
+                median = deltas$gcm[which(deltas$role == "median")],
+                highest = deltas$gcm[which(deltas$role == "highest")])
+  stopifnot(length(role_gcm) == 3)
+  by_role <- change[[role_gcm]]
+  names(by_role) <- names(role_gcm)
+
+  list(summary = summary_r, by_role = by_role, role_gcm = role_gcm,
+       deltas = deltas)
+}
+
+# changes from gridMET, by RCP and layer. The GCM predictions are read one
+# RCP at a time, as there are many of them
+changes <- map(set_names(rcps), \(rcp) {
+  preds <- read_all_gcms(rcp, period)
+  map(set_names(vars$layer), \(layer) {
+    gcm_change(preds[[layer]], gridmet[[layer]])
+  })
+})
+```
+
+```{r gcm-table, eval = climate_set == "full"}
+imap(changes, \(by_layer, rcp_name) {
+  bind_rows(map(by_layer, "deltas"), .id = "layer") |>
+    mutate(rcp = rcp_labels[[rcp_name]])
+}) |>
+  bind_rows() |>
+  filter(!is.na(role)) |>
+  mutate(gcm = paste0(gcm, " (", round(delta, 2), ")")) |>
+  left_join(select(vars, layer, label), by = "layer") |>
+  arrange(factor(layer, levels = vars$layer), rcp) |>
+  select(label, rcp, role, gcm) |>
+  pivot_wider(names_from = role, values_from = gcm) |>
+  select(label, rcp, lowest, median, highest) |>
+  knitr::kable(caption = paste(
+    "GCMs with the lowest, median and highest CONUS-mean change from",
+    "gridMET, for each layer and RCP (the change, in % points, in brackets)"))
+```
+
+```{r gcm-fun, eval = climate_set == "full"}
+#' Maps of one layer: gridMET, Daymet - gridMET, and the GCM changes
+#'
+#' Row 1: gridMET, Daymet - gridMET, and the legends. Then two rows per RCP:
+#' the per-cell min, median and max across GCMs of GCM - gridMET; and GCM -
+#' gridMET for the lowest, median and highest GCM (gcm_change()). Every
+#' difference map shares one diverging scale, symmetric, to the 99th
+#' percentile of the absolute differences. Inset histograms of all cells.
+#'
+#' @param layer Layer name in `gridmet`.
+#' @param label Title.
+#' @param is_share Logical; a share rather than cover.
+#' @return A patchwork object.
+#' @examples
+#' layer <- "cover_c3"
+#' label <- "C3 grass cover"
+#' is_share <- FALSE
+#' plot_gcm_layer(layer = layer, label = label, is_share = is_share)
+plot_gcm_layer <- function(layer, label, is_share) {
+  base <- gridmet[[layer]]
+  daymet_diff <- daymet_4km[[layer]] - base
+
+  # every difference map of the layer, for the shared scale
+  gcm_diffs <- map(rcps, \(rcp) {
+    c(changes[[rcp]][[layer]]$summary, changes[[rcp]][[layer]]$by_role)
+  })
+  all_diffs <- terra::rast(c(list(daymet_diff), gcm_diffs))
+  v <- as.vector(terra::values(all_diffs))
+  lim <- quantile(abs(v), 0.99, na.rm = TRUE, names = FALSE)
+  diff_scale <- colorscale_diverging(
+    name = "Difference from\ngridMET (% points)", limits = c(-lim, lim))
+
+  map_diff <- function(r, title) {
+    plot_map_conus(r, colorscale = diff_scale, title = title,
+                   inset_hist = TRUE)
+  }
+
+  # row 1; the legends go in the empty third panel
+  top <- list(
+    plot_map_conus(base, colorscale = value_scale(list(base), is_share),
+                   title = "gridMET, 1991-2020", inset_hist = TRUE),
+    map_diff(daymet_diff, "Daymet - gridMET"),
+    guide_area()
+  )
+
+  # two rows per RCP
+  by_rcp <- map(rcps, \(rcp) {
+    ch <- changes[[rcp]][[layer]]
+    lab <- rcp_labels[[rcp]]
+    list(
+      map_diff(ch$summary[["min"]], paste0(lab, ": min across GCMs")),
+      map_diff(ch$summary[["median"]], paste0(lab, ": median across GCMs")),
+      map_diff(ch$summary[["max"]], paste0(lab, ": max across GCMs")),
+      map_diff(ch$by_role[["lowest"]],
+               paste0(lab, ": lowest GCM (", ch$role_gcm[["lowest"]], ")")),
+      map_diff(ch$by_role[["median"]],
+               paste0(lab, ": median GCM (", ch$role_gcm[["median"]], ")")),
+      map_diff(ch$by_role[["highest"]],
+               paste0(lab, ": highest GCM (", ch$role_gcm[["highest"]], ")"))
+    )
+  }) |>
+    list_flatten()
+
+  wrap_plots(c(top, by_rcp), ncol = 3) +
+    plot_layout(guides = "collect") +
+    plot_annotation(title = label) &
+    theme(legend.direction = "horizontal",
+          legend.key.width = unit(1.5, "cm"),
+          legend.title.position = "top")
+}
+```
+
+```{r maps-gcm, eval = climate_set == "full", results = "asis", fig.width = 12, fig.height = 16}
+walk(unique(vars$group), \(g) {
+  cat("\n\n## ", g, "\n\n", sep = "")
+  filter(vars, group == g) |>
+    pwalk(\(layer, label, is_share, ...) {
+      print(plot_gcm_layer(layer, label, is_share))
+      cat("\n\n")
+    })
+})
+```
+
 # Residuals
 
 ## Data
 
-Predicted (current climate) minus observed, in sample: the models were fit
-to these data, so this shows the spatial pattern of the errors, not an
-independent test (and for random forests the training points are in-bag).
-See each model's own diagnostics report for out-of-fold predictions.
+The observations are the training pixel-years of the data version of the
+model(s) each layer comes from (`vc` in the fit metrics table). They are
+compared with two kinds of predictions:
 
-- **Tree cover**: compared wall to wall with 2021 RAP tree cover 
-  (cells passing the LCMAP and 2021 fire masks), with zero-tree cells 
+- **Fit metrics**: the predictions at those pixel-years, made with each
+  pixel-year's own climate, in sample and out of fold (see Fit metrics).
+- **Maps and quantile plots** (By type): the current-climate raster
+  (normals, anomalies 0) extracted at the training pixels, in sample: the
+  models were fit to these data, so this shows the spatial pattern of the
+  errors, not an independent test (and for random forests the training
+  points are in-bag). The maps show the mean over years at each pixel.
+
+Observed values:
+
+- **Tree cover**: `cov_tree`, set to 0 where the zero-tree layer
+  (`zero_tree`) is 1, as for `c_needle` and `c_broad` (below). Its map
+  instead compares wall to wall with 2021 RAP tree
+  cover (cells passing the LCMAP and 2021 fire masks), with zero-tree cells
   (RAP zero-tree layer, at the zero-tree model’s threshold) set to 0, as in
   01_tree_combined_diagnostics.Rmd.
-- **Everything else**: the predictions extracted at the training pixels of
-  the data version of the model(s) the layer comes from (e.g. c01 for
-  shrub, herbaceous, bare ground and the shares), mapped as the mean over
-  years at each
-  pixel. Observed shares are the field fractions (`frac_<type>`, as %);
-  observed cover of a type is its parent cover times its fraction, as the
-  predictions are built, e.g. modelled `share_c3` is compared with
-  `100 * frac_c3`, and `cover_c3` with `cov_herbaceous * frac_c3`. The
+- **Everything else**: observed shares are the field fractions
+  (`frac_<type>`, as %); observed cover of a type is its parent cover
+  times its fraction, as the predictions are built, e.g. modelled
+  `share_c3` is compared with `100 * frac_c3`, and `cover_c3` with
+  `cov_herbaceous * frac_c3`. The
   exception is needleleaf and broadleaf cover, which are compared with
   `c_needle` and `c_broad`: the field fractions times RAP tree cover at
   the cell/year (0 where the RAP zero-tree layer is 1 or RAP tree cover is 0,
   even if the fraction is NA; see
   `08_combine_cover_and_covariates.R`), as the tree cover model is fit to
-  RAP. These are NA where the cell has no 2021 RAP tree cover, so they have
-  fewer pixel-years than the shares. Broadleaf isn't modelled directly (its
-  share is 100% minus the needleleaf share), so its observations are those
-  of the needleleaf model, with `frac_broad` (= 1 - `frac_needle`). The
+  RAP. These are NA where RAP has no tree cover for that cell-year, and
+  where RAP has trees but the field fraction is NA. Broadleaf isn't
+  modelled directly (its share is 100% minus the needleleaf share), so its
+  observations are those of the needleleaf model, with `frac_broad`
+  (= 1 - `frac_needle`). The
   other component covers (`c_<type>`) are not used: LFRDB's are summed
   species cover, which can exceed 100%, and LDC's are any-hit rather than
   first-hit.
@@ -239,10 +523,7 @@ Quantile plots use the training pixel-years and the f5 predictors
 ```{r resid-data}
 # data version of the observations for each layer: that of the model(s) the
 # layer comes from
-tree_all_comp <- cover_specs$combined$tree_all[[tree_vmc]]$components
-tree_parts <- cover_specs$combined$tree[[
-  tree_all_comp$vmc[tree_all_comp$component == "tree"]]]$components
-herb_comp <- cover_specs$combined$herbaceous[[herb_vmc]]$components
+tree_parts <- cover_specs$combined$tree[[combined_tree_vmc]]$components
 
 vc_of <- function(x, comp) unname(comp$vc[comp$component == x])
 vc_tree <- unique(tree_parts$vc[tree_parts$cover_type == "cover"])
@@ -272,10 +553,10 @@ zt_threshold <- read_cover_model(zt$cover_type, zt$cover_model, zt$vc,
 
 #' Observed value of a layer in the training data (%)
 #'
-#' Tree cover is set to 0 where the zero-tree % is above the zero-tree
-#' threshold (where that column exists), as the predictions are. Shares are
-#' the fractions (`frac_<type>`) as %. Needleleaf and broadleaf cover are
-#' `c_needle` and `c_broad` (field fraction x 2021 RAP tree cover, from
+#' Tree cover is set to 0 where the zero-tree layer (`zero_tree`) is 1 (where
+#' that column exists), as the predictions are. Shares are the fractions
+#' (`frac_<type>`) as %. Needleleaf and broadleaf cover are `c_needle` and
+#' `c_broad` (field fraction x same-year RAP tree cover, from
 #' `08_combine_cover_and_covariates.R`). Cover of c3, c4 and forb is
 #' `cov_herbaceous` times the fraction, and 0 where `cov_herbaceous` is 0.
 #'
@@ -285,8 +566,10 @@ zt_threshold <- read_cover_model(zt$cover_type, zt$cover_model, zt$vc,
 observed_layer <- function(d, layer) {
   type <- str_remove(layer, "^(cover|share)_")
   if (layer == "cover_tree") {
-    zero <- if ("pct_zero_tree" %in% names(d)) {
-      !is.na(d$pct_zero_tree) & d$pct_zero_tree > zt_threshold
+    # the binary zero-tree layer, as for c_needle in
+    # 08_combine_cover_and_covariates.R
+    zero <- if ("zero_tree" %in% names(d)) {
+      !is.na(d$zero_tree) & d$zero_tree == 1
     } else {
       rep(FALSE, nrow(d))
     }
@@ -304,9 +587,11 @@ observed_layer <- function(d, layer) {
   if_else(!is.na(parent) & parent == 0, 0, parent * frac)
 }
 
-# training data with the current predictions at each pixel (pred_<layer>)
+# training data with the current predictions at each pixel (pred_<layer>),
+# and whether the pixel is in the sagebrush region (load_sagebrush_mask())
 train <- map(unique(vars$vc), \(v) {
   d <- read_cover_training(v)
+  d$sagebrush <- in_sagebrush(d)
   p <- terra::extract(pred$current, as.matrix(d[c("x", "y")]))
   bind_cols(d, rename_with(as_tibble(p), \(n) paste0("pred_", n)))
 }) |>
@@ -364,65 +649,160 @@ plot_resid_quantiles <- function(df, label, ylab) {
 
 ## Fit metrics
 
-In sample, for every layer: at the training pixel-years (data version
-`vc`), and with each pixel's observations averaged over its years (pixel
-means). The predictions come from the current-climate raster, which gives
-the same value in every year of a pixel, so the pixel-year metrics also
-count year-to-year variation the raster can't represent. The pixel means
-leave that out and are the fairer test of the climate relationships; the
-gap between the two shows how much of the error is year-to-year variation.
-For tree cover, also wall to wall against the RAP raster (all cells with
-RAP data). `n_rows` is the number of pixel-years, pixels or cells each row
-is computed on. Units are % cover, or % share for shares. MSE is
-RMSE^2; R^2 is 1 - SSE/SST (negative when the predictions do worse than the
-observed mean); bias is mean(predicted - observed). Needleleaf and
-broadleaf cover also get a row for observed cover > 0 only, as the many
-observed zeros (wherever RAP tree cover is 0) can inflate the fit.
+Predicted vs observed at the training pixel-years of each layer's data
+version (`vc`). The predictions are those written by the combining scripts
+for the combined layers (04_combine_tree.R, 05_combine_tree_all.R,
+04_combine_herb.R), and those saved with the fitted model for shrub,
+herbaceous and bare ground cover (`read_cover_predictions()`). Each uses the
+pixel-year's own climate: the normals of the 30 years before it (20-29
+years for field pixel-years before 2010, as Daymet starts in 1980), and its
+anomalies for models that use them. `pred_in` is in sample (out-of-bag for
+random forest components); `pred_oof` is out of fold (each component model
+has its own environmental folds).
+
+Pixel-years where `pred_oof` uses a prediction that isn't out of fold
+(`fallback`; see the combining scripts) are left out of both, so `pred_in`
+and `pred_oof` are on the same pixel-years; `pct_fallback` is the % left
+out. These are pixel-years a component model wasn't fit to, e.g. tree_forest
+(fit only where tree cover is > 10%) at pixel-years with tree cover <= 10%
+where it gets weight in the blend, or the share models where the total cover
+is 0 (the fractions are NA there). Total tree cover and herbaceous cover don't
+count toward fallback for the needleleaf, broadleaf, C3, C4 and forb layers:
+they are fit to other data, so at these pixel-years their predictions are
+mostly or entirely full-model ones. For the C3, C4 and forb layers only their
+own share model counts, as the other two shares only rescale it (e.g. forb
+is kept at FIA-only pixel-years, which have no C3/C4 split).
+
+Region: all pixel-years, those in the sagebrush region (sagebrush biome
+mask, `load_sagebrush_mask()`), and those outside it. `n` is the number of
+pixel-years. Units are % cover, or % share for shares. MSE is RMSE^2; R^2 is
+1 - SSE/SST (negative when the predictions do worse than the observed mean);
+bias is mean(predicted - observed). Needleleaf and broadleaf cover also get
+rows for observed cover > 0 only, as observed zeros (e.g. where RAP tree
+cover is 0) can inflate the fit.
 
 ```{r resid-metrics}
-#' Training data averaged over each pixel's years
+#' Predictions of a single (not combined) model at its pixel-years
 #'
-#' The prediction (current-climate raster) is the same in every year of a
-#' pixel, so this compares it with the pixel's mean observation, leaving out
-#' year-to-year variation the raster can't follow.
+#' The predictions saved with the fitted model, at the rows it was fit to
+#' (read_cover_predictions()).
 #'
-#' @param df Output of resid_df().
-#' @return One row per pixel: cell, cover (mean observed), cover_pred.
-pixel_means <- function(df) {
-  summarise(df, cover = mean(cover), cover_pred = mean(cover_pred), .by = cell)
+#' @param m One row of a combined spec's `components` tibble.
+#' @param layer_name Name of the layer the model predicts, e.g. "cover_shrub".
+#' @return Tibble: cell, year, pred_in, pred_oof, layer, and fallback (FALSE:
+#'   every row is one the model was fit to, so pred_oof is out of fold).
+#' @examples
+#' m <- comp[comp$component == "shrub", ]
+#' layer_name <- "cover_shrub"
+#' single_model_preds(m = m, layer_name = layer_name)
+single_model_preds <- function(m, layer_name) {
+  stopifnot(nrow(m) == 1)
+  read_cover_predictions(m$cover_type, m$cover_model, m$vc, m$vmc) |>
+    mutate(layer = layer_name, fallback = FALSE)
+}
+
+# predictions at the pixel-years, one row per layer and pixel-year
+pixel_preds <- bind_rows(
+  # 04_combine_tree.R
+  read_cover_predictions("combined", "tree", vc_tree, combined_tree_vmc) |>
+    mutate(layer = "cover_tree"),
+  # 05_combine_tree_all.R: share_ and cover_ needle and broad
+  read_cover_predictions("combined", "tree_all", vc_lookup[["needle"]],
+                         tree_vmc),
+  single_model_preds(comp[comp$component == "shrub", ], "cover_shrub"),
+  single_model_preds(herb_comp[herb_comp$component == "herbaceous", ],
+                     "cover_herbaceous"),
+  # 04_combine_herb.R: share_ and cover_ c3, c4 and forb, and share_sum
+  read_cover_predictions("combined", "herbaceous", vc_lookup[["c3"]],
+                         herb_vmc)
+)
+if (has_bare) {
+  bare_preds <- single_model_preds(comp[comp$component == "bare_ground", ],
+                                   "cover_bare_ground")
+  pixel_preds <- bind_rows(pixel_preds, bare_preds)
+}
+pixel_preds <- select(pixel_preds, layer, cell, year, pred_in, pred_oof,
+                      fallback)
+stopifnot(all(vars$layer %in% pixel_preds$layer),
+          !anyDuplicated(pixel_preds[c("layer", "cell", "year")]))
+
+#' Observed and predicted values of one layer at its pixel-years
+#'
+#' The layer's rows of pixel_preds, joined by cell and year to its
+#' observations (observed_layer()) in the training data of data version vc.
+#'
+#' @param layer_name Layer, e.g. "cover_c3".
+#' @param vc Data version the layer's predictions were made at (vars$vc).
+#' @return Tibble, one row per pixel-year with an observation: layer, cell,
+#'   year, pred_in, pred_oof, fallback, sagebrush (TRUE in the sagebrush
+#'   region), observed.
+#' @examples
+#' layer_name <- "cover_c3"
+#' vc <- vars$vc[vars$layer == layer_name]
+#' obs_pred_pixels(layer_name = layer_name, vc = vc)
+obs_pred_pixels <- function(layer_name, vc) {
+  d <- train[[vc]]
+  obs <- tibble(cell = d$cell, year = d$year, sagebrush = d$sagebrush,
+                observed = observed_layer(d, layer_name))
+  p <- filter(pixel_preds, layer == layer_name)
+  out <- inner_join(p, obs, by = c("cell", "year"))
+  # each prediction matches exactly one pixel-year of the training data
+  stopifnot(!anyDuplicated(obs[c("cell", "year")]),
+            nrow(out) == nrow(p),
+            !anyNA(out$pred_in), !anyNA(out$pred_oof))
+  filter(out, !is.na(observed))
+}
+
+#' Fit metrics of one layer, by region and prediction type
+#'
+#' Pixel-years with fallback = TRUE are left out (see above).
+#'
+#' @param layer_name,vc As in obs_pred_pixels().
+#' @param positive_only Logical; only pixel-years with observed > 0.
+#' @return Tibble, one row per region and prediction type: region,
+#'   predictions ("pred_in" or "pred_oof"), the cover_metrics() columns, and
+#'   pct_fallback (% of the region's pixel-years left out).
+#' @examples
+#' layer_name <- "cover_needle"
+#' vc <- vars$vc[vars$layer == layer_name]
+#' positive_only <- FALSE
+#' layer_metrics(layer_name = layer_name, vc = vc,
+#'               positive_only = positive_only)
+layer_metrics <- function(layer_name, vc, positive_only = FALSE) {
+  d <- obs_pred_pixels(layer_name, vc)
+  if (positive_only) d <- filter(d, observed > 0)
+
+  # the pixel-years of each region, stacked
+  d <- bind_rows(mutate(d, region = "all"),
+                 mutate(filter(d, sagebrush), region = "sagebrush"),
+                 mutate(filter(d, !sagebrush), region = "outside sagebrush"))
+
+  fallback_pct <- summarise(d, pct_fallback = 100 * mean(fallback),
+                            .by = region)
+
+  d |>
+    filter(!fallback) |>
+    pivot_longer(c(pred_in, pred_oof), names_to = "predictions",
+                 values_to = "predicted") |>
+    reframe(cover_metrics(observed, predicted), .by = c(region, predictions)) |>
+    left_join(fallback_pct, by = "region")
 }
 
 metrics <- pmap(vars, \(layer, label, vc, ...) {
-  df <- resid_df(layer, vc)
-  sets <- list("pixel-years" = df, "pixel means" = pixel_means(df))
+  out <- mutate(layer_metrics(layer, vc), label = label)
   if (layer %in% c("cover_needle", "cover_broad")) {
-    sets[["pixel-years, observed > 0"]] <- filter(df, cover > 0)
-    sets[["pixel means, observed > 0"]] <- filter(pixel_means(df), cover > 0)
+    positive <- layer_metrics(layer, vc, positive_only = TRUE) |>
+      mutate(label = paste0(label, ", observed > 0"))
+    out <- bind_rows(out, positive)
   }
-  imap(sets, \(d, what) {
-    cover_metrics(d$cover, d$cover_pred) |>
-      mutate(layer = layer, label = label,
-             compared_to = paste0("training ", vc, ", ", what),
-             n_rows = nrow(d), .before = 1)
-  }) |>
-    bind_rows()
+  mutate(out, vc = vc)
 }) |>
   bind_rows()
 
-if (wall) {
-  v <- terra::values(c(obs_tree, pred$current$cover_tree), mat = TRUE,
-                     na.rm = TRUE)
-  metrics <- cover_metrics(v[, 1], v[, 2]) |>
-    mutate(layer = "cover_tree", label = "Tree cover",
-           compared_to = "RAP 2021 raster (cells)", n_rows = nrow(v),
-           .before = 1) |>
-    bind_rows(metrics)
-  rm(v)
-}
-
 metrics |>
-  mutate(MSE = RMSE^2, .before = RMSE) |>
-  select(-layer) |>
+  mutate(MSE = RMSE^2) |>
+  select(label, vc, region, predictions, n, pct_fallback, MAE, MSE, RMSE, R2,
+         bias, mean_observed, mean_predicted) |>
   knitr::kable(digits = 2)
 ```
 
