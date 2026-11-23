@@ -218,6 +218,8 @@ pwalk(runs, \(cover_type, cover_model, vmc, vc) {
     # combined reports have no data version (components can differ)
     if (is_combined) {
       params <- list(vmc = vmc)
+      # only the combined-all report has a climate_set param so far
+      if (cover_model == "all") params$climate_set <- climate_set
       output_file <- paste0(cover_type, "_", cover_model, "_", vmc, ".html")
     } else {
       params <- list(cover_type = cover_type, cover_model = cover_model,

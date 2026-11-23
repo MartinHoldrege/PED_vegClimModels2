@@ -220,24 +220,33 @@ walk(unique(vars$group), \(g) {
 ```{asis, echo = climate_set == "full"}
 # gridMET, Daymet and GCMs, by type {.tabset}
 
-For each layer, on the gridMET grid (4 km):
+For each layer, on the gridMET grid (4 km), two figures with the same
+layout:
 
-- **Top row**: the prediction under gridMET 1991-2020 normals, and the
-  Daymet (1 km, 1991-2020 normals) prediction averaged onto the gridMET grid
+1. **Change from gridMET**
+   - Top row: the prediction under gridMET 1991-2020 normals, and the Daymet
+     (1 km, 1991-2020 normals) prediction averaged onto the gridMET grid
   minus the gridMET prediction.
-- **Two rows per RCP** (2070-2099, the 20 MACAv2-METDATA GCMs), the change
+   - Two rows per RCP (2070-2099, the 20 MACAv2-METDATA GCMs), the change
   from gridMET (GCM - gridMET): per cell, the minimum, median and maximum
-  across GCMs (so the GCM can differ from cell to cell); and the change under
-  the GCMs with the lowest, median and highest CONUS-mean change
-  (area-weighted, `gcm_deltas()`, as in 03_predict_raster.R; median = rank
-  10 of 20), ranked separately for each layer and RCP.
+     across GCMs (so the GCM can differ from cell to cell); and the change
+     under the GCMs with the lowest, median and highest CONUS-mean change
+     (area-weighted, `gcm_deltas()`, as in 03_predict_raster.R; median =
+     rank 10 of 20), ranked separately for each layer and RCP. The
+     difference maps share one colour scale, symmetric, to the 99th
+     percentile of the absolute differences.
+2. **Predictions**: the same maps as predictions (% cover, or % share)
+   rather than changes: gridMET, Daymet (averaged onto the gridMET grid),
+   and for each RCP the per-cell minimum, median and maximum across GCMs
+   and the predictions of the same lowest, median and highest GCMs. Each
+   GCM's change subtracts the same gridMET value at a cell, so these maps
+   are the change maps plus gridMET. All maps share one colour scale
+   (covers: 0 to the largest 99th percentile; shares: 0-100%).
 
-All difference maps of a layer share one colour scale, symmetric, to the
-99th percentile of the absolute differences. Inset histograms are of all
-cells. The GCM shares are computed from the GCM predictions as for the other
-scenarios: needleleaf from its share model, broadleaf = 100% - needleleaf,
-and C3, C4 and forb as their cover (04_combine_herb.R) divided by herbaceous
-cover (the rescaled shares).
+Inset histograms are of all cells. The GCM shares are computed from the
+GCM predictions as for the other scenarios: needleleaf from its share model,
+broadleaf = 100% - needleleaf, and C3, C4 and forb as their cover
+(04_combine_herb.R) divided by herbaceous cover (the rescaled shares).
 ```
 
 ```{r gcm-data, eval = climate_set == "full"}
@@ -337,8 +346,10 @@ read_all_gcms <- function(rcp, period) {
 #' @return List: `summary`, SpatRaster with layers min, median and max: per
 #'   cell, across GCMs, of GCM - gridMET; `by_role`, SpatRaster with layers
 #'   lowest, median and highest: GCM - gridMET for the GCMs with the lowest,
-#'   median and highest CONUS-mean change; `role_gcm`, the names of those
-#'   GCMs (named lowest, median, highest); `deltas`, the gcm_deltas() table.
+#'   median and highest CONUS-mean change; `summary_pred` and `by_role_pred`,
+#'   the same of the predictions themselves (not minus gridMET); `role_gcm`,
+#'   the names of those GCMs (named lowest, median, highest); `deltas`, the
+#'   gcm_deltas() table.
 #' @examples
 #' preds <- read_all_gcms("rcp45", "2070-2099")$cover_c3
 #' base <- gridmet$cover_c3
@@ -349,6 +360,8 @@ gcm_change <- function(preds, base) {
 
   summary_r <- c(min(change), terra::median(change), max(change))
   names(summary_r) <- c("min", "median", "max")
+  summary_pred <- c(min(preds), terra::median(preds), max(preds))
+  names(summary_pred) <- c("min", "median", "max")
 
   # CONUS-mean change of each GCM, area-weighted (Functions/spatial.R)
   deltas <- gcm_deltas(preds, base)
@@ -358,13 +371,16 @@ gcm_change <- function(preds, base) {
   stopifnot(length(role_gcm) == 3)
   by_role <- change[[role_gcm]]
   names(by_role) <- names(role_gcm)
+  by_role_pred <- preds[[role_gcm]]
+  names(by_role_pred) <- names(role_gcm)
 
-  list(summary = summary_r, by_role = by_role, role_gcm = role_gcm,
-       deltas = deltas)
+  list(summary = summary_r, by_role = by_role,
+       summary_pred = summary_pred, by_role_pred = by_role_pred,
+       role_gcm = role_gcm, deltas = deltas)
 }
 
-# changes from gridMET, by RCP and layer. The GCM predictions are read one
-# RCP at a time, as there are many of them
+# changes from gridMET (and the predictions), by RCP and layer. The GCM
+# predictions are read one RCP at a time, as there are many of them
 changes <- map(set_names(rcps), \(rcp) {
   preds <- read_all_gcms(rcp, period)
   map(set_names(vars$layer), \(layer) {
@@ -392,54 +408,82 @@ imap(changes, \(by_layer, rcp_name) {
 ```
 
 ```{r gcm-fun, eval = climate_set == "full"}
-#' Maps of one layer: gridMET, Daymet - gridMET, and the GCM changes
+#' Maps of one layer: gridMET, Daymet, and the GCMs
 #'
-#' Row 1: gridMET, Daymet - gridMET, and the legends. Then two rows per RCP:
-#' the per-cell min, median and max across GCMs of GCM - gridMET; and GCM -
-#' gridMET for the lowest, median and highest GCM (gcm_change()). Every
-#' difference map shares one diverging scale, symmetric, to the 99th
-#' percentile of the absolute differences. Inset histograms of all cells.
+#' Row 1: gridMET, Daymet, and the legends. Then two rows per RCP: the
+#' per-cell min, median and max across GCMs, and the lowest, median and
+#' highest GCM (gcm_change()). With what = "change", every map but gridMET
+#' is the difference from gridMET, on one diverging scale, symmetric, to the
+#' 99th percentile of the absolute differences. With what = "prediction",
+#' every map is a prediction (% cover or % share), on one scale
+#' (value_scale()). Inset histograms of all cells.
 #'
 #' @param layer Layer name in `gridmet`.
 #' @param label Title.
 #' @param is_share Logical; a share rather than cover.
+#' @param what "change" (from gridMET) or "prediction".
 #' @return A patchwork object.
 #' @examples
 #' layer <- "cover_c3"
 #' label <- "C3 grass cover"
 #' is_share <- FALSE
-#' plot_gcm_layer(layer = layer, label = label, is_share = is_share)
-plot_gcm_layer <- function(layer, label, is_share) {
+#' what <- "change"
+#' plot_gcm_layer(layer = layer, label = label, is_share = is_share,
+#'                what = what)
+plot_gcm_layer <- function(layer, label, is_share,
+                           what = c("change", "prediction")) {
+  what <- match.arg(what)
   base <- gridmet[[layer]]
-  daymet_diff <- daymet_4km[[layer]] - base
 
-  # every difference map of the layer, for the shared scale
-  gcm_diffs <- map(rcps, \(rcp) {
-    c(changes[[rcp]][[layer]]$summary, changes[[rcp]][[layer]]$by_role)
+  # the maps after gridMET: Daymet, and for each RCP the summaries across
+  # GCMs and the GCMs by role, as changes from gridMET or as predictions
+  daymet <- daymet_4km[[layer]]
+  if (what == "change") daymet <- daymet - base
+  rcp_maps <- map(changes, \(by_layer) {
+    ch <- by_layer[[layer]]
+    if (what == "change") {
+      list(summary = ch$summary, by_role = ch$by_role)
+    } else {
+      list(summary = ch$summary_pred, by_role = ch$by_role_pred)
+    }
   })
-  all_diffs <- terra::rast(c(list(daymet_diff), gcm_diffs))
-  v <- as.vector(terra::values(all_diffs))
-  lim <- quantile(abs(v), 0.99, na.rm = TRUE, names = FALSE)
-  diff_scale <- colorscale_diverging(
-    name = "Difference from\ngridMET (% points)", limits = c(-lim, lim))
 
-  map_diff <- function(r, title) {
-    plot_map_conus(r, colorscale = diff_scale, title = title,
+  # colour scales: gridMET's, and the one shared by the other maps
+  others <- terra::rast(c(list(daymet),
+                          map(rcp_maps, \(x) c(x$summary, x$by_role))))
+  if (what == "change") {
+    v <- as.vector(terra::values(others))
+  lim <- quantile(abs(v), 0.99, na.rm = TRUE, names = FALSE)
+    others_scale <- colorscale_diverging(
+    name = "Difference from\ngridMET (% points)", limits = c(-lim, lim))
+    base_scale <- value_scale(list(base), is_share)
+  } else {
+    # one scale for every map, gridMET included
+    others_scale <- value_scale(c(list(base), as.list(others)), is_share)
+    base_scale <- others_scale
+  }
+
+  map_other <- function(r, title) {
+    plot_map_conus(r, colorscale = others_scale, title = title,
                    inset_hist = TRUE)
   }
 
   # row 1; the legends go in the empty third panel
   top <- list(
-    plot_map_conus(base, colorscale = value_scale(list(base), is_share),
+    plot_map_conus(base, colorscale = base_scale,
                    title = "gridMET, 1991-2020", inset_hist = TRUE),
-    map_diff(daymet_diff, "Daymet - gridMET"),
+    map_other(daymet, if (what == "change") {
+      "Daymet - gridMET"
+    } else {
+      "Daymet, 1991-2020"
+    }),
     guide_area()
   )
 
   # two rows per RCP
-  by_rcp <- map(rcps, \(rcp) {
-    ch <- changes[[rcp]][[layer]]
+  by_rcp <- imap(rcp_maps, \(x, rcp) {
     lab <- rcp_labels[[rcp]]
+    gcm <- changes[[rcp]][[layer]]$role_gcm
     list(
       map_diff(ch$summary[["min"]], paste0(lab, ": min across GCMs")),
       map_diff(ch$summary[["median"]], paste0(lab, ": median across GCMs")),
@@ -454,9 +498,15 @@ plot_gcm_layer <- function(layer, label, is_share) {
   }) |>
     list_flatten()
 
+  title <- if (what == "change") {
+    paste0(label, ": change from gridMET")
+  } else {
+    paste0(label, ": predictions")
+  }
+
   wrap_plots(c(top, by_rcp), ncol = 3) +
     plot_layout(guides = "collect") +
-    plot_annotation(title = label) &
+    plot_annotation(title = title) &
     theme(legend.direction = "horizontal",
           legend.key.width = unit(1.5, "cm"),
           legend.title.position = "top")
@@ -468,7 +518,9 @@ walk(unique(vars$group), \(g) {
   cat("\n\n## ", g, "\n\n", sep = "")
   filter(vars, group == g) |>
     pwalk(\(layer, label, is_share, ...) {
-      print(plot_gcm_layer(layer, label, is_share))
+      print(plot_gcm_layer(layer, label, is_share, what = "change"))
+      cat("\n\n")
+      print(plot_gcm_layer(layer, label, is_share, what = "prediction"))
       cat("\n\n")
     })
 })
