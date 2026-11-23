@@ -453,9 +453,9 @@ plot_gcm_layer <- function(layer, label, is_share,
                           map(rcp_maps, \(x) c(x$summary, x$by_role))))
   if (what == "change") {
     v <- as.vector(terra::values(others))
-  lim <- quantile(abs(v), 0.99, na.rm = TRUE, names = FALSE)
+    lim <- quantile(abs(v), 0.99, na.rm = TRUE, names = FALSE)
     others_scale <- colorscale_diverging(
-    name = "Difference from\ngridMET (% points)", limits = c(-lim, lim))
+      name = "Difference from\ngridMET (% points)", limits = c(-lim, lim))
     base_scale <- value_scale(list(base), is_share)
   } else {
     # one scale for every map, gridMET included
@@ -485,15 +485,15 @@ plot_gcm_layer <- function(layer, label, is_share,
     lab <- rcp_labels[[rcp]]
     gcm <- changes[[rcp]][[layer]]$role_gcm
     list(
-      map_diff(ch$summary[["min"]], paste0(lab, ": min across GCMs")),
-      map_diff(ch$summary[["median"]], paste0(lab, ": median across GCMs")),
-      map_diff(ch$summary[["max"]], paste0(lab, ": max across GCMs")),
-      map_diff(ch$by_role[["lowest"]],
-               paste0(lab, ": lowest GCM (", ch$role_gcm[["lowest"]], ")")),
-      map_diff(ch$by_role[["median"]],
-               paste0(lab, ": median GCM (", ch$role_gcm[["median"]], ")")),
-      map_diff(ch$by_role[["highest"]],
-               paste0(lab, ": highest GCM (", ch$role_gcm[["highest"]], ")"))
+      map_other(x$summary[["min"]], paste0(lab, ": min across GCMs")),
+      map_other(x$summary[["median"]], paste0(lab, ": median across GCMs")),
+      map_other(x$summary[["max"]], paste0(lab, ": max across GCMs")),
+      map_other(x$by_role[["lowest"]],
+                paste0(lab, ": lowest GCM (", gcm[["lowest"]], ")")),
+      map_other(x$by_role[["median"]],
+                paste0(lab, ": median GCM (", gcm[["median"]], ")")),
+      map_other(x$by_role[["highest"]],
+                paste0(lab, ": highest GCM (", gcm[["highest"]], ")"))
     )
   }) |>
     list_flatten()
@@ -600,8 +600,6 @@ stopifnot(!anyNA(vars$vc))
 
 # zero-tree threshold of the combined tree cover's zero-tree model
 zt <- filter(tree_parts, component == "zero_tree")
-zt_threshold <- read_cover_model(zt$cover_type, zt$cover_model, zt$vc,
-                                 zt$vmc)$config$spec$cover_threshold
 
 #' Observed value of a layer in the training data (%)
 #'
@@ -656,7 +654,7 @@ f5 <- .pred_vars$f5
 wall <- TRUE
 if (wall) {
   rap_tree <- read_rap_cover_raster("tree", years = 2021)
-  rap_zero <- 100 * read_zero_tree_raster("fracZeroTree") > zt_threshold
+  rap_zero <- read_zero_tree_raster("zeroTree")
   # GEE exports are one cell larger than the snap grid
   rap_tree <- align_raster(rap_tree, pred$current)
   rap_zero <- align_raster(rap_zero, pred$current)
