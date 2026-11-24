@@ -357,7 +357,9 @@ read_all_gcms <- function(rcp, period) {
 gcm_change <- function(preds, base) {
   # one layer per GCM
   change <- preds - base
-
+ # Note: this section could/should be updated for efficiency--the pixelwise summaries
+  # and list of ranks already exist as files and don't actually 
+  # need to be re-computed here on the fly. 
   summary_r <- c(min(change), terra::median(change), max(change))
   names(summary_r) <- c("min", "median", "max")
   summary_pred <- c(min(preds), terra::median(preds), max(preds))

@@ -45,20 +45,20 @@ prms <- list(
     cover_type = 'combined',
     cover_models = 'tree', # can be a vector, 
     # model versions to compare (for each of cover_models)
-    vmc_l = list(c('m21.5', "m25.5"), c('m24.2', 'm24.3'))
-  )# ,
-  # list(
-  #   vc = 'c07',
-  #   cover_type = 'cover',
-  #   cover_models = 'bare_ground',
-  #   vmc_l = list(c("m01.5", "m05.5"), c("m04.2", "m04.3"))
-  # ),
-  # list(
-  #   vc = 'c08',
-  #   cover_type = 'cover',
-  #   cover_models = c("shrub", "herbaceous"),
-  #   vmc_l = list(c("m01.5", "m05.5"), c("m04.2", "m04.3"))
-  # )
+    vmc_l = list(c("m25.5", 'm21.5'))
+  ),
+  list(
+    vc = 'c07',
+    cover_type = 'cover',
+    cover_models = 'bare_ground',
+    vmc_l = list(c("m01.51", "m05.51"))
+  ),
+  list(
+    vc = 'c08',
+    cover_type = 'cover',
+    cover_models = c("shrub", "herbaceous"),
+    vmc_l = list(c("m01.51", "m05.51"))
+  )
 )
 
 years <- 2010:2024                        # cells need cover in every year

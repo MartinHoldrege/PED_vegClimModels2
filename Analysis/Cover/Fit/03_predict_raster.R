@@ -127,10 +127,10 @@ write_pred <- function(r, scenario) {
 
 # 1 km Daymet grid ----------------------------------------------------------
 
-scenarios_1km <- "current"
-if (climate_set == "minimal") {
-  scenarios_1km <- c("current", "BNU-ESM", "IPSL-CM5A-MR")
-}
+# so 'minimal' runs downstream creating those two future files 
+# even under 'full'
+scenarios_1km <- c("current", "BNU-ESM", "IPSL-CM5A-MR") 
+
 
 walk(scenarios_1km, \(scenario) {
   # normals and soils in original units, on the snap grid
